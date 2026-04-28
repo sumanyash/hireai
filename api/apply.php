@@ -113,7 +113,7 @@ try {
 
     // Applied log
     if ($campaign_id && $cid) {
-        $lg = $db->prepare("INSERT INTO outreach_log (campaign_id,candidate_id,action,notes,created_at) VALUES (?,?,'applied','Self-applied via public form',NOW())");
+        $lg = $db->prepare("INSERT INTO outreach_log (candidate_id,campaign_id,channel,status) VALUES (?,?,'whatsapp','sent')");
         if ($lg) { $lg->bind_param('ii',$campaign_id,$cid); $lg->execute(); $lg->close(); }
     }
 

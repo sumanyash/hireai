@@ -1,0 +1,2005 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Candidate Applicant Details Form – Avyukta Intellicall</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600&display=swap"
+    rel="stylesheet">
+  <style>
+    /* ══════════════════════════════════════════════
+   ROOT — Default (Midnight Slate)
+══════════════════════════════════════════════ */
+    :root {
+      --bg: #0b0d14;
+      --surface: #13161f;
+      --card: #181c28;
+      --border: #252a3d;
+      --accent: #4f7cff;
+      --accent2: #7c3aed;
+      --gold: #f0b429;
+      --text: #e6e8f2;
+      --muted: #6b728f;
+      --error: #f43f5e;
+      --success: #22d3a5;
+      --radius: 10px;
+      --tr: 0.2s cubic-bezier(.4, 0, .2, 1);
+      --hbg: linear-gradient(135deg, #0c0f1e 0%, #141728 60%, #1a1332 100%);
+      --hglow: rgba(79, 124, 255, .14);
+    }
+
+    /* ── Themes ── */
+    [data-theme="light"] {
+      --bg: #f0f6ff;
+      --surface: #e2ecfa;
+      --card: #fff;
+      --border: #c4d6f0;
+      --accent: #0066ff;
+      --accent2: #00b4ff;
+      --gold: #ff9500;
+      --text: #0a1e38;
+      --muted: #5a7899;
+      --error: #d62828;
+      --success: #00995a;
+      --hbg: linear-gradient(135deg, #dbeeff 0%, #c6e2ff 60%, #b0d4ff 100%);
+      --hglow: rgba(0, 102, 255, .14);
+    }
+
+    [data-theme="light"] input,
+    [data-theme="light"] select,
+    [data-theme="light"] textarea {
+      color: var(--text);
+    }
+
+    [data-theme="light"] select option {
+      background: #fff;
+      color: #0a1e38;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Jost', sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+      opacity: .45;
+    }
+
+    /* ══ HEADER ══ */
+    .header {
+      background: var(--hbg);
+      border-bottom: 1px solid var(--border);
+      padding: 52px 24px 44px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .header::before {
+      content: '';
+      position: absolute;
+      top: -80px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 560px;
+      height: 320px;
+      background: radial-gradient(ellipse, var(--hglow) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .logo-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(79, 124, 255, .1);
+      border: 1px solid rgba(79, 124, 255, .28);
+      border-radius: 4px;
+      padding: 7px 20px;
+      margin-bottom: 22px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    .logo-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1) }
+      50% { opacity: .45; transform: scale(.75) }
+    }
+
+    h1 {
+      font-family: 'Jost', sans-serif;
+      font-size: clamp(26px, 5vw, 46px);
+      font-weight: 600;
+      letter-spacing: -.02em;
+      color: var(--text);
+      line-height: 1.12;
+      margin-bottom: 10px;
+    }
+
+    h1 em {
+      color: var(--accent);
+      font-style: italic;
+      font-weight: 500;
+    }
+
+    .header-sub {
+      color: var(--muted);
+      font-size: 14px;
+      max-width: 480px;
+      margin: 0 auto;
+      font-weight: 400;
+    }
+
+    /* ══ PROGRESS ══ */
+    .progress-wrap {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: color-mix(in srgb, var(--bg) 90%, transparent);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+      padding: 11px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .progress-bar-bg {
+      flex: 1;
+      height: 3px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 3px;
+      transition: width .5s cubic-bezier(.4, 0, .2, 1);
+      width: 0%;
+    }
+
+    .progress-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      white-space: nowrap;
+      min-width: 64px;
+      text-align: right;
+    }
+
+    .step-dots {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+    }
+
+    .step-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--border);
+      transition: all var(--tr);
+    }
+
+    .step-dot.done {
+      background: var(--accent);
+    }
+
+    .step-dot.current {
+      width: 18px;
+      border-radius: 3px;
+      background: var(--accent);
+    }
+
+    /* ══ THEME TOGGLE ══ */
+    .theme-toggle {
+      position: absolute;
+      top: 16px;
+      right: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 200;
+      transition: all var(--tr);
+    }
+
+    .theme-toggle:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .theme-toggle svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .icon-moon { display: none; }
+    [data-theme="light"] .icon-moon { display: block; }
+    [data-theme="light"] .icon-sun { display: none; }
+
+    /* ══ CONTAINER ══ */
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 40px 20px 80px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ══ SECTIONS ══ */
+    .section {
+      display: none;
+      animation: fadeIn .32s ease;
+    }
+
+    .section.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px) }
+      to { opacity: 1; transform: translateY(0) }
+    }
+
+    .section-header {
+      margin-bottom: 28px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+    }
+
+    .section-num {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 2px;
+      color: #fff;
+    }
+
+    .section-title {
+      font-family: 'Jost', sans-serif;
+      font-size: 20px;
+      font-weight: 600;
+      font-style: italic;
+      color: var(--text);
+      margin-bottom: 3px;
+      letter-spacing: -.01em;
+    }
+
+    .section-desc {
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    /* ══ CARDS ══ */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px;
+      margin-bottom: 14px;
+      transition: border-color var(--tr);
+    }
+
+    .card:focus-within {
+      border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+    }
+
+    /* ══ FIELDS ══ */
+    .field {
+      margin-bottom: 20px;
+    }
+
+    .field:last-child {
+      margin-bottom: 0;
+    }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media(max-width:520px) {
+      .field-row { grid-template-columns: 1fr }
+      #phoneRow { grid-template-columns: 1fr !important }
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 7px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    label .req {
+      color: var(--accent);
+      margin-left: 2px;
+    }
+
+    input[type=text],
+    input[type=email],
+    input[type=tel],
+    input[type=number],
+    input[type=date],
+    input[type=url],
+    select,
+    textarea {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--text);
+      font-family: 'Jost', sans-serif;
+      font-size: 14px;
+      font-weight: 400;
+      padding: 10px 13px;
+      outline: none;
+      transition: border-color var(--tr), box-shadow var(--tr);
+      appearance: none;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+    }
+
+    textarea {
+      min-height: 96px;
+      resize: vertical;
+    }
+
+    select {
+      cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b728f' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 32px;
+    }
+
+    select option {
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    /* ══ OPTION PILLS ══ */
+    .options-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(154px, 1fr));
+      gap: 9px;
+    }
+
+    .options-grid.cols2 {
+      grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+    }
+
+    .opt-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 9px 13px;
+      cursor: pointer;
+      transition: border-color var(--tr), background var(--tr);
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--text);
+      user-select: none;
+    }
+
+    .opt-label:hover {
+      border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+      background: color-mix(in srgb, var(--accent) 5%, transparent);
+    }
+
+    .opt-label input[type=radio],
+    .opt-label input[type=checkbox] {
+      width: 15px;
+      height: 15px;
+      accent-color: var(--accent);
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    .opt-label:has(input:checked) {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
+    }
+
+    input[type=radio]:checked+span,
+    input[type=checkbox]:checked+span {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    /* ══ INFO BOX ══ */
+    .info-box {
+      background: color-mix(in srgb, var(--accent) 8%, transparent);
+      border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+      border-radius: 7px;
+      padding: 13px 15px;
+      font-size: 13px;
+      color: color-mix(in srgb, var(--accent) 80%, var(--text));
+      margin-bottom: 18px;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .info-box svg {
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    /* ══ JOB DESCRIPTION CONTENT STYLING ══ */
+    #jdContent p {
+      margin-bottom: 12px;
+    }
+    #jdContent p:last-of-type {
+      margin-bottom: 0;
+    }
+    #jdContent ul {
+      padding-left: 20px;
+      margin-top: 8px;
+      margin-bottom: 12px;
+      list-style-type: disc;
+    }
+    #jdContent li {
+      margin-bottom: 5px;
+    }
+    #jdContent strong {
+      color: var(--text);
+      font-size: 14px;
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    /* ══ NAV BAR ══ */
+    .nav-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 28px;
+      padding-top: 22px;
+      border-top: 1px solid var(--border);
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 24px;
+      border-radius: 7px;
+      font-family: 'Jost', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: .03em;
+      cursor: pointer;
+      border: none;
+      transition: all var(--tr);
+      text-decoration: none;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+
+    .btn-ghost:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 7%, transparent);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 30%, transparent);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 22px color-mix(in srgb, var(--accent) 40%, transparent);
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #22d3a5, #059669);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(34, 211, 165, .28);
+    }
+
+    .btn-success:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 22px rgba(34, 211, 165, .38);
+    }
+
+    /* ══ FILE UPLOAD ══ */
+    .file-upload-area {
+      border: 2px dashed var(--border);
+      border-radius: 9px;
+      padding: 30px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all var(--tr);
+      background: var(--surface);
+    }
+
+    .file-upload-area:hover {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 5%, transparent);
+    }
+
+    .file-upload-area svg {
+      color: var(--muted);
+      margin-bottom: 9px;
+    }
+
+    .file-upload-area .upload-title {
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 3px;
+      font-size: 14px;
+    }
+
+    .file-upload-area .upload-sub {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .file-upload-area input[type=file] { display: none; }
+    .file-name {
+      margin-top: 9px;
+      font-size: 12px;
+      color: var(--success);
+      display: none;
+    }
+
+    /* ══ FIELD HINTS & ERRORS ══ */
+    .field-hint {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 5px;
+      font-style: italic;
+    }
+
+    .field-error {
+      font-size: 12px;
+      color: var(--error);
+      margin-top: 5px;
+      display: none;
+      font-weight: 500;
+    }
+
+    .input-invalid {
+      border-color: var(--error) !important;
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--error) 14%, transparent) !important;
+    }
+
+    .required-note {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 22px;
+    }
+
+    .required-note span { color: var(--accent); }
+
+    /* ══ VALIDATION BANNER ══ */
+    .val-banner {
+      display: none;
+      background: color-mix(in srgb, var(--error) 10%, var(--surface));
+      border: 1px solid color-mix(in srgb, var(--error) 40%, transparent);
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-bottom: 20px;
+      animation: fadeIn .22s ease;
+    }
+
+    .val-banner.show { display: block; }
+
+    .val-banner-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--error);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .val-banner ul { padding-left: 18px; }
+    .val-banner ul li { font-size: 13px; color: var(--text); margin-bottom: 3px; }
+
+    /* ══ SUBMIT OVERLAY ══ */
+    .submit-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .68);
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(8px);
+    }
+
+    .submit-overlay.active { display: flex; }
+
+    .submit-spinner {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 38px 48px;
+      text-align: center;
+    }
+
+    .spinner-ring {
+      width: 44px;
+      height: 44px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .75s linear infinite;
+      margin: 0 auto 14px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg) } }
+
+    .submit-spinner p {
+      color: var(--muted);
+      font-size: 14px;
+      margin-top: 10px;
+    }
+
+    /* ══ THANK YOU ══ */
+    .thankyou {
+      display: none;
+      text-align: center;
+      padding: 80px 20px;
+      animation: fadeIn .5s ease;
+    }
+
+    .thankyou.active { display: block; }
+
+    .checkmark {
+      width: 70px;
+      height: 70px;
+      border-radius: 50%;
+      background: color-mix(in srgb, var(--success) 12%, transparent);
+      border: 2px solid var(--success);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 22px;
+    }
+
+    .checkmark svg { color: var(--success); }
+
+    .thankyou h2 {
+      font-family: 'Jost', sans-serif;
+      font-size: 30px;
+      font-weight: 600;
+      font-style: italic;
+      margin-bottom: 10px;
+    }
+
+    .thankyou p {
+      color: var(--muted);
+      max-width: 420px;
+      margin: 0 auto 22px;
+    }
+
+    .ai-test-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: color-mix(in srgb, var(--gold) 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--gold) 32%, transparent);
+      color: var(--gold);
+      padding: 11px 24px;
+      border-radius: 7px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+      transition: all var(--tr);
+    }
+
+    .ai-test-link:hover {
+      background: color-mix(in srgb, var(--gold) 18%, transparent);
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="submit-overlay" id="submitOverlay">
+    <div class="submit-spinner">
+      <div class="spinner-ring"></div>
+      <p id="spinnerText">Submitting your application and files...<br><span style="font-size: 11px; opacity: 0.7;">(This may take a moment for video uploads)</span></p>
+    </div>
+  </div>
+
+  <div class="header">
+    <div class="logo-badge">
+      <div class="logo-dot"></div> Avyukta Intellicall
+    </div>
+    <h1>Candidate <em>Applicant Details</em> Form</h1>
+    <p class="header-sub">Please complete all sections carefully. Your responses help us match you with the right opportunity.</p>
+  </div>
+
+  <div class="progress-wrap">
+    <div class="step-dots" id="stepDots"></div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progressBar"></div>
+    </div>
+    <div class="progress-label" id="progressLabel">Step 1 / 9</div>
+  </div>
+
+  <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle Theme">
+    <svg class="icon-sun" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="5" />
+      <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+    </svg>
+    <svg class="icon-moon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  </button>
+
+  <div class="container">
+    <p class="required-note">Fields marked <span>*</span> are required.</p>
+
+    <div class="section active" id="section-1">
+      <div class="section-header">
+        <div class="section-num">1</div>
+        <div>
+          <div class="section-title">Personal Information</div>
+          <div class="section-desc">Tell us a little about yourself.</div>
+        </div>
+      </div>
+      <div id="val-banner-1" class="val-banner"></div>
+      <div class="card">
+        <div class="field">
+          <label for="salutation">Salutation <span class="req">*</span></label>
+          <select id="salutation">
+            <option value="">Select salutation</option>
+            <option value="Mr.">Mr.</option>
+            <option value="Ms.">Ms.</option>
+            <option value="Mrs.">Mrs.</option>
+            <option value="Dr.">Dr.</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="firstName">First Name <span class="req">*</span></label>
+            <input type="text" id="firstName" placeholder="Enter first name" oninput="this.value = this.value.replace(/[^A-Za-z\s]/g, '')">
+          </div>
+          <div class="field">
+            <label for="lastName">Last Name <span class="req">*</span></label>
+            <input type="text" id="lastName" placeholder="Enter last name" oninput="this.value = this.value.replace(/[^A-Za-z\s]/g, '')">
+          </div>
+        </div>
+        
+        <div class="field">
+          <label for="dob">Date of Birth <span class="req">*</span></label>
+          <input type="date" id="dob">
+        </div>
+
+        <div class="field-row" style="align-items: start;">
+          <div class="field" style="margin-bottom:0;">
+            <label for="currentCity">Current City <span class="req">*</span></label>
+            <input type="text" id="currentCity" placeholder="Enter your current city" oninput="handleCityChange()">
+          </div>
+          <div class="field" id="relocateCol" style="display:none; margin-bottom:0;">
+            <label for="relocate">Comfortable to Relocate? <span class="req">*</span></label>
+            <select id="relocate" onchange="handleRelocateChange()">
+              <option value="">Select Option</option>
+              <option value="Yes">Yes</option>
+              <option value="No">No</option>
+            </select>
+          </div>
+        </div>
+        <div class="field" id="relocateTimeRow" style="display:none; margin-top: 20px;">
+          <label for="relocateTime">Relocation Time <span class="req">*</span></label>
+          <select id="relocateTime">
+            <option value="">Select Option</option>
+            <option value="Immediate">Immediate</option>
+            <option value="Within 15 days">Within 15 days</option>
+            <option value="Within 1 month">Within 1 month</option>
+            <option value="Within 3 months">Within 3 months</option>
+            <option value="More than 3 months">More than 3 months</option>
+          </select>
+        </div>
+        <div id="phoneRow" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start; margin-top: 20px;">
+          <div class="field" style="margin-bottom:0;">
+            <label for="phoneCode">Phone Code <span class="req">*</span></label>
+            <select id="phoneCode" onchange="handlePhoneCodeChange()">
+              <option value="+91">+91 (India)</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="field" id="otherCountryCol" style="display:none;margin-bottom:0;">
+            <label for="otherCountryCode">Country <span class="req">*</span></label>
+            <select id="otherCountryCode" onchange="handleOtherCountryChange()">
+              <option value="">Select country</option>
+              <option value="+1:10:10">+1 (USA / Canada)</option>
+              <option value="+44:10:10">+44 (United Kingdom)</option>
+              <option value="+61:9:9">+61 (Australia)</option>
+              <option value="+49:10:11">+49 (Germany)</option>
+              <option value="+33:9:9">+33 (France)</option>
+              <option value="+971:9:9">+971 (UAE)</option>
+              <option value="+966:9:9">+966 (Saudi Arabia)</option>
+              <option value="+65:8:8">+65 (Singapore)</option>
+              <option value="+81:10:11">+81 (Japan)</option>
+              <option value="+86:11:11">+86 (China)</option>
+              <option value="+7:10:10">+7 (Russia)</option>
+              <option value="+55:10:11">+55 (Brazil)</option>
+              <option value="+27:9:9">+27 (South Africa)</option>
+              <option value="+92:10:10">+92 (Pakistan)</option>
+              <option value="+880:10:10">+880 (Bangladesh)</option>
+              <option value="+94:9:9">+94 (Sri Lanka)</option>
+              <option value="+977:9:10">+977 (Nepal)</option>
+              <option value="+60:9:10">+60 (Malaysia)</option>
+              <option value="+62:9:12">+62 (Indonesia)</option>
+              <option value="+234:10:10">+234 (Nigeria)</option>
+            </select>
+          </div>
+          <div class="field" id="phoneNumberCol" style="margin-bottom:0;">
+            <label for="phone">Phone Number <span class="req">*</span></label>
+            <input type="tel" id="phone" placeholder="10-digit number" maxlength="10">
+            <p class="field-hint" id="phoneHint">Must be exactly 10 digits for India (+91).</p>
+            <p class="field-hint" id="otherCountryHint" style="display:none;"></p>
+          </div>
+        </div>
+        <div class="field" style="margin-top:20px;">
+          <label for="email">Email ID <span class="req">*</span></label>
+          <input type="email" id="email" placeholder="you@example.com">
+        </div>
+        <div class="field">
+          <label for="college">College / University <span class="req">*</span></label>
+          <select id="college" onchange="handleCollegeChange()">
+            <option value="">Select your institution</option>
+            <option>University of Rajasthan</option>
+            <option>JECRC University</option>
+            <option>Manipal University Jaipur</option>
+            <option>Amity University Jaipur</option>
+            <option>Poornima University</option>
+            <option>IIS University</option>
+            <option>MNIT Jaipur</option>
+            <option>Jaipur National University</option>
+            <option>NIMS University</option>
+            <option>Arya College</option>
+            <option value="Other – specify">Other – specify</option>
+          </select>
+        </div>
+        <div class="field" id="collegeOtherField" style="display:none;">
+          <label for="collegeOther">Specify College / University <span class="req">*</span></label>
+          <input type="text" id="collegeOther" placeholder="Enter the full name of your college or university">
+        </div>
+        <div class="field">
+          <label for="source">How did you hear about us? <span class="req">*</span></label>
+          <select id="source" onchange="handleSourceChange()">
+            <option value="">Select source</option>
+            <option>Direct Website</option>
+            <option>LinkedIn</option>
+            <option>Internshala</option>
+            <option>Naukri.com</option>
+            <option>Monster.com</option>
+            <option>Dice.com</option>
+            <option>Indeed.com</option>
+            <option>WorkIndia</option>
+            <option value="Other – specify">Other – specify</option>
+          </select>
+        </div>
+        <div class="field" id="sourceOtherField" style="display:none;">
+          <label for="sourceOther">Please specify <span class="req">*</span></label>
+          <input type="text" id="sourceOther" placeholder="Where did you hear about this opportunity?">
+        </div>
+      </div>
+      <div class="nav-bar">
+        <div></div>
+        <button class="btn btn-primary" onclick="nextSection(1)">Continue →</button>
+      </div>
+    </div>
+
+    <div class="section" id="section-2">
+      <div class="section-header">
+        <div class="section-num">2</div>
+        <div>
+          <div class="section-title">Role Selection</div>
+          <div class="section-desc">Select the role and engagement type you are applying for.</div>
+        </div>
+      </div>
+      <div id="val-banner-2" class="val-banner"></div>
+      
+      <div class="info-box">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" />
+          <line x1="12" y1="8" x2="12" y2="12" />
+          <line x1="12" y1="16" x2="12.01" y2="16" />
+        </svg>
+        <a href="https://www.dialerindia.com/career" target="_blank" style="color:var(--accent); font-weight:600; text-decoration:underline;">Particular Job role training material ↗</a>
+      </div>
+
+      <div class="card">
+        <div class="field-row">
+          <div class="field">
+            <label for="roleApplied">Role <span class="req">*</span></label>
+            <select id="roleApplied" onchange="updateJD(this.value)">
+              <option value="">Select Role</option>
+              <option value="AI">AI</option>
+              <option value="Sales">Sales</option>
+              <option value="PHP & Developer">PHP & Developer Engineer</option>
+              <option value="Support Engineer">Support Engineer</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="engagementType">Engagement Type <span class="req">*</span></label>
+            <select id="engagementType" onchange="updateRemuneration(this.value)">
+              <option value="">Select Engagement Type</option>
+              <option value="Paid Training">Paid Training</option>
+              <option value="Unpaid Internship">Unpaid Internship</option>
+              <option value="Paid Internship">Paid Internship</option>
+              <option value="Employment">Employment</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="jdBox" style="display:none; margin-top:15px; margin-bottom:15px; padding: 18px; border-radius: 7px; background: color-mix(in srgb, var(--surface) 50%, transparent); border: 1px solid var(--border);">
+          <div id="jdContent" style="font-size: 13px; color: var(--text);"></div>
+        </div>
+
+        <div id="remunerationBox" class="info-box" style="display:none; margin-top:15px; margin-bottom:0;">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+          </svg>
+          <div style="display:flex; flex-direction:column;">
+            <strong style="font-size: 14px; margin-bottom: 4px;">Remuneration & Structure Synopsis</strong>
+            <span id="remunerationText" style="line-height: 1.5;"></span>
+          </div>
+        </div>
+      </div>
+      <div class="nav-bar">
+        <button class="btn btn-ghost" onclick="prevSection(2)">← Back</button>
+        <button class="btn btn-primary" onclick="nextSection(2)">Continue →</button>
+      </div>
+    </div>
+
+    <div class="section" id="section-3">
+      <div class="section-header">
+        <div class="section-num">3</div>
+        <div>
+          <div class="section-title">General Experience & Skills</div>
+          <div class="section-desc">Your background, communication, and professional assessment.</div>
+        </div>
+      </div>
+      <div id="val-banner-3" class="val-banner"></div>
+      <div class="card">
+        <div class="field-row">
+          <div class="field">
+            <label for="englishLevel">English Communication <span class="req">*</span></label>
+            <select id="englishLevel">
+              <option value="">Select Level</option>
+              <option value="1">1 - Basic</option>
+              <option value="2">2 - Fair</option>
+              <option value="3">3 - Good</option>
+              <option value="4">4 - Very Good</option>
+              <option value="5">5 - Fluent / Native</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="yearsExp">Years of Experience <span class="req">*</span></label>
+            <select id="yearsExp" onchange="handleYearsExpChange()">
+              <option value="">Select Experience</option>
+              <option value="Fresher">Fresher</option>
+              <option value="0.5 Years">0.5 Years</option>
+              <option value="1–2 Years">1–2 Years</option>
+              <option value="2–5 Years">2–5 Years</option>
+              <option value="5-7 Years">5–7 Years</option>
+              <option value="7-10 Years">7–10 Years</option>
+              <option value="10-15 Years">10–15 Years</option>
+              <option value="15+ Years">15+ Years</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row" id="industryFieldContainer">
+          <div class="field">
+            <label for="industry">Industry Background <span class="req">*</span></label>
+            <select id="industry" onchange="document.getElementById('industryOtherField').style.display = (this.value === 'Other') ? 'block' : 'none'">
+              <option value="">Select Industry</option>
+              <option id="industryFresherOpt" value="Fresher / None">Fresher / None</option>
+              <option value="IT/Software">IT / Software</option>
+              <option value="Telecom">Telecom</option>
+              <option value="Sales/Marketing">Sales / Marketing</option>
+              <option value="Customer Support">Customer Support</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="field" id="industryOtherField" style="display:none; margin-top:-10px;">
+          <input type="text" id="industryOther" placeholder="Please specify other industry">
+        </div>
+
+        <div class="field" id="expTypeFieldContainer">
+          <label>Experience Type <span class="req">*</span></label>
+          <div class="options-grid cols2">
+            <label class="opt-label" id="expTypeFresherLabel"><input type="radio" name="expType" value="Fresher / None"><span>Fresher / None</span></label>
+            <label class="opt-label"><input type="radio" name="expType" value="Internship"><span>Internship</span></label>
+            <label class="opt-label"><input type="radio" name="expType" value="Full-time"><span>Full-time</span></label>
+            <label class="opt-label"><input type="radio" name="expType" value="Freelance"><span>Freelance</span></label>
+            <label class="opt-label"><input type="radio" name="expType" value="Academic Project"><span>Academic Project</span></label>
+          </div>
+        </div>
+        <div class="field" id="internshipDescContainer">
+          <label for="internshipDesc">Describe Your Past Experience (If Any)</label>
+          <textarea id="internshipDesc" placeholder="Briefly describe any relevant internship or project experience (Max 50 words)..." oninput="limitWords(this, 50)"></textarea>
+          <p class="field-hint" id="wordCountHint">0 / 50 words</p>
+        </div>
+      </div>
+      <div class="nav-bar">
+        <button class="btn btn-ghost" onclick="prevSection(3)">← Back</button>
+        <button class="btn btn-primary" onclick="nextSection(3)">Continue →</button>
+      </div>
+    </div>
+
+    <div class="section" id="section-4">
+      <div class="section-header">
+        <div class="section-num">4</div>
+        <div>
+          <div class="section-title">Compensation</div>
+          <div class="section-desc">Your current and expected remuneration details.</div>
+        </div>
+      </div>
+      <div id="val-banner-4" class="val-banner"></div>
+      <div class="card">
+        <div class="field-row">
+          <div class="field">
+            <label for="currentSalary">Current Salary / Stipend (Per Month)</label>
+            <input type="text" id="currentSalary" placeholder="e.g. ₹15,000/month or N/A">
+          </div>
+          <div class="field">
+            <label for="expectedSalary">Expected Salary / Stipend (Per Month) <span class="req">*</span></label>
+            <input type="text" id="expectedSalary" placeholder="Mention realistic figures (in ₹)">
+          </div>
+        </div>
+      </div>
+      <div class="nav-bar">
+        <button class="btn btn-ghost" onclick="prevSection(4)">← Back</button>
+        <button class="btn btn-primary" onclick="nextSection(4)">Continue →</button>
+      </div>
+    </div>
+
+    <div class="section" id="section-5">
+      <div class="section-header">
+        <div class="section-num">5</div>
+        <div>
+          <div class="section-title">Internship & Availability</div>
+          <div class="section-desc">Your schedule preferences and joining details.</div>
+        </div>
+      </div>
+      <div id="val-banner-5" class="val-banner"></div>
+      <div class="card">
+        <div class="field" id="tenureField">
+          <label for="tenure">Internship Tenure <span class="req">*</span></label>
+          <select id="tenure">
+            <option value="">Select Tenure</option>
+            <option value="6 months">6 Months</option>
+            <option value="9 months">9 Months</option>
+            <option value="12 months">12 Months</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="joiningDate">Preferred Joining Date <span class="req">*</span></label>
+            <input type="date" id="joiningDate">
+          </div>
+          <div class="field">
+            <label for="flexHours">Open to Flexible Hours? <span class="req">*</span></label>
+            <select id="flexHours">
+              <option value="">Select Option</option>
+              <option value="Yes">Yes</option>
+              <option value="No">No</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="nav-bar">
+        <button class="btn btn-ghost" onclick="prevSection(5)">← Back</button>
+        <button class="btn btn-primary" onclick="nextSection(5)">Continue →</button>
+      </div>
+    </div>
+
+    <div class="section" id="section-6">
+      <div class="section-header">
+        <div class="section-num">6</div>
+        <div>
+          <div class="section-title">Work Readiness</div>
+          <div class="section-desc">Confirm your technical and logistical readiness.</div>
+        </div>
+      </div>
+      <div id="val-banner-6" class="val-banner"></div>
+      <div class="card">
+        <div class="field-row">
+          <div class="field">
+            <label for="laptop">Do you own a Laptop? <span class="req">*</span></label>
+            <select id="laptop">
+              <option value="">Select Option</option>
+              <option value="Yes">Yes</option>
+              <option value="No">No</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="internet">Reliable Broadband / Wi-Fi at Home? <span class="req">*</span></label>
+            <select id="internet">
+              <option value="">Select Option</option>
+              <option value="Yes">Yes</option>
+              <option value="No">No</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="field">
+          <label for="candidateLocation">Check Commute Distance <span style="color:var(--muted);font-size:11px;font-weight:400;">(Optional utility)</span></label>
+          <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+            <input type="text" id="candidateLocation" placeholder="Enter your area/city (e.g. Vaishali Nagar, Jaipur)" style="flex: 1;">
+            <button type="button" class="btn btn-ghost" onclick="checkDistance()" style="padding: 10px 15px; white-space: nowrap; height: 42px;">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+              Check Maps
+            </button>
+          </div>
+          <p class="field-hint" style="margin-top:0; font-size: 13px;">
+            📍 Office Location: <a href="https://maps.google.com/?q=Avyukta+Intellicall,+Narayan+Vihar+Rd,+Ganatpura,+Jaipur" target="_blank" style="color:var(--accent); font-weight: 500; text-decoration: none;">Avyukta Intellicall, Narayan Vihar Rd, Ganatpura, Jaipur</a>
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="commute">Commute to Office <span class="req">*</span></label>
+          <select id="commute">
+            <option value="">Select Option</option>
+            <option value="Personal vehicle">Personal Vehicle</option>
+            <option value="Self-managed">I will manage on my own</option>
+          </select>
+        </div>
+      </div>
+      <div class="nav-bar">
+        <button class="btn btn-ghost" onclick="prevSection(6)">← Back</button>
+        <button class="btn btn-primary" onclick="nextSection(6)">Continue →</button>
+      </div>
+    </div>
+
+    <div class="section" id="section-7">
+      <div class="section-header">
+        <div class="section-num">7</div>
+        <div>
+          <div class="section-title">Documents & Portfolio</div>
+          <div class="section-desc">Upload your resume and share relevant links.</div>
+        </div>
+      </div>
+      <div id="val-banner-7" class="val-banner"></div>
+      <div class="card">
+        <div class="field">
+          <label>Resume / CV <span class="req">*</span></label>
+          <div class="file-upload-area" onclick="document.getElementById('resumeFile').click()">
+            <svg width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path d="M12 15V3m0 12l-4-4m4 4l4-4" />
+              <path d="M2 17l.621 2.485A2 2 0 0 0 4.561 21h14.878a2 2 0 0 0 1.94-1.515L22 17" />
+            </svg>
+            <div class="upload-title">Click to upload Resume / CV</div>
+            <div class="upload-sub">PDF or DOCX only · Max 10 MB</div>
+            <div class="file-name" id="resumeFileName"></div>
+            <input type="file" id="resumeFile" accept=".pdf,.docx" onchange="showFileName('resumeFile','resumeFileName')">
+          </div>
+        </div>
+        
+        <div class="field">
+          <label for="videoOption">Video Introduction <span style="color:var(--muted);font-size:11px;font-weight:400;">(Optional)</span></label>
+          <select id="videoOption" onchange="toggleVideoInput()">
+            <option value="none">Skip (Optional)</option>
+            <option value="link">Provide a Video Link (YouTube, Drive, etc.)</option>
+            <option value="upload">Upload a Video File</option>
+          </select>
+        </div>
+
+        <div class="field" id="videoLinkDiv" style="display:none;">
+          <label for="videoLinkInput">Video URL</label>
+          <input type="url" id="videoLinkInput" placeholder="https://...">
+        </div>
+
+        <div class="field" id="videoUploadDiv" style="display:none;">
+          <div class="file-upload-area" onclick="document.getElementById('videoFile').click()">
+            <svg width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <rect x="2" y="7" width="15" height="10" rx="2" />
+              <polygon points="17 9 22 6 22 18 17 15" />
+            </svg>
+            <div class="upload-title">Click to upload Video</div>
+            <div class="upload-sub">MP4, MOV or AVI · Max 15 MB (or use link option)</div>
+            <div class="file-name" id="videoFileName"></div>
+            <input type="file" id="videoFile" accept=".mp4,.mov,.avi" onchange="showFileName('videoFile','videoFileName')">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="portfolioLinks">Portfolio / Project Links</label>
+          <input type="url" id="portfolioLinks" placeholder="GitHub, LinkedIn, or personal website URL">
+          <p class="field-hint">Separate multiple URLs with a comma.</p>
+        </div>
+      </div>
+      <div class="nav-bar">
+        <button class="btn btn-ghost" onclick="prevSection(7)">← Back</button>
+        <button class="btn btn-primary" onclick="nextSection(7)">Continue →</button>
+      </div>
+    </div>
+
+    <div class="section" id="section-8">
+      <div class="section-header">
+        <div class="section-num">8</div>
+        <div>
+          <div class="section-title">AI Test Section</div>
+          <div class="section-desc">Consent and preferences for the AI aptitude test.</div>
+        </div>
+      </div>
+      <div id="val-banner-8" class="val-banner"></div>
+      <div class="card">
+        <div class="field">
+          <label for="aiTestWilling">Willing to Take the AI Test? <span class="req">*</span></label>
+          <select id="aiTestWilling">
+            <option value="">Select Option</option>
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+          </select>
+        </div>
+      </div>
+      <div class="nav-bar">
+        <button class="btn btn-ghost" onclick="prevSection(8)">← Back</button>
+        <button class="btn btn-primary" onclick="nextSection(8)">Continue →</button>
+      </div>
+    </div>
+
+    <div class="section" id="section-9">
+      <div class="section-header">
+        <div class="section-num">9</div>
+        <div>
+          <div class="section-title">Declaration</div>
+          <div class="section-desc">Please review and confirm your submission.</div>
+        </div>
+      </div>
+      <div id="val-banner-9" class="val-banner"></div>
+      <div class="card">
+        <div class="field">
+          <label class="opt-label"
+            style="border-color:color-mix(in srgb,var(--success) 30%,transparent);background:color-mix(in srgb,var(--success) 6%,transparent);padding:16px;align-items:flex-start;">
+            <input type="checkbox" id="declaration">
+            <span style="color:var(--success);font-size:14px;line-height:1.6;font-weight:400;">I confirm that the
+              information provided in this questionnaire is true and accurate to the best of my knowledge. I understand
+              that any false or misleading information may result in disqualification.</span>
+          </label>
+        </div>
+      </div>
+      <div class="nav-bar">
+        <button class="btn btn-ghost" onclick="prevSection(9)">← Back</button>
+        <button class="btn btn-success" onclick="submitForm()">Submit Application ✓</button>
+      </div>
+    </div>
+
+    <div class="thankyou" id="thankyou">
+      <div class="checkmark">
+        <svg width="34" height="34" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      </div>
+      <h2>Application Submitted!</h2>
+      <p>Thank you for applying to Avyukta Intellicall. Our team will review your application and contact you shortly.</p>
+      <a href="https://hire.clouddialer.in" target="_blank" class="ai-test-link">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
+        Begin AI Test
+      </a>
+    </div>
+  </div>
+
+  <script>
+    const TOTAL = 9;
+    let currentSection = 1;
+
+    // =======================================================================
+    // APPS SCRIPT URL UPDATED 
+    // =======================================================================
+    const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwAw0bghc0QcOK0gMBG0myVkvjfje5iBazqefvRStvH84_Cvl8HBA4IRDhOg9UB7HfE/exec';
+    // =======================================================================
+
+    /* ── EXPERIENCE DEPENDENCY LOGIC ───────────────────────────── */
+    function handleYearsExpChange() {
+      const yearsVal = document.getElementById('yearsExp').value;
+      const industryContainer = document.getElementById('industryFieldContainer');
+      const expTypeContainer = document.getElementById('expTypeFieldContainer');
+
+      if (yearsVal === 'Fresher') {
+         // Completely hide Industry and Experience Type for Freshers
+         industryContainer.style.display = 'none';
+         expTypeContainer.style.display = 'none';
+         document.getElementById('industry').value = '';
+         document.getElementById('industryOtherField').style.display = 'none';
+         document.querySelectorAll('input[name="expType"]').forEach(r => r.checked = false);
+      } else if (yearsVal) {
+         // Show them for experienced candidates
+         industryContainer.style.display = 'grid'; // because it's a field-row
+         expTypeContainer.style.display = 'block';
+         
+         // Remove 'Fresher / None' options from them since they have experience
+         document.getElementById('industryFresherOpt').style.display = 'none';
+         document.getElementById('expTypeFresherLabel').style.display = 'none';
+         
+         // Clear if previously selected
+         if (document.getElementById('industry').value === 'Fresher / None') {
+            document.getElementById('industry').value = '';
+         }
+         document.querySelectorAll('input[name="expType"]').forEach(radio => {
+            if (radio.value === 'Fresher / None' && radio.checked) {
+                radio.checked = false;
+            }
+         });
+      } else {
+         // Reset state when empty
+         industryContainer.style.display = 'grid';
+         expTypeContainer.style.display = 'block';
+         document.getElementById('industryFresherOpt').style.display = 'block';
+         document.getElementById('expTypeFresherLabel').style.display = 'flex';
+      }
+    }
+
+    /* ── WORD LIMIT LOGIC ──────────────────────────────────────── */
+    function limitWords(field, maxWords) {
+        let text = field.value;
+        let words = text.trim().split(/\s+/).filter(w => w.length > 0);
+        
+        if (words.length > maxWords) {
+            field.value = words.slice(0, maxWords).join(" ") + " ";
+            words = words.slice(0, maxWords);
+        }
+        
+        const count = words.length;
+        document.getElementById('wordCountHint').innerText = `${count} / ${maxWords} words`;
+    }
+
+    /* ── CITY AND RELOCATION TOGGLES ───────────────────────────── */
+    function handleCityChange() {
+      const cityInput = document.getElementById('currentCity').value.trim().toLowerCase();
+      const relocateCol = document.getElementById('relocateCol');
+      const relocateSelect = document.getElementById('relocate');
+      const timeRow = document.getElementById('relocateTimeRow');
+      const timeSelect = document.getElementById('relocateTime');
+
+      if (cityInput && cityInput !== 'jaipur') {
+        relocateCol.style.display = 'block';
+      } else {
+        relocateCol.style.display = 'none';
+        relocateSelect.value = '';
+        timeRow.style.display = 'none';
+        timeSelect.value = '';
+      }
+    }
+
+    function handleRelocateChange() {
+      const val = document.getElementById('relocate').value;
+      const timeRow = document.getElementById('relocateTimeRow');
+      const timeSelect = document.getElementById('relocateTime');
+
+      if (val === 'Yes') {
+        timeRow.style.display = 'block';
+      } else {
+        timeRow.style.display = 'none';
+        timeSelect.value = '';
+      }
+    }
+
+    /* ── MAP DISTANCE CHECKER ──────────────────────────────────── */
+    function checkDistance() {
+      const origin = document.getElementById('candidateLocation').value.trim();
+      if (!origin) {
+        alert("Please enter your current location or area first.");
+        return;
+      }
+      const destination = "Avyukta Intellicall, Narayan Vihar Rd, Ganatpura, Jaipur";
+      const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`;
+      window.open(url, '_blank');
+    }
+
+    /* ── JOB DESCRIPTION TOGGLE ────────────────────────────────── */
+    function updateJD(role) {
+      const jdBox = document.getElementById('jdBox');
+      const jdContent = document.getElementById('jdContent');
+      
+      const jobDescriptions = {
+        "AI": `<strong>Job Description Summary – AI/ML Role</strong>
+          <p>We are looking for passionate and driven individuals to join our team in the field of Artificial Intelligence and Machine Learning. The ideal candidate should have strong communication skills in English, relevant industry exposure, and a willingness to learn and grow in a fast-paced environment.</p>
+          <p>Candidates with varying levels of experience—ranging from freshers to experienced professionals—are encouraged to apply. We welcome applicants with backgrounds in internships, full-time roles, freelance work, or academic projects related to AI/ML or similar domains.</p>
+          <p>The role requires a basic understanding of industry practices, problem-solving abilities, and the capability to contribute to real-world AI-driven solutions. Applicants should be able to effectively communicate ideas, collaborate with teams, and demonstrate hands-on experience through projects or prior work.</p>
+          <strong>Key Highlights:</strong>
+          <ul>
+            <li>Open to Freshers, Interns, Freelancers, and Experienced Professionals</li>
+            <li>Emphasis on English communication and clarity</li>
+            <li>Opportunity to work on real-world AI/ML projects</li>
+            <li>Industry exposure preferred but not mandatory</li>
+            <li>Strong learning mindset and adaptability required</li>
+          </ul>`,
+          
+        "Sales": `<strong>Job Description Summary – Software Sales</strong>
+          <p>We are looking for a motivated and customer-focused Software Sales Executive to promote and assist clients with our range of technology solutions, including Dialer Systems, CRM Software, AI Voice Bots, AI Automation Tools, Digital Marketing Services, and Website/App Development.</p>
+          <p>The role involves understanding client requirements, explaining suitable solutions, and guiding them through the onboarding process. Candidates should have good English communication skills, a professional approach, and the ability to build strong client relationships.</p>
+          <p>This opportunity is open to both freshers and experienced candidates from sales, business development, or related backgrounds. Prior exposure to software or digital services is preferred but not mandatory. The ideal candidate should be proactive, adaptable, and comfortable working in a dynamic environment while collaborating with internal teams to ensure a smooth client experience.</p>
+          <strong>Key Highlights:</strong>
+          <ul>
+            <li>Open to Freshers and Experienced Candidates</li>
+            <li>Exposure to Multiple Software Solutions (CRM, Dialer, AI Tools, Digital Services)</li>
+            <li>Client Interaction & Relationship Management Role</li>
+            <li>No Sales Targets or Incentive-Based Pressure</li>
+            <li>Opportunity to Learn AI & Automation-Based Technologies</li>
+            <li>Collaborative and Growth-Oriented Work Environment</li>
+            <li>Training and Support Provided</li>
+          </ul>`,
+          
+        "PHP & Developer": `<strong>Job Description Summary – PHP Developer / Software Engineer</strong>
+          <p>We are looking for a skilled and detail-oriented PHP Developer / Software Engineer to design, develop, and maintain web-based applications. The candidate will be responsible for building scalable backend systems, integrating APIs, and ensuring smooth functionality of websites and software solutions.</p>
+          <p>The role involves working closely with cross-functional teams to understand requirements, develop efficient solutions, and enhance existing platforms. Candidates should have a strong understanding of PHP frameworks, database management, and web development fundamentals.</p>
+          <p>This opportunity is open to both freshers and experienced candidates who have hands-on experience through internships, freelance work, or academic projects. A strong willingness to learn and adapt to new technologies is essential.</p>
+          <strong>Key Highlights:</strong>
+          <ul>
+            <li>Open to Freshers and Experienced Developers</li>
+            <li>Hands-on Development in PHP, Web Applications, and APIs</li>
+            <li>Opportunity to Work on Real-World Projects (CRM, Web Apps, Automation Tools)</li>
+            <li>Exposure to Modern Technologies and Frameworks</li>
+            <li>Collaborative and Learning-Focused Environment</li>
+            <li>Training and Mentorship Provided</li>
+            <li>Focus on Skill Development and Long-Term Growth</li>
+          </ul>`,
+          
+        "Support Engineer": `<strong>Job Description Summary – Support Engineer (Dialer, GSM & DevOps)</strong>
+          <p>We are looking for a technically skilled and proactive Support Engineer to manage and support our Dialer Systems, GSM gateways, and DevOps infrastructure. The role involves monitoring system performance, troubleshooting technical issues, and ensuring high availability of services.</p>
+          <p>The candidate will be responsible for handling server-related tasks, configuring dialers, managing GSM devices, and supporting deployments and integrations. A basic understanding of Linux servers, networking, and cloud environments is essential.</p>
+          <p>You will work closely with the development and operations teams to resolve issues, optimize system performance, and ensure seamless functioning of all platforms. This role is suitable for both freshers with strong technical knowledge and experienced professionals in support or DevOps environments.</p>
+          <strong>Key Highlights:</strong>
+          <ul>
+            <li>Exposure to Dialer Systems, GSM Gateways, and VoIP Technologies</li>
+            <li>Hands-on Experience with Linux Servers and Basic DevOps Practices</li>
+            <li>Involvement in Deployment, Monitoring, and Troubleshooting</li>
+            <li>Opportunity to Work on Real-Time Communication Systems</li>
+            <li>Open to Freshers and Experienced Candidates</li>
+            <li>Collaborative and Learning-Focused Environment</li>
+            <li>Training and Technical Guidance Provided</li>
+          </ul>`
+      };
+
+      if (role && jobDescriptions[role]) {
+        jdContent.innerHTML = jobDescriptions[role];
+        jdBox.style.display = 'block';
+      } else {
+        jdBox.style.display = 'none';
+        jdContent.innerHTML = '';
+      }
+    }
+
+    /* ── THEME ─────────────────────────────────────────────────── */
+    function setTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      try { localStorage.setItem('avk_theme', t); } catch (e) { }
+    }
+
+    function toggleTheme() {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'light' ? 'midnight' : 'light';
+        setTheme(newTheme);
+    }
+
+    /* ── PHONE ──────────────────────────────────────────────────── */
+    function handlePhoneCodeChange() {
+      const code = document.getElementById('phoneCode').value;
+      const row = document.getElementById('phoneRow');
+      const oc = document.getElementById('otherCountryCol');
+      const inp = document.getElementById('phone');
+      const h1 = document.getElementById('phoneHint');
+      const h2 = document.getElementById('otherCountryHint');
+
+      if (code === 'other') {
+        row.style.gridTemplateColumns = '1fr 1fr 1fr';
+        oc.style.display = 'block';
+        inp.placeholder = 'Enter phone number';
+        inp.removeAttribute('maxlength'); inp.removeAttribute('minlength');
+        h1.style.display = 'none';
+        document.getElementById('otherCountryCode').value = '';
+        h2.style.display = 'none';
+      } else {
+        row.style.gridTemplateColumns = '1fr 1fr';
+        oc.style.display = 'none';
+        inp.placeholder = '10-digit number';
+        inp.maxLength = 10; inp.minLength = 10;
+        h1.textContent = 'Must be exactly 10 digits for India (+91).';
+        h1.style.display = 'block';
+        h2.style.display = 'none';
+      }
+      inp.value = ''; inp.classList.remove('input-invalid');
+    }
+
+    function handleOtherCountryChange() {
+      const sel = document.getElementById('otherCountryCode');
+      const inp = document.getElementById('phone');
+      const h2 = document.getElementById('otherCountryHint');
+      const val = sel.value;
+      if (!val) { h2.style.display = 'none'; return; }
+      const [, min, max] = val.split(':');
+      inp.minLength = parseInt(min); inp.maxLength = parseInt(max);
+      inp.placeholder = min === max ? `${min}-digit number` : `${min}–${max}-digit number`;
+      inp.value = ''; inp.classList.remove('input-invalid');
+      h2.textContent = `${sel.options[sel.selectedIndex].text}: ${min === max ? min : min + '–' + max} digits required.`;
+      h2.style.display = 'block';
+    }
+
+    function validatePhone() {
+      const code = document.getElementById('phoneCode').value;
+      const ph = document.getElementById('phone').value.trim();
+      const inp = document.getElementById('phone');
+      if (code === '+91') {
+        if (!/^\d{10}$/.test(ph)) { inp.classList.add('input-invalid'); return 'Phone number must be exactly 10 digits.'; }
+      } else if (code === 'other') {
+        const sel = document.getElementById('otherCountryCode');
+        if (!sel.value) return 'Please select a country.';
+        const [, min, max] = sel.value.split(':');
+        const d = ph.replace(/\D/g, '');
+        if (d.length < parseInt(min) || d.length > parseInt(max)) {
+          inp.classList.add('input-invalid');
+          return `Phone must be ${min === max ? min : min + '–' + max} digits for the selected country.`;
+        }
+      }
+      inp.classList.remove('input-invalid');
+      return null;
+    }
+
+    /* ── COLLEGE / SOURCE "OTHER" ───────────────────────────────── */
+    function handleCollegeChange() {
+      const v = document.getElementById('college').value;
+      const f = document.getElementById('collegeOtherField');
+      f.style.display = (v === 'Other – specify') ? 'block' : 'none';
+      if (v !== 'Other – specify') document.getElementById('collegeOther').value = '';
+    }
+
+    function handleSourceChange() {
+      const v = document.getElementById('source').value;
+      const f = document.getElementById('sourceOtherField');
+      f.style.display = (v === 'Other – specify') ? 'block' : 'none';
+      if (v !== 'Other – specify') document.getElementById('sourceOther').value = '';
+    }
+
+    /* ── VIDEO TOGGLE ───────────────────────────────────────────── */
+    function toggleVideoInput() {
+      const val = document.getElementById('videoOption').value;
+      document.getElementById('videoUploadDiv').style.display = val === 'upload' ? 'block' : 'none';
+      document.getElementById('videoLinkDiv').style.display = val === 'link' ? 'block' : 'none';
+    }
+
+    /* ── VALIDATION BANNER ──────────────────────────────────────── */
+    function showBanner(bannerId, errors) {
+      const b = document.getElementById(bannerId);
+      if (!b) return;
+      if (!errors.length) { b.classList.remove('show'); return; }
+      b.innerHTML = `
+    <div class="val-banner-title">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      Please complete the required fields before continuing
+    </div>
+    <ul>${errors.map(e => `<li>${e}</li>`).join('')}</ul>`;
+      b.classList.add('show');
+      b.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    /* ── FILE SIZE VALIDATOR ────────────────────────────────────── */
+    function checkFileSize(inputId, maxMB) {
+      const fileInput = document.getElementById(inputId);
+      if (fileInput.files.length > 0) {
+        const fileSize = fileInput.files[0].size; 
+        const maxSize = maxMB * 1024 * 1024; 
+        if (fileSize > maxSize) return false;
+      }
+      return true;
+    }
+
+    /* ── SECTION-SPECIFIC VALIDATORS ───────────────────────────── */
+    function validate1() {
+      const e = [];
+      if (!document.getElementById('salutation').value) e.push('Salutation is required.');
+      if (!document.getElementById('firstName').value.trim()) e.push('First name is required.');
+      if (!document.getElementById('lastName').value.trim()) e.push('Last name is required.');
+      
+      const dobVal = document.getElementById('dob').value;
+      if (!dobVal) {
+        e.push('Date of Birth is required.');
+      } else {
+        const todayDate = new Date();
+        todayDate.setHours(0,0,0,0);
+        const inputDate = new Date(dobVal);
+        if(inputDate > todayDate) {
+          e.push('Date of Birth cannot be in the future.');
+        }
+      }
+
+      // New City & Relocation Validation
+      const city = document.getElementById('currentCity').value.trim();
+      if (!city) {
+        e.push('Current City is required.');
+      } else if (city.toLowerCase() !== 'jaipur') {
+        const rel = document.getElementById('relocate').value;
+        if (!rel) {
+          e.push('Please indicate if you are comfortable to relocate.');
+        } else if (rel === 'Yes') {
+          if (!document.getElementById('relocateTime').value) {
+            e.push('Please select a relocation time.');
+          }
+        }
+      }
+
+      const pe = validatePhone(); if (pe) e.push(pe);
+      const em = document.getElementById('email').value.trim();
+      if (!em || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) e.push('A valid email address is required.');
+      const coll = document.getElementById('college').value;
+      if (!coll) e.push('Please select your college / university.');
+      if (coll === 'Other – specify' && !document.getElementById('collegeOther').value.trim())
+        e.push('Please specify your college / university name.');
+      const src = document.getElementById('source').value;
+      if (!src) e.push('Please tell us how you heard about us.');
+      if (src === 'Other – specify' && !document.getElementById('sourceOther').value.trim())
+        e.push('Please specify how you heard about us.');
+      return e;
+    }
+    function validate2() {
+      const e = [];
+      if (!document.getElementById('roleApplied').value) e.push('Please select a Role.');
+      if (!document.getElementById('engagementType').value) e.push('Please select an Engagement Type.');
+      return e;
+    }
+    function validate3() {
+      const e = [];
+      if (!document.getElementById('englishLevel').value) e.push('Please select your English communication level.');
+      
+      const yearsExp = document.getElementById('yearsExp').value;
+      if (!yearsExp) e.push('Years of experience is required.');
+      
+      // Bypass Industry & Experience Type validation if Fresher
+      if (yearsExp && yearsExp !== 'Fresher') {
+          if (!document.getElementById('industry').value) e.push('Industry background is required.');
+          if (document.getElementById('industry').value === 'Other' && !document.getElementById('industryOther').value.trim()) e.push('Please specify the other industry.');
+          if (!document.querySelector('input[name="expType"]:checked')) e.push('Please select your experience type.');
+      }
+      
+      return e;
+    }
+    function validate4() {
+      const e = [];
+      if (!document.getElementById('expectedSalary').value.trim()) e.push('Expected salary / stipend is required.');
+      return e;
+    }
+    function validate5() {
+      const e = [];
+      const et = document.getElementById('engagementType').value;
+      if (et !== 'Employment' && !document.getElementById('tenure').value) e.push('Internship tenure is required.');
+      if (!document.getElementById('joiningDate').value) e.push('Preferred joining date is required.');
+      if (!document.getElementById('flexHours').value) e.push('Flexible hours preference is required.');
+      return e;
+    }
+    function validate6() {
+      const e = [];
+      if (!document.getElementById('laptop').value) e.push('Laptop ownership is required.');
+      if (!document.getElementById('internet').value) e.push('Internet availability is required.');
+      if (!document.getElementById('commute').value) e.push('Commute preference is required.');
+      return e;
+    }
+    function validate7() {
+      const e = [];
+      if (!document.getElementById('resumeFile').files.length) {
+        e.push('Please upload your Resume / CV.');
+      } else if (!checkFileSize('resumeFile', 10)) {
+        e.push('Resume file size must be less than 10 MB.');
+      }
+
+      const vOpt = document.getElementById('videoOption').value;
+      if (vOpt === 'link' && !document.getElementById('videoLinkInput').value.trim()) {
+        e.push('Please provide a Video Link.');
+      }
+      if (vOpt === 'upload') {
+        if (!document.getElementById('videoFile').files.length) {
+          e.push('Please upload your Video file.');
+        } else if (!checkFileSize('videoFile', 15)) {
+          e.push('Video file size must be less than 15 MB.');
+        }
+      }
+      return e;
+    }
+    function validate8() {
+      const e = [];
+      if (!document.getElementById('aiTestWilling').value) e.push('Please indicate AI test willingness.');
+      return e;
+    }
+    function validate9() {
+      if (!document.getElementById('declaration').checked) return ['Please confirm the declaration to submit.'];
+      return [];
+    }
+
+    const validators = {
+      1: validate1, 2: validate2, 3: validate3, 4: validate4, 
+      5: validate5, 6: validate6, 7: validate7, 8: validate8, 9: validate9
+    };
+
+    /* ── NAVIGATION ─────────────────────────────────────────────── */
+    function gotoSection(id) {
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      currentSection = parseInt(id.replace('section-', ''));
+      updateProgress();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function nextSection(cur) {
+      const errs = (validators[cur] || (() => []))();
+      showBanner('val-banner-' + cur, errs);
+      if (!errs.length) gotoSection('section-' + (cur + 1));
+    }
+
+    function prevSection(cur) {
+      gotoSection('section-' + (cur - 1));
+    }
+
+    /* ── PROGRESS ───────────────────────────────────────────────── */
+    function updateProgress() {
+      const pct = Math.round((currentSection / TOTAL) * 100);
+      document.getElementById('progressBar').style.width = pct + '%';
+      document.getElementById('progressLabel').textContent = `Step ${currentSection} / ${TOTAL}`;
+      const dots = document.getElementById('stepDots');
+      dots.innerHTML = '';
+      for (let i = 1; i <= TOTAL; i++) {
+        const d = document.createElement('div');
+        d.className = 'step-dot' + (i < currentSection ? ' done' : '') + (i === currentSection ? ' current' : '');
+        dots.appendChild(d);
+      }
+    }
+
+    /* ── HELPERS & REMUNERATION LOGIC ───────────────────────────── */
+    function updateRemuneration(type) {
+      const box = document.getElementById('remunerationBox');
+      const text = document.getElementById('remunerationText');
+      const tenureField = document.getElementById('tenureField');
+
+      if (!type) {
+        box.style.display = 'none';
+        tenureField.style.display = 'block';
+        return;
+      }
+
+      box.style.display = 'flex';
+      
+      const benefitsHtml = '<br><span style="font-size: 13px; color: var(--muted); margin-top: 6px; display: block;">✨ <strong>Additional Benefits:</strong> Accommodation and food may be provided (depending on location and role).</span>';
+
+      if (type === 'Employment') {
+        text.innerHTML = 'Employee Salary Range: <strong>₹15,000 – ₹85,000 per month</strong> (based on role and experience).' + benefitsHtml;
+        tenureField.style.display = 'none';
+      } else {
+        tenureField.style.display = 'block';
+        if (type === 'Paid Training') {
+          text.innerHTML = 'Training Program: Paid training modules at <span style="font-weight:600; color:var(--accent);">₹15,000 per quarter (per module)</span>. Potential for placement based on performance.' + benefitsHtml;
+        } else if (type === 'Unpaid Internship') {
+          text.innerHTML = 'Available for training/learning purposes. Practical exposure without financial compensation.' + benefitsHtml;
+        } else if (type === 'Paid Internship') {
+          text.innerHTML = 'Paid Internship Stipend: <strong>₹8,000 – ₹15,000 per month</strong>.' + benefitsHtml;
+        }
+      }
+    }
+
+    function showFileName(inputId, displayId) {
+      const f = document.getElementById(inputId).files[0];
+      if (f) { const d = document.getElementById(displayId); d.textContent = '✓ ' + f.name; d.style.display = 'block'; }
+    }
+
+    function getBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = error => reject(error);
+      });
+    }
+
+    function getSelectWithOther(id, otherId) {
+      const val = document.getElementById(id).value;
+      if (val === 'Other' && otherId) {
+        return `Other - ${document.getElementById(otherId).value.trim()}`;
+      }
+      return val;
+    }
+
+    /* ── COLLECT DATA ───────────────────────────────────────────── */
+    function collectFormData() {
+      const g = id => (document.getElementById(id) || {}).value || '';
+      const chks = n => [...document.querySelectorAll(`input[name="${n}"]:checked`)].map(e => e.value).join(', ');
+
+      const coll = g('college');
+      const collR = coll === 'Other – specify' ? g('collegeOther') : coll;
+
+      const src = g('source');
+      const srcR = src === 'Other – specify' ? g('sourceOther') : src;
+
+      const rawCode = g('phoneCode');
+      let phoneLabel = rawCode;
+      if (rawCode === 'other') {
+        const sel = document.getElementById('otherCountryCode');
+        phoneLabel = sel.options[sel.selectedIndex]?.text || '';
+      }
+
+      return {
+        'Timestamp': new Date().toISOString(),
+        'Salutation': g('salutation'),
+        'First Name': g('firstName'), 
+        'Last Name': g('lastName'),
+        'Date of Birth': g('dob'),
+        'Current City': g('currentCity'),
+        'Comfortable to Relocate': g('relocate'),
+        'Relocation Time': g('relocateTime'),
+        'Phone Code': phoneLabel, 
+        'Phone Number': g('phone'),
+        'Email': g('email'),
+        'College / University': collR,
+        'Application Source': srcR,
+        'Role Applied': g('roleApplied'), 
+        'Engagement Type': g('engagementType'),
+        'English Communication Level': g('englishLevel'), 
+        'Years of Experience': g('yearsExp'), 
+        'Industry Background': getSelectWithOther('industry', 'industryOther'),
+        'Experience Type': chks('expType'), 
+        'Past Experience Description': g('internshipDesc'),
+        'Current Salary': g('currentSalary'), 
+        'Expected Salary': g('expectedSalary'),
+        'Internship Tenure': g('tenure'), 
+        'Preferred Joining Date': g('joiningDate'),
+        'Flexible Hours': g('flexHours'),
+        'Laptop Ownership': g('laptop'), 
+        'Reliable Internet': g('internet'), 
+        'Commute': g('commute'),
+        'Candidate Area': g('candidateLocation'),
+        'Portfolio Links': g('portfolioLinks'),
+        'AI Test Willing': g('aiTestWilling')
+      };
+    }
+
+    /* ── SUBMIT ─────────────────────────────────────────────────── */
+    async function submitForm() {
+      const errs = validate9();
+      showBanner('val-banner-9', errs);
+      if (errs.length) return;
+
+      document.getElementById('submitOverlay').classList.add('active');
+      
+      try {
+        const formData = collectFormData();
+        
+        const resumeInput = document.getElementById('resumeFile');
+        if (resumeInput.files.length > 0) {
+            const file = resumeInput.files[0];
+            formData.resumeFile = {
+                name: file.name,
+                mimeType: file.type,
+                base64: await getBase64(file)
+            };
+        }
+
+        const videoOpt = document.getElementById('videoOption').value;
+        formData['Video Option'] = videoOpt; 
+
+        if (videoOpt === 'link') {
+            formData['Provided Video Link'] = document.getElementById('videoLinkInput').value;
+        } else if (videoOpt === 'upload') {
+            const videoInput = document.getElementById('videoFile');
+            if (videoInput.files.length > 0) {
+                const file = videoInput.files[0];
+                formData.videoFile = {
+                    name: file.name,
+                    mimeType: file.type,
+                    base64: await getBase64(file)
+                };
+            }
+        }
+
+        const formPayload = new FormData();
+        formPayload.append('data', JSON.stringify(formData));
+
+        await fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          mode: 'no-cors', 
+          body: formPayload
+        });
+
+      } catch (err) { 
+        console.error('Submit error:', err); 
+        alert("Submission failed. Please check your internet connection and try again.");
+      }
+
+      document.getElementById('submitOverlay').classList.remove('active');
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      document.getElementById('thankyou').classList.add('active');
+      document.getElementById('progressBar').style.width = '100%';
+      document.getElementById('progressLabel').textContent = 'Complete!';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    /* ── INIT ───────────────────────────────────────────────────── */
+    document.addEventListener('DOMContentLoaded', () => {
+      // Force theme to light since it's required as default
+      setTheme('light');
+
+      document.getElementById('phone').addEventListener('input', () => {
+        const code = document.getElementById('phoneCode').value;
+        const inp = document.getElementById('phone');
+        if (code === '+91') inp.value = inp.value.replace(/\D/g, '').slice(0, 10);
+        inp.classList.remove('input-invalid');
+      });
+
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('joiningDate').min = today;
+      document.getElementById('dob').max = today; // Restrict future dates in Date picker
+    });
+
+    updateProgress();
+  </script>
+</body>
+
+</html>

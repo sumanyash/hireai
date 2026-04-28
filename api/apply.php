@@ -19,6 +19,7 @@ if (!s($data,'phone') || !s($data,'email')) {
 }
 
 $campaign_id = (int)($data['campaign_id'] ?? 0);
+$campaign_id = $campaign_id ?: (int)((db_fetch_one("SELECT id FROM campaigns WHERE status='active' ORDER BY id ASC LIMIT 1", [], '') ?: ['id'=>1])['id']);
 $campaign    = $campaign_id ? db_fetch_one("SELECT * FROM campaigns WHERE id=?",[$campaign_id],'i') : null;
 $org_id      = $campaign ? (int)$campaign['org_id'] : 1;
 $email       = s($data,'email');

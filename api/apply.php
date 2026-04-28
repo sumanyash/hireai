@@ -19,7 +19,6 @@ if (!s($data,'phone') || !s($data,'email')) {
 }
 
 $campaign_id = (int)($data['campaign_id'] ?? 0);
-$campaign    = $campaign_id ? db_fetch_one("SELECT c.*, camp.name campaign_name, camp.job_role FROM campaigns camp LEFT JOIN campaigns c ON c.id=camp.id WHERE camp.id=?",[$campaign_id],'i') : null;
 $campaign    = $campaign_id ? db_fetch_one("SELECT * FROM campaigns WHERE id=?",[$campaign_id],'i') : null;
 $org_id      = $campaign ? (int)$campaign['org_id'] : 1;
 $email       = s($data,'email');

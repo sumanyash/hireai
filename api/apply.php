@@ -114,7 +114,7 @@ try {
     // Applied log
     if ($campaign_id && $cid) {
         $lg = $db->prepare("INSERT INTO outreach_log (candidate_id,campaign_id,channel,status) VALUES (?,?,'whatsapp','sent')");
-        if ($lg) { $lg->bind_param('ii',$campaign_id,$cid); $lg->execute(); $lg->close(); }
+        if ($lg) { $lg->bind_param('ii',$cid,$campaign_id); $lg->execute(); $lg->close(); }
     }
 
     // ── AUTO WHATSAPP + outreach_sent ─────────────────────────

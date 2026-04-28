@@ -5,6 +5,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { echo json_encode(['success'=>false,'error'=>'Method not allowed']); exit; }
 
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/config.php';
 
 $raw  = file_get_contents('php://input');
 $data = json_decode($raw, true);
@@ -19,6 +20,7 @@ if (!s($data,'phone') || !s($data,'email')) {
 $campaign_id = (int)($data['campaign_id'] ?? 0);
 $campaign    = $campaign_id ? db_fetch_one("SELECT * FROM campaigns WHERE id=?",[$campaign_id],'i') : null;
 $org_id      = $campaign ? (int)$campaign['org_id'] : 1;
+$org         = $org_id   ? db_fetch_one("SELECT * FROM organizations WHERE id=?",[$org_id],'i') : null;
 $email       = s($data,'email');
 
 if ($campaign_id) {
@@ -26,7 +28,7 @@ if ($campaign_id) {
     if ($dup) { echo json_encode(['success'=>false,'error'=>'Already applied.','duplicate'=>true]); exit; }
 }
 
-// Save resume
+// Save files
 $udir = __DIR__.'/../uploads/';
 @mkdir($udir.'resumes',0755,true);
 @mkdir($udir.'videos',0755,true);
@@ -38,7 +40,7 @@ if (!empty($data['resume_base64']) && !empty($data['resume_name'])) {
     if ($dec && strlen($dec) <= 20*1024*1024) {
         $ext = strtolower(pathinfo($data['resume_name'],PATHINFO_EXTENSION)) ?: 'pdf';
         $fn  = 'resume_'.time().'_'.bin2hex(random_bytes(4)).'.'.$ext;
-        if (file_put_contents($udir.'resumes/'.$fn, $dec) !== false)
+        if (file_put_contents($udir.'resumes/'.$fn,$dec) !== false)
             $resume_path = 'uploads/resumes/'.$fn;
     }
 }
@@ -49,7 +51,7 @@ if (s($data,'video_option') === 'link') {
     if ($dec && strlen($dec) <= 50*1024*1024) {
         $ext = strtolower(pathinfo($data['video_name'] ?? 'v.mp4',PATHINFO_EXTENSION)) ?: 'mp4';
         $fn  = 'video_'.time().'_'.bin2hex(random_bytes(4)).'.'.$ext;
-        if (file_put_contents($udir.'videos/'.$fn, $dec) !== false)
+        if (file_put_contents($udir.'videos/'.$fn,$dec) !== false)
             $video_path = 'uploads/videos/'.$fn;
     }
 }
@@ -64,7 +66,6 @@ $jd   = s($data,'joining_date') ?: null;
 try {
     $db = get_db();
 
-    // Count columns manually to verify: use individual INSERT per column
     $cols = [
         'org_id','campaign_id','name','phone','email','city',
         'experience_years','current_ctc','expected_ctc','source',
@@ -78,46 +79,19 @@ try {
     ];
 
     $vals = [
-        $org_id,                        // org_id          int
-        $campaign_id,                   // campaign_id     int
-        $name,                          // name
-        s($data,'phone'),               // phone
-        $email,                         // email
-        s($data,'city'),                // city
-        $exp,                           // experience_years decimal
-        s($data,'current_salary'),      // current_ctc
-        s($data,'expected_salary'),     // expected_ctc
-        s($data,'source'),              // source
-        $tok,                           // unique_token
-        'pending',                      // status
-        s($data,'salutation'),          // salutation
-        $dob,                           // dob
-        s($data,'relocate'),            // relocate
-        s($data,'relocate_time'),       // relocate_time
-        s($data,'phone_code'),          // phone_code
-        s($data,'college'),             // college
-        s($data,'engagement_type'),     // engagement_type
-        s($data,'english_level'),       // english_level
-        s($data,'industry'),            // industry
-        s($data,'exp_type'),            // exp_type
-        s($data,'exp_desc'),            // exp_desc
-        s($data,'current_salary'),      // current_salary
-        s($data,'expected_salary'),     // expected_salary
-        s($data,'tenure'),              // tenure
-        $jd,                            // joining_date
-        s($data,'flex_hours'),          // flex_hours
-        s($data,'laptop'),              // laptop
-        s($data,'internet'),            // internet
-        s($data,'commute'),             // commute
-        s($data,'tech_skills'),         // tech_skills
-        s($data,'soft_skills'),         // soft_skills
-        $resume_path,                   // resume_path
-        $video_path,                    // video_path
-        s($data,'portfolio'),           // portfolio
-        s($data,'ai_test_willing'),     // ai_test_willing
+        $org_id, $campaign_id,
+        $name, s($data,'phone'), $email, s($data,'city'),
+        $exp,
+        s($data,'current_salary'), s($data,'expected_salary'), s($data,'source'),
+        $tok, 'pending',
+        s($data,'salutation'), $dob, s($data,'relocate'), s($data,'relocate_time'), s($data,'phone_code'),
+        s($data,'college'), s($data,'engagement_type'), s($data,'english_level'), s($data,'industry'),
+        s($data,'exp_type'), s($data,'exp_desc'), s($data,'current_salary'), s($data,'expected_salary'),
+        s($data,'tenure'), $jd, s($data,'flex_hours'), s($data,'laptop'), s($data,'internet'),
+        s($data,'commute'), s($data,'tech_skills'), s($data,'soft_skills'),
+        $resume_path, $video_path, s($data,'portfolio'), s($data,'ai_test_willing'),
     ];
 
-    // Build query dynamically — cols and placeholders always match
     $placeholders = implode(',', array_fill(0, count($cols), '?'));
     $col_list     = implode(',', $cols);
     $sql = "INSERT INTO candidates ($col_list) VALUES ($placeholders)";
@@ -125,7 +99,6 @@ try {
     $stmt = $db->prepare($sql);
     if (!$stmt) throw new Exception('Prepare: '.$db->error);
 
-    // Build types string dynamically
     $types = '';
     foreach ($vals as $v) {
         if (is_int($v))   $types .= 'i';
@@ -138,13 +111,75 @@ try {
     $cid = $db->insert_id;
     $stmt->close();
 
-    // Outreach log
+    // Applied log
     if ($campaign_id && $cid) {
         $lg = $db->prepare("INSERT INTO outreach_log (campaign_id,candidate_id,action,notes,created_at) VALUES (?,?,'applied','Self-applied via public form',NOW())");
         if ($lg) { $lg->bind_param('ii',$campaign_id,$cid); $lg->execute(); $lg->close(); }
     }
 
-    echo json_encode(['success'=>true,'candidate_id'=>$cid,'interview_token'=>$campaign['unique_token']??null]);
+    // ── AUTO OUTREACH: WhatsApp + status = outreach_sent ──────
+    $wa_sent = false;
+    if ($cid && $campaign_id) {
+        try {
+            $cand_tok = $tok;
+            $cand_phone = s($data,'phone');
+            $cand_name  = $name;
+
+            // Interview link
+            $base_url = defined('APP_URL') ? APP_URL : 'https://hire.clouddialer.in';
+            $interview_link = $base_url.'/interview.php?t='.$cand_tok;
+
+            // Build message
+            $msg_tpl = $campaign['outreach_message'] ?? '';
+            if (!$msg_tpl) {
+                $msg_tpl = "Hi {name}! 👋\n\nThank you for applying to *{org_name}*. We're excited to move forward!\n\n🎯 Please complete your AI interview here:\n{interview_link}\n\nGood luck! 🚀";
+            }
+            $org_name_str = $org['name'] ?? 'HireAI';
+            $msg = str_replace(['{name}','{org_name}','{interview_link}'],[$cand_name,$org_name_str,$interview_link],$msg_tpl);
+
+            // Format phone
+            $phone_clean = preg_replace('/\D/','',$cand_phone);
+            if (strlen($phone_clean) === 10) $phone_clean = '91'.$phone_clean;
+
+            // Send WA via config
+            $wa_url = defined('WA_API_URL') ? WA_API_URL : null;
+            $wa_key = defined('WA_API_KEY') ? WA_API_KEY : null;
+
+            if ($wa_url && $wa_key && $phone_clean) {
+                $ch = curl_init($wa_url);
+                curl_setopt_array($ch,[
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => json_encode(['phone'=>$phone_clean,'message'=>$msg,'api_key'=>$wa_key]),
+                    CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT        => 8,
+                ]);
+                $res = curl_exec($ch);
+                curl_close($ch);
+                $resp = json_decode($res,true);
+                $wa_sent = !empty($resp['success']) || (isset($resp['status']) && $resp['status']!=='error');
+            }
+
+            // Always update status to outreach_sent
+            $db->query("UPDATE candidates SET status='outreach_sent', updated_at=NOW() WHERE id=$cid");
+
+            // Log
+            $note = $wa_sent ? 'Auto WA sent after self-apply' : 'Status set outreach_sent; WA config not set';
+            $ol = $db->prepare("INSERT INTO outreach_log (campaign_id,candidate_id,action,notes,created_at) VALUES (?,?,'whatsapp_sent',?,NOW())");
+            if ($ol) { $ol->bind_param('iis',$campaign_id,$cid,$note); $ol->execute(); $ol->close(); }
+
+        } catch(Exception $we) {
+            error_log('[apply outreach] '.$we->getMessage());
+        }
+    }
+    // ── END AUTO OUTREACH ─────────────────────────────────────
+
+    echo json_encode([
+        'success'         => true,
+        'candidate_id'    => $cid,
+        'wa_sent'         => $wa_sent,
+        'interview_token' => $campaign['unique_token'] ?? null,
+    ]);
 
 } catch(Exception $e) {
     error_log('[apply] '.$e->getMessage());

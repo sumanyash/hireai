@@ -6,6 +6,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') { echo json_encode(['success'=>false,
 
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/config.php';
+require_once __DIR__ . '/../includes/functions.php';
 
 $raw  = file_get_contents('php://input');
 $data = json_decode($raw, true);
@@ -18,9 +19,9 @@ if (!s($data,'phone') || !s($data,'email')) {
 }
 
 $campaign_id = (int)($data['campaign_id'] ?? 0);
+$campaign    = $campaign_id ? db_fetch_one("SELECT c.*, camp.name campaign_name, camp.job_role FROM campaigns camp LEFT JOIN campaigns c ON c.id=camp.id WHERE camp.id=?",[$campaign_id],'i') : null;
 $campaign    = $campaign_id ? db_fetch_one("SELECT * FROM campaigns WHERE id=?",[$campaign_id],'i') : null;
 $org_id      = $campaign ? (int)$campaign['org_id'] : 1;
-$org         = $org_id   ? db_fetch_one("SELECT * FROM organizations WHERE id=?",[$org_id],'i') : null;
 $email       = s($data,'email');
 
 if ($campaign_id) {
@@ -28,7 +29,6 @@ if ($campaign_id) {
     if ($dup) { echo json_encode(['success'=>false,'error'=>'Already applied.','duplicate'=>true]); exit; }
 }
 
-// Save files
 $udir = __DIR__.'/../uploads/';
 @mkdir($udir.'resumes',0755,true);
 @mkdir($udir.'videos',0755,true);
@@ -101,9 +101,9 @@ try {
 
     $types = '';
     foreach ($vals as $v) {
-        if (is_int($v))   $types .= 'i';
+        if (is_int($v))       $types .= 'i';
         elseif (is_float($v)) $types .= 'd';
-        else              $types .= 's';
+        else                  $types .= 's';
     }
 
     $stmt->bind_param($types, ...$vals);
@@ -117,62 +117,42 @@ try {
         if ($lg) { $lg->bind_param('ii',$campaign_id,$cid); $lg->execute(); $lg->close(); }
     }
 
-    // ── AUTO OUTREACH: WhatsApp + status = outreach_sent ──────
+    // ── AUTO WHATSAPP + outreach_sent ─────────────────────────
     $wa_sent = false;
-    if ($cid && $campaign_id) {
+    if ($cid && s($data,'phone')) {
         try {
-            $cand_tok = $tok;
-            $cand_phone = s($data,'phone');
-            $cand_name  = $name;
+            $interview_link = INTERVIEW_URL . '?t=' . $tok;
+            $camp_name = $campaign['name'] ?? 'our company';
+            $job_role  = $campaign['job_role'] ?? 'the position';
 
-            // Interview link
-            $base_url = defined('APP_URL') ? APP_URL : 'https://hire.clouddialer.in';
-            $interview_link = $base_url.'/interview.php?t='.$cand_tok;
+            $msg = "🎯 *Interview Invitation — {$camp_name}*\n\n"
+                 . "Hi {$name}! 👋\n\n"
+                 . "Thank you for applying for *{$job_role}*.\n\n"
+                 . "Please complete your AI interview here:\n"
+                 . "🔗 {$interview_link}\n\n"
+                 . "⏱ Duration: ~15 min | 🎤 Mic required\n\n"
+                 . "*HireAI — Avyukta Intellicall*";
 
-            // Build message
-            $msg_tpl = $campaign['outreach_message'] ?? '';
-            if (!$msg_tpl) {
-                $msg_tpl = "Hi {name}! 👋\n\nThank you for applying to *{org_name}*. We're excited to move forward!\n\n🎯 Please complete your AI interview here:\n{interview_link}\n\nGood luck! 🚀";
-            }
-            $org_name_str = $org['name'] ?? 'HireAI';
-            $msg = str_replace(['{name}','{org_name}','{interview_link}'],[$cand_name,$org_name_str,$interview_link],$msg_tpl);
+            $result  = send_whatsapp(s($data,'phone'), $msg);
+            $wa_sent = isset($result['code']) && $result['code'] >= 200 && $result['code'] < 300;
+            $status  = $wa_sent ? 'sent' : 'failed';
 
-            // Format phone
-            $phone_clean = preg_replace('/\D/','',$cand_phone);
-            if (strlen($phone_clean) === 10) $phone_clean = '91'.$phone_clean;
+            // Update candidate status
+            db_execute("UPDATE candidates SET status='outreach_sent', updated_at=NOW() WHERE id=?", [$cid], 'i');
 
-            // Send WA via config
-            $wa_url = defined('WA_API_URL') ? WA_API_URL : null;
-            $wa_key = defined('WA_API_KEY') ? WA_API_KEY : null;
-
-            if ($wa_url && $wa_key && $phone_clean) {
-                $ch = curl_init($wa_url);
-                curl_setopt_array($ch,[
-                    CURLOPT_POST           => true,
-                    CURLOPT_POSTFIELDS     => json_encode(['phone'=>$phone_clean,'message'=>$msg,'api_key'=>$wa_key]),
-                    CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_TIMEOUT        => 8,
-                ]);
-                $res = curl_exec($ch);
-                curl_close($ch);
-                $resp = json_decode($res,true);
-                $wa_sent = !empty($resp['success']) || (isset($resp['status']) && $resp['status']!=='error');
-            }
-
-            // Always update status to outreach_sent
-            $db->query("UPDATE candidates SET status='outreach_sent', updated_at=NOW() WHERE id=$cid");
-
-            // Log
-            $note = $wa_sent ? 'Auto WA sent after self-apply' : 'Status set outreach_sent; WA config not set';
-            $ol = $db->prepare("INSERT INTO outreach_log (campaign_id,candidate_id,action,notes,created_at) VALUES (?,?,'whatsapp_sent',?,NOW())");
-            if ($ol) { $ol->bind_param('iis',$campaign_id,$cid,$note); $ol->execute(); $ol->close(); }
+            // Log WA outreach
+            db_execute(
+                "INSERT INTO outreach_log (candidate_id,campaign_id,channel,status) VALUES (?,?,'whatsapp',?)",
+                [$cid, $campaign_id, $status], 'iis'
+            );
 
         } catch(Exception $we) {
-            error_log('[apply outreach] '.$we->getMessage());
+            error_log('[apply WA] '.$we->getMessage());
+            // Still update status even if WA fails
+            db_execute("UPDATE candidates SET status='outreach_sent', updated_at=NOW() WHERE id=?", [$cid], 'i');
         }
     }
-    // ── END AUTO OUTREACH ─────────────────────────────────────
+    // ─────────────────────────────────────────────────────────
 
     echo json_encode([
         'success'         => true,

@@ -47,6 +47,9 @@ $org_logo  = $org['logo_url'] ?? 'https://www.avyukta.in/assets/images/logoo.png
 $job_role  = $campaign['job_role'] ?? ($campaign['name'] ?? 'Open Position');
 $job_desc  = $campaign['description'] ?? '';
 
+// Fetch all active campaigns for dropdown
+$all_campaigns = db_fetch_all("SELECT id, name, job_role FROM campaigns WHERE status='active' ORDER BY name ASC", [], '');
+
 ?>
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
@@ -623,6 +626,17 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     <div class="info-box"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div><?=nl2br(htmlspecialchars($job_desc))?></div></div>
     <?php endif;?>
     <div class="card">
+      <div class="field">
+        <label for="campaignSelect">Campaign / Job Opening <span class="req">*</span></label>
+        <select id="campaignSelect" onchange="updateCampaign(this.value)">
+          <option value="">Select Campaign</option>
+          <?php foreach($all_campaigns as $ac): ?>
+          <option value="<?=$ac['id']?>" data-role="<?=htmlspecialchars($ac['job_role']??$ac['name'])?>" <?=$campaign_id==$ac['id']?'selected':''?>>
+            <?=htmlspecialchars($ac['name'])?> — <?=htmlspecialchars($ac['job_role']??'')?>
+          </option>
+          <?php endforeach; ?>
+        </select>
+      </div>
       <div class="field-row">
         <div class="field">
           <label for="roleApplied">Role <span class="req">*</span></label>
@@ -957,7 +971,32 @@ function gotoSection(id) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   currentSection = parseInt(id.replace('section-', ''));
-  updateProgress();
+  function updateCampaign(id) {
+  window._selectedCampaignId = parseInt(id) || 0;
+  // Auto-set role from campaign data
+  const sel = document.getElementById('campaignSelect');
+  const opt = sel.options[sel.selectedIndex];
+  const role = opt ? opt.dataset.role : '';
+  const roleEl = document.getElementById('roleApplied');
+  if (role && roleEl) {
+    // Try to match existing option
+    for (let o of roleEl.options) {
+      if (o.value === role || o.text === role) { roleEl.value = o.value; return; }
+    }
+    // Add as new option if not found
+    const newOpt = new Option(role, role, true, true);
+    roleEl.add(newOpt);
+  }
+}
+
+// Override CAMPAIGN_ID dynamically
+Object.defineProperty(window, 'CAMPAIGN_ID', {
+  get: () => window._selectedCampaignId || <?=$campaign_id?>,
+  configurable: true
+});
+window._selectedCampaignId = <?=$campaign_id?>;
+
+updateProgress();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -1035,6 +1074,7 @@ const validators = {
   
   2: () => {
     const e = [];
+    if (!v('campaignSelect')) e.push('Please select a campaign/job opening');
     if (!v('roleApplied')) e.push('Role required');
     if (!v('engagementType')) e.push('Engagement type required');
     return e;

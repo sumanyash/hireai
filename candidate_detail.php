@@ -405,10 +405,10 @@ $toast         = $_GET['toast'] ?? '';
           </audio>
         </div>
         <?php else: ?>
-        <div class="no-media">
+        <div class="no-media" style="text-align:center;padding:40px;color:rgba(255,255,255,.4)">
           <i class="fa-solid fa-video-slash"></i>
-          <div style="font-weight:600;font-size:14px">No Recording Yet</div>
-          <div style="font-size:12px">Available after interview completion</div>
+          <div style="font-weight:600;font-size:15px;color:rgba(255,255,255,.6);margin-top:12px">Recording Unavailable</div>
+          <div style="font-size:12px;margin-top:4px">Video upload may have failed or interview was incomplete</div>
         </div>
         <?php endif; ?>
       </div>

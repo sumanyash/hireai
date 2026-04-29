@@ -971,7 +971,32 @@ function gotoSection(id) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   currentSection = parseInt(id.replace('section-', ''));
-  updateProgress();
+  function updateCampaign(id) {
+  window._selectedCampaignId = parseInt(id) || 0;
+  // Auto-set role from campaign data
+  const sel = document.getElementById('campaignSelect');
+  const opt = sel.options[sel.selectedIndex];
+  const role = opt ? opt.dataset.role : '';
+  const roleEl = document.getElementById('roleApplied');
+  if (role && roleEl) {
+    // Try to match existing option
+    for (let o of roleEl.options) {
+      if (o.value === role || o.text === role) { roleEl.value = o.value; return; }
+    }
+    // Add as new option if not found
+    const newOpt = new Option(role, role, true, true);
+    roleEl.add(newOpt);
+  }
+}
+
+// Override CAMPAIGN_ID dynamically
+Object.defineProperty(window, 'CAMPAIGN_ID', {
+  get: () => window._selectedCampaignId || <?=$campaign_id?>,
+  configurable: true
+});
+window._selectedCampaignId = <?=$campaign_id?>;
+
+updateProgress();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -1024,22 +1049,6 @@ function checks(name) {
   return [...document.querySelectorAll(`input[name="${name}"]:checked`)].map(e => e.value).join(', ');
 }
 
-// Campaign selector
-function updateCampaign(id) {
-  window._selectedCampaignId = parseInt(id) || 0;
-  const sel = document.getElementById('campaignSelect');
-  const opt = sel.options[sel.selectedIndex];
-  const role = opt ? opt.dataset.role : '';
-  const roleEl = document.getElementById('roleApplied');
-  if (role && roleEl) {
-    for (let o of roleEl.options) {
-      if (o.value === role || o.text === role) { roleEl.value = o.value; return; }
-    }
-    const newOpt = new Option(role, role, true, true);
-    roleEl.add(newOpt);
-  }
-}
-
 // Validators
 const validators = {
   1: () => {
@@ -1051,17 +1060,10 @@ const validators = {
     if (!v('currentCity').trim()) e.push('Current city required');
     
     const code = v('phoneCode');
-    const ph = v('phone').replace(/\D/g, '');
-    if (!ph) e.push('Phone number required');
-    else if (code === '+91' && ph.length !== 10) e.push('Valid 10-digit phone required for India (+91)');
-    else if (code === 'other') {
-      if (!v('otherCountryCode')) e.push('Select country code');
-      else {
-        const parts = v('otherCountryCode').split(':');
-        const min = parseInt(parts[1]||8), max = parseInt(parts[2]||12);
-        if (ph.length < min || ph.length > max) e.push('Phone number length invalid for selected country');
-      }
-    }
+    const ph = v('phone');
+    if (code === '+91' && ph.replace(/\D/g, '').length !== 10) e.push('Valid 10-digit phone required');
+    else if (code === 'other' && !v('otherCountryCode')) e.push('Select country code');
+    if (!ph.trim()) e.push('Phone number required');
     
     if (!v('email').match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) e.push('Valid email required');
     if (!v('college')) e.push('College/University required');
@@ -1082,14 +1084,7 @@ const validators = {
     const e = [];
     if (!v('englishLevel')) e.push('English level required');
     if (!v('yearsExp')) e.push('Years of experience required');
-    const isFresher = v('yearsExp') === 'Fresher';
-    if (!isFresher && !v('industry')) e.push('Industry background required');
-    if (!isFresher && !checks('expType')) e.push('Select at least one experience type');
-    if (isFresher) {
-      // auto-set for fresher
-      const ind = document.getElementById('industry');
-      if (ind) ind.value = 'Fresher / None';
-    }
+    if (!checks('expType')) e.push('Select at least one experience type');
     return e;
   },
   
@@ -1245,7 +1240,7 @@ async function submitForm() {
     const g = id => (document.getElementById(id) || {}).value || '';
     
     const data = {
-      campaign_id: window._selectedCampaignId || CAMPAIGN_ID,
+      campaign_id: CAMPAIGN_ID,
       salutation: g('salutation'),
       first_name: g('firstName'),
       last_name: g('lastName'),

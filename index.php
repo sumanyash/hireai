@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HireAI — Login</title>
+<title>Avyukta HireAI — Login</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: 'Segoe UI', sans-serif; background: #0A1628; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
@@ -44,8 +44,8 @@ input:focus { border-color: #0066FF; }
 <body>
 <div class="login-box">
   <div class="logo">
-    <h1>Hire<span>AI</span></h1>
-    <p>Enterprise Recruitment Platform</p>
+    <img src="https://www.avyukta.in/assets/images/logoo.png" alt="Avyukta" style="height:52px;margin-bottom:8px;">
+    <p>AI-Powered Recruitment Platform</p>
   </div>
   <?php if (!empty($error)): ?>
     <div class="error"><?= htmlspecialchars($error) ?></div>

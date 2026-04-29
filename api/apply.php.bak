@@ -31,7 +31,7 @@ if ($campaign_id) {
 
 $udir = __DIR__.'/../uploads/';
 @mkdir($udir.'resumes',0755,true);
-@mkdir($udir.'video',0755,true);
+@mkdir($udir.'videos',0755,true);
 $resume_path = '';
 $video_path  = '';
 
@@ -41,7 +41,7 @@ if (!empty($data['resume_base64']) && !empty($data['resume_name'])) {
         $ext = strtolower(pathinfo($data['resume_name'],PATHINFO_EXTENSION)) ?: 'pdf';
         $fn  = 'resume_'.time().'_'.bin2hex(random_bytes(4)).'.'.$ext;
         if (file_put_contents($udir.'resumes/'.$fn,$dec) !== false)
-            $resume_path = BASE_URL.'/uploads/resumes/'.$fn;
+            $resume_path = 'uploads/resumes/'.$fn;
     }
 }
 if (s($data,'video_option') === 'link') {
@@ -51,8 +51,8 @@ if (s($data,'video_option') === 'link') {
     if ($dec && strlen($dec) <= 50*1024*1024) {
         $ext = strtolower(pathinfo($data['video_name'] ?? 'v.mp4',PATHINFO_EXTENSION)) ?: 'mp4';
         $fn  = 'video_'.time().'_'.bin2hex(random_bytes(4)).'.'.$ext;
-        if (file_put_contents($udir.'video/'.$fn,$dec) !== false)
-            $video_path = BASE_URL.'/uploads/video/'.$fn;
+        if (file_put_contents($udir.'videos/'.$fn,$dec) !== false)
+            $video_path = 'uploads/videos/'.$fn;
     }
 }
 
@@ -100,9 +100,9 @@ try {
     if (!$stmt) throw new Exception('Prepare: '.$db->error);
 
     $types = '';
-    foreach ($vals as $val) {
-        if (is_int($val))       $types .= 'i';
-        elseif (is_float($val)) $types .= 'd';
+    foreach ($vals as $v) {
+        if (is_int($v))       $types .= 'i';
+        elseif (is_float($v)) $types .= 'd';
         else                  $types .= 's';
     }
 
@@ -111,7 +111,11 @@ try {
     $cid = $db->insert_id;
     $stmt->close();
 
-    // outreach logged in WA block below
+    // Applied log
+    if ($campaign_id && $cid) {
+        $lg = $db->prepare("INSERT INTO outreach_log (candidate_id,campaign_id,channel,status) VALUES (?,?,'whatsapp','sent')");
+        if ($lg) { $lg->bind_param('ii',$cid,$campaign_id); $lg->execute(); $lg->close(); }
+    }
 
     // ── AUTO WHATSAPP + outreach_sent ─────────────────────────
     $wa_sent = false;

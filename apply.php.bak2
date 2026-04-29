@@ -60,24 +60,6 @@ $all_campaigns = db_fetch_all("SELECT id, name, job_role FROM campaigns WHERE st
   <link href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500;1,600&display=swap" rel="stylesheet">
   <style>
 :root{
-  --bg:#0b0d14;
-  --surface:#13161f;
-  --card:#181c28;
-  --border:#252a3d;
-  --accent:#4f7cff;
-  --accent2:#7c3aed;
-  --gold:#f0b429;
-  --text:#e6e8f2;
-  --muted:#6b728f;
-  --error:#f43f5e;
-  --success:#22d3a5;
-  --radius:10px;
-  --tr:0.2s cubic-bezier(.4,0,.2,1);
-  --hbg:linear-gradient(135deg,#0c0f1e 0%,#141728 60%,#1a1332 100%);
-  --hglow:rgba(79,124,255,.14)
-}
-
-[data-theme="light"]{
   --bg:#f0f6ff;
   --surface:#e2ecfa;
   --card:#fff;
@@ -89,15 +71,11 @@ $all_campaigns = db_fetch_all("SELECT id, name, job_role FROM campaigns WHERE st
   --muted:#5a7899;
   --error:#d62828;
   --success:#00995a;
+  --radius:10px;
+  --tr:0.2s cubic-bezier(.4,0,.2,1);
   --hbg:linear-gradient(135deg,#dbeeff 0%,#c6e2ff 60%,#b0d4ff 100%);
   --hglow:rgba(0,102,255,.14)
 }
-
-[data-theme="light"] input,
-[data-theme="light"] select,
-[data-theme="light"] textarea { color: var(--text); }
-
-[data-theme="light"] select option { background:#fff; color:#0a1e38; }
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
@@ -502,46 +480,43 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
 #jdContent p{margin-bottom:10px}
 #jdContent ul{padding-left:18px;margin:6px 0 10px}
 #jdContent li{margin-bottom:4px;font-size:13px}
-
-.theme-toggle{
-  position:absolute;
-  top:16px;
-  right:24px;
-  background:var(--surface);
-  border:1px solid var(--border);
-  color:var(--text);
-  width:40px;height:40px;
-  border-radius:50%;
-  display:flex;align-items:center;justify-content:center;
-  cursor:pointer;z-index:200;
-  transition:all var(--tr)
-}
-.theme-toggle:hover{border-color:var(--accent);color:var(--accent)}
-.icon-moon{display:none}
-[data-theme="light"] .icon-moon{display:block}
-[data-theme="light"] .icon-sun{display:none}
-#jdContent p{margin-bottom:12px}
-#jdContent p:last-of-type{margin-bottom:0}
-#jdContent ul{padding-left:20px;margin-top:8px;margin-bottom:12px}
-#jdContent li{margin-bottom:5px;font-size:13px}
-.jd-cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin:14px 0}
-.jd-card{
-  background:var(--surface);
-  border:1px solid var(--border);
-  border-radius:8px;
-  padding:14px 16px;
-  cursor:pointer;
-  transition:border-color var(--tr),background var(--tr);
-  text-align:center
-}
-.jd-card:hover{border-color:var(--accent);background:rgba(79,124,255,.07)}
-.jd-card.active{border-color:var(--accent);background:rgba(79,124,255,.12)}
-.jd-card-icon{font-size:22px;margin-bottom:6px}
-.jd-card-title{font-size:13px;font-weight:600;color:var(--text)}
-.jd-card-sub{font-size:11px;color:var(--muted);margin-top:2px}
+  
+    [data-theme="midnight"] {
+      --bg: #0b0d14; --surface: #13161f; --card: #181c28;
+      --border: #252a3d; --accent: #4f7cff; --accent2: #7c3aed;
+      --gold: #f0b429; --text: #e6e8f2; --muted: #6b728f;
+      --error: #f43f5e; --success: #22d3a5;
+      --hbg: linear-gradient(135deg,#0c0f1e 0%,#141728 60%,#1a1332 100%);
+      --hglow: rgba(79,124,255,.14);
+    }
+    [data-theme="midnight"] input,
+    [data-theme="midnight"] select,
+    [data-theme="midnight"] textarea { color: var(--text); }
+    [data-theme="midnight"] select option { background: #181c28; color: #e6e8f2; }
+    .icon-moon { display: none; }
+    [data-theme="light"] .icon-moon { display: block; }
+    [data-theme="light"] .icon-sun { display: none; }
+    .theme-toggle {
+      position: fixed; top: 16px; right: 16px;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); width: 40px; height: 40px;
+      border-radius: 50%; display: flex; align-items: center;
+      justify-content: center; cursor: pointer; z-index: 9999;
+      transition: all 0.2s;
+    }
+    .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+    #jdBox { font-size:13px; }
+    #jdBox p { margin-bottom:10px; }
+    #jdBox ul { padding-left:18px; margin:6px 0 10px; }
+    #jdBox li { margin-bottom:4px; }
   </style>
 </head>
 <body>
+
+<button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle Theme">
+  <svg class="icon-sun" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+  <svg class="icon-moon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="20" height="20"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+</button>
 
 <!-- Submit Spinner Overlay -->
 <div class="submit-overlay" id="submitOverlay">
@@ -553,10 +528,6 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
 
 <!-- Header -->
 <div class="header">
-  <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle Theme">
-    <svg class="icon-sun" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-    <svg class="icon-moon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="20" height="20"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-  </button>
   <div class="logo-wrap">
     <img src="<?=htmlspecialchars($org_logo)?>" alt="<?=htmlspecialchars($org_name)?>" onerror="this.style.display='none'">
   </div>
@@ -674,8 +645,6 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <option>LinkedIn</option>
           <option>Internshala</option>
           <option>Naukri.com</option>
-          <option>Monster.com</option>
-          <option>Dice.com</option>
           <option>Indeed.com</option>
           <option>WorkIndia</option>
           <option value="Other – specify">Other – specify</option>
@@ -699,11 +668,6 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     <?php if($job_desc):?>
     <div class="info-box"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><div><?=nl2br(htmlspecialchars($job_desc))?></div></div>
     <?php endif;?>
-    <div class="info-box">
-      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-      <a href="https://www.dialerindia.com/career" target="_blank" style="color:var(--accent);font-weight:600;text-decoration:underline;">Particular Job role training material ↗</a>
-    </div>
-
     <div class="card">
       <div class="field">
         <label for="campaignSelect">Campaign / Job Opening <span class="req">*</span></label>
@@ -716,44 +680,15 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <?php endforeach; ?>
         </select>
       </div>
-
-      <!-- Default JD cards — shown when no campaign selected, clickable to select role -->
-      <div id="defaultJdCards" style="margin:10px 0 16px;">
-        <p style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Available Positions</p>
-        <div class="jd-cards-grid">
-          <div class="jd-card" onclick="selectDefaultRole('AI')" id="jdcard-AI">
-            <div class="jd-card-icon">🤖</div>
-            <div class="jd-card-title">AI / ML</div>
-            <div class="jd-card-sub">AI Automation Role</div>
-          </div>
-          <div class="jd-card" onclick="selectDefaultRole('Sales')" id="jdcard-Sales">
-            <div class="jd-card-icon">💼</div>
-            <div class="jd-card-title">Sales</div>
-            <div class="jd-card-sub">Software Sales Executive</div>
-          </div>
-          <div class="jd-card" onclick="selectDefaultRole('PHP & Developer')" id="jdcard-PHP">
-            <div class="jd-card-icon">💻</div>
-            <div class="jd-card-title">PHP Developer</div>
-            <div class="jd-card-sub">Software Engineer</div>
-          </div>
-          <div class="jd-card" onclick="selectDefaultRole('Support Engineer')" id="jdcard-Support">
-            <div class="jd-card-icon">🔧</div>
-            <div class="jd-card-title">Support Engineer</div>
-            <div class="jd-card-sub">Dialer / GSM / DevOps</div>
-          </div>
-        </div>
-      </div>
-
       <div class="field-row">
         <div class="field">
           <label for="roleApplied">Role <span class="req">*</span></label>
-          <select id="roleApplied" onchange="updateJD(this.value); highlightJdCard(this.value)">
+          <select id="roleApplied" onchange="updateJD(this.value)">
             <option value="">Select Role</option>
-            <?php foreach($all_campaigns as $ac):
-              $r = htmlspecialchars($ac['job_role']??$ac['name']);
-            ?>
-            <option value="<?=$r?>" <?=($job_role===$r)?'selected':''?>><?=$r?></option>
-            <?php endforeach; ?>
+            <option value="AI" <?=$job_role==='AI'?'selected':''?>>AI</option>
+            <option value="Sales" <?=$job_role==='Sales'?'selected':''?>>Sales</option>
+            <option value="PHP & Developer" <?=str_contains($job_role,'PHP')?'selected':''?>>PHP & Developer Engineer</option>
+            <option value="Support Engineer" <?=str_contains($job_role,'Support')?'selected':''?>>Support Engineer</option>
           </select>
         </div>
         <div class="field">
@@ -767,8 +702,8 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           </select>
         </div>
       </div>
-      <div id="jdBox" style="display:none;margin-top:15px;margin-bottom:15px;padding:18px;border-radius:7px;background:color-mix(in srgb,var(--surface) 50%,transparent);border:1px solid var(--border);">
-        <div id="jdContent" style="font-size:13px;color:var(--text);"></div>
+      <div id="jdBox" style="display:none;margin-top:15px;margin-bottom:15px;padding:18px;border-radius:8px;background:var(--surface);border:1px solid var(--border);">
+        <div id="jdContent"></div>
       </div>
       <div id="remunerationBox" class="info-box" style="display:none;margin-top:15px;margin-bottom:0">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -783,8 +718,8 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     <div class="section-header">
       <div class="section-num">3</div>
       <div>
-        <div class="section-title">General Experience & Skills</div>
-        <div class="section-desc">Your background, communication, and professional assessment.</div>
+        <div class="section-title">Experience & Skills</div>
+        <div class="section-desc">Your background and professional assessment.</div>
       </div>
     </div>
     <div id="val-banner-3" class="val-banner"></div>
@@ -822,10 +757,15 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <select id="industry" onchange="handleIndustryChange()">
             <option value="">Select Industry</option>
             <option id="industryFresherOpt" value="Fresher / None">Fresher / None</option>
-            <option value="IT/Software">IT / Software</option>
-            <option value="Telecom">Telecom</option>
-            <option value="Sales/Marketing">Sales / Marketing</option>
-            <option value="Customer Support">Customer Support</option>
+            <option>IT / Software</option>
+            <option>BPO / Call Centre</option>
+            <option>Telecom</option>
+            <option>Banking / Finance</option>
+            <option>Healthcare</option>
+            <option>Education</option>
+            <option>E-Commerce / Retail</option>
+            <option>Manufacturing</option>
+            <option>Media / Marketing</option>
             <option value="Other">Other</option>
           </select>
         </div>
@@ -845,11 +785,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <label class="opt-label"><input type="radio" name="expType" value="Full-time"><span>Entrepreneurial / Startup</span></label>
         </div>
       </div>
-      <div class="field" id="internshipDescContainer">
-        <label for="internshipDesc">Describe Your Past Experience (If Any)</label>
-        <textarea id="internshipDesc" placeholder="Briefly describe any relevant internship or project experience (Max 50 words)..." oninput="limitWords(this, 50)"></textarea>
-        <p class="field-hint" id="wordCountHint">0 / 50 words</p>
-      </div>
+      <div class="field"><label for="internshipDesc">Past Experience Description</label><textarea id="internshipDesc" oninput="limitWords(this,50)" placeholder="Briefly describe your most relevant past experience or projects..."></textarea></div>
     </div>
     <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(3)">← Back</button><button class="btn btn-primary" onclick="nextSection(3)">Continue →</button></div>
   </div>
@@ -1149,8 +1085,6 @@ function updateCampaign(id) {
     // Only add if genuinely not in list (avoid duplicates)
     const exists = [...roleEl.options].some(o => o.value === role);
     if (!exists) { const newOpt = new Option(role, role, true, true); roleEl.add(newOpt); }
-    updateJD(role);
-    highlightJdCard(role);
   }
 }
 
@@ -1460,13 +1394,6 @@ async function submitForm() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Default theme: light (midnight available via toggle)
-  try {
-    const saved = localStorage.getItem('avk_theme');
-    if (saved) { document.documentElement.setAttribute('data-theme', saved); }
-    else { setTheme('light'); }
-  } catch(e) { setTheme('light'); }
-
   document.getElementById('phone').addEventListener('input', () => {
     if (v('phoneCode') === '+91') {
       const i = document.getElementById('phone');
@@ -1490,101 +1417,22 @@ function toggleTheme() {
   const cur = document.documentElement.getAttribute('data-theme') || 'light';
   setTheme(cur === 'light' ? 'midnight' : 'light');
 }
-
+(function(){
+  try { const t = localStorage.getItem('avk_theme'); if(t) document.documentElement.setAttribute('data-theme', t); } catch(e){}
+})();
 
 // ── JOB DESCRIPTION ────────────────────────────────────────────
-const JD_DATA = {
-  "AI": `<strong>Job Description Summary – AI/ML Role</strong>
-    <p>We are looking for passionate and driven individuals to join our team in the field of Artificial Intelligence and Machine Learning. The ideal candidate should have strong communication skills in English, relevant industry exposure, and a willingness to learn and grow in a fast-paced environment.</p>
-    <p>Candidates with varying levels of experience—ranging from freshers to experienced professionals—are encouraged to apply. We welcome applicants with backgrounds in internships, full-time roles, freelance work, or academic projects related to AI/ML or similar domains.</p>
-    <strong>Key Highlights:</strong>
-    <ul>
-      <li>Open to Freshers, Interns, Freelancers, and Experienced Professionals</li>
-      <li>Emphasis on English communication and clarity</li>
-      <li>Opportunity to work on real-world AI/ML projects</li>
-      <li>Industry exposure preferred but not mandatory</li>
-      <li>Strong learning mindset and adaptability required</li>
-    </ul>`,
-  "Sales": `<strong>Job Description Summary – Software Sales</strong>
-    <p>We are looking for a motivated and customer-focused Software Sales Executive to promote and assist clients with our range of technology solutions, including Dialer Systems, CRM Software, AI Voice Bots, AI Automation Tools, Digital Marketing Services, and Website/App Development.</p>
-    <p>The role involves understanding client requirements, explaining suitable solutions, and guiding them through the onboarding process. Candidates should have good English communication skills, a professional approach, and the ability to build strong client relationships.</p>
-    <strong>Key Highlights:</strong>
-    <ul>
-      <li>Open to Freshers and Experienced Candidates</li>
-      <li>No Sales Targets or Incentive-Based Pressure</li>
-      <li>Client Interaction and Relationship Management Role</li>
-      <li>Collaborative and Growth-Oriented Work Environment</li>
-      <li>Training and Support Provided</li>
-    </ul>`,
-  "PHP & Developer": `<strong>Job Description Summary – PHP Developer / Software Engineer</strong>
-    <p>We are looking for a skilled and detail-oriented PHP Developer / Software Engineer to design, develop, and maintain web-based applications. The candidate will be responsible for building scalable backend systems, integrating APIs, and ensuring smooth functionality of websites and software solutions.</p>
-    <p>This opportunity is open to both freshers and experienced candidates who have hands-on experience through internships, freelance work, or academic projects. A strong willingness to learn and adapt to new technologies is essential.</p>
-    <strong>Key Highlights:</strong>
-    <ul>
-      <li>Real-world PHP/web development projects</li>
-      <li>Mentorship and guidance provided</li>
-      <li>CRM, web apps, and automation tools</li>
-      <li>Open to freshers with project experience</li>
-    </ul>`,
-  "Support Engineer": `<strong>Job Description Summary – Support Engineer</strong>
-    <p>Manage dialer systems, GSM gateways, and Linux servers. Monitor performance and troubleshoot technical issues. Basic networking and Linux knowledge required.</p>
-    <p>Open to freshers with a strong technical base and eagerness to learn VoIP and server infrastructure.</p>
-    <strong>Key Highlights:</strong>
-    <ul>
-      <li>VoIP and Asterisk exposure</li>
-      <li>Linux server hands-on experience</li>
-      <li>Open to freshers with strong technical base</li>
-      <li>Training and technical guidance provided</li>
-    </ul>`
-};
-
 function updateJD(role) {
   const jdBox = document.getElementById('jdBox');
   const jdContent = document.getElementById('jdContent');
-  if (role && JD_DATA[role]) {
-    jdContent.innerHTML = JD_DATA[role];
-    jdBox.style.display = 'block';
-  } else {
-    jdBox.style.display = 'none';
-    jdContent.innerHTML = '';
-  }
-  highlightJdCard(role);
-}
-
-function highlightJdCard(role) {
-  document.querySelectorAll('.jd-card').forEach(c => c.classList.remove('active'));
-  const cardMap = {
-    'AI': 'jdcard-AI',
-    'Sales': 'jdcard-Sales',
-    'PHP & Developer': 'jdcard-PHP',
-    'Support Engineer': 'jdcard-Support'
+  const jds = {
+    "AI": '<strong>AI/ML Role</strong><p>We are looking for passionate individuals in AI/ML. Open to freshers and experienced professionals. Strong English communication and learning mindset required.</p><ul><li>Work on real-world AI/ML projects</li><li>Open to Freshers &amp; Interns</li><li>Opportunity to learn cutting-edge AI tools</li><li>Training and mentorship provided</li></ul>',
+    "Sales": '<strong>Software Sales Executive</strong><p>Promote our tech solutions: Dialer, CRM, AI Voice Bots, Digital Marketing. Good English required. Open to freshers and experienced candidates.</p><ul><li>No sales targets or pressure</li><li>Training provided</li><li>Client relationship management</li><li>Collaborative, growth-oriented environment</li></ul>',
+    "PHP & Developer": '<strong>PHP Developer / Software Engineer</strong><p>Design, develop and maintain web applications. PHP frameworks, database, API integration. Freshers with project experience welcome.</p><ul><li>Real-world PHP/web projects</li><li>Mentorship and guidance provided</li><li>Skill development focused</li><li>CRM, web apps, automation tools</li></ul>',
+    "Support Engineer": '<strong>Support Engineer – Dialer / GSM / DevOps</strong><p>Manage dialer systems, GSM gateways, Linux servers. Monitor performance and troubleshoot issues. Basic networking knowledge required.</p><ul><li>VoIP and Asterisk exposure</li><li>Linux server hands-on experience</li><li>Open to freshers with strong technical base</li><li>Training and technical guidance provided</li></ul>'
   };
-  const id = cardMap[role];
-  if (id) { const el = document.getElementById(id); if (el) el.classList.add('active'); }
-}
-
-function selectDefaultRole(role) {
-  const sel = document.getElementById('roleApplied');
-  // Try to find in DB-populated options first
-  let found = false;
-  for (let o of sel.options) {
-    if (o.value === role || o.text === role ||
-        (role === 'PHP & Developer' && (o.value.includes('PHP') || o.text.includes('PHP'))) ||
-        (role === 'Support Engineer' && (o.value.includes('Support') || o.text.includes('Support')))) {
-      sel.value = o.value;
-      found = true;
-      break;
-    }
-  }
-  // If not in DB, add as a temporary option (shown but not required to exist in DB)
-  if (!found) {
-    const opt = new Option(role, role, true, true);
-    sel.add(opt);
-  }
-  updateJD(role);
-  highlightJdCard(role);
-  // Scroll to role select
-  sel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (role && jds[role]) { jdContent.innerHTML = jds[role]; jdBox.style.display = 'block'; }
+  else { jdBox.style.display = 'none'; jdContent.innerHTML = ''; }
 }
 
 // ── WORD LIMIT ─────────────────────────────────────────────────

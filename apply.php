@@ -689,7 +689,6 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
             <option value="Sales" <?=$job_role==='Sales'?'selected':''?>>Sales</option>
             <option value="PHP & Developer" <?=str_contains($job_role,'PHP')?'selected':''?>>PHP & Developer Engineer</option>
             <option value="Support Engineer" <?=str_contains($job_role,'Support')?'selected':''?>>Support Engineer</option>
-            <?php if($job_role && !in_array($job_role,['AI','Sales'])):?><option value="<?=htmlspecialchars($job_role)?>" selected><?=htmlspecialchars($job_role)?></option><?php endif;?>
           </select>
         </div>
         <div class="field">
@@ -834,7 +833,8 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <option value="6 months">6 Months</option>
           <option value="9 months">9 Months</option>
           <option value="12 months">12 Months</option>
-          <option value="Flexible">Flexible</option>
+          <option value="18 months">18 Months</option>
+          <option value="24 months">24 Months</option>
         </select>
       </div>
       <div class="field-row">
@@ -901,7 +901,6 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <option value="">Select Option</option>
           <option value="Personal vehicle">Personal Vehicle</option>
           <option value="Self-managed">I will manage on my own</option>
-          <option value="Work from Home">Work from Home</option>
         </select>
       </div>
     </div>
@@ -1083,8 +1082,9 @@ function updateCampaign(id) {
     for (let o of roleEl.options) {
       if (o.value === role || o.text === role) { roleEl.value = o.value; return; }
     }
-    const newOpt = new Option(role, role, true, true);
-    roleEl.add(newOpt);
+    // Only add if genuinely not in list (avoid duplicates)
+    const exists = [...roleEl.options].some(o => o.value === role);
+    if (!exists) { const newOpt = new Option(role, role, true, true); roleEl.add(newOpt); }
   }
 }
 
@@ -1249,12 +1249,29 @@ function handleSourceChange() {
 }
 
 function handleYearsExpChange() {
-  const f = v('yearsExp') === 'Fresher';
-  document.getElementById('industryFieldContainer').style.display = f ? 'none' : 'grid';
-  document.getElementById('expTypeFieldContainer').style.display = f ? 'none' : 'block';
-  if (f) {
+  const val = document.getElementById('yearsExp').value;
+  const isFresher = val === 'Fresher';
+  const hasExp = val && !isFresher;
+  
+  // Show/hide industry + expType containers
+  document.getElementById('industryFieldContainer').style.display = isFresher ? 'none' : 'grid';
+  document.getElementById('expTypeFieldContainer').style.display = isFresher ? 'none' : 'block';
+  
+  // Hide Fresher options when candidate has experience
+  const indFresherOpt = document.getElementById('industryFresherOpt');
+  const expFresherLabel = document.getElementById('expTypeFresherLabel');
+  if (indFresherOpt) indFresherOpt.style.display = hasExp ? 'none' : '';
+  if (expFresherLabel) expFresherLabel.style.display = hasExp ? 'none' : '';
+  
+  if (isFresher) {
     document.getElementById('industry').value = '';
     document.querySelectorAll('input[name="expType"]').forEach(r => r.checked = false);
+  } else if (hasExp) {
+    // Clear fresher selection if previously chosen
+    if (document.getElementById('industry').value === 'Fresher / None')
+      document.getElementById('industry').value = '';
+    const fresherRadio = document.querySelector('input[name="expType"][value="Fresher / None"]');
+    if (fresherRadio && fresherRadio.checked) fresherRadio.checked = false;
   }
 }
 

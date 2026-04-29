@@ -480,9 +480,43 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
 #jdContent p{margin-bottom:10px}
 #jdContent ul{padding-left:18px;margin:6px 0 10px}
 #jdContent li{margin-bottom:4px;font-size:13px}
+  
+    [data-theme="midnight"] {
+      --bg: #0b0d14; --surface: #13161f; --card: #181c28;
+      --border: #252a3d; --accent: #4f7cff; --accent2: #7c3aed;
+      --gold: #f0b429; --text: #e6e8f2; --muted: #6b728f;
+      --error: #f43f5e; --success: #22d3a5;
+      --hbg: linear-gradient(135deg,#0c0f1e 0%,#141728 60%,#1a1332 100%);
+      --hglow: rgba(79,124,255,.14);
+    }
+    [data-theme="midnight"] input,
+    [data-theme="midnight"] select,
+    [data-theme="midnight"] textarea { color: var(--text); }
+    [data-theme="midnight"] select option { background: #181c28; color: #e6e8f2; }
+    .icon-moon { display: none; }
+    [data-theme="light"] .icon-moon { display: block; }
+    [data-theme="light"] .icon-sun { display: none; }
+    .theme-toggle {
+      position: fixed; top: 16px; right: 16px;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); width: 40px; height: 40px;
+      border-radius: 50%; display: flex; align-items: center;
+      justify-content: center; cursor: pointer; z-index: 9999;
+      transition: all 0.2s;
+    }
+    .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+    #jdBox { font-size:13px; }
+    #jdBox p { margin-bottom:10px; }
+    #jdBox ul { padding-left:18px; margin:6px 0 10px; }
+    #jdBox li { margin-bottom:4px; }
   </style>
 </head>
 <body>
+
+<button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle Theme">
+  <svg class="icon-sun" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+  <svg class="icon-moon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="20" height="20"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+</button>
 
 <!-- Submit Spinner Overlay -->
 <div class="submit-overlay" id="submitOverlay">
@@ -559,6 +593,15 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <select id="otherCountryCode" onchange="handleOtherCountryChange()">
             <option value="">Select country</option>
             <option value="+1:10:10">+1 (USA / Canada)</option>
+            <option value="+44:10:10">+44 (United Kingdom)</option>
+            <option value="+49:10:11">+49 (Germany)</option>
+            <option value="+33:9:9">+33 (France)</option>
+            <option value="+966:9:9">+966 (Saudi Arabia)</option>
+            <option value="+81:10:11">+81 (Japan)</option>
+            <option value="+55:10:11">+55 (Brazil)</option>
+            <option value="+27:9:9">+27 (South Africa)</option>
+            <option value="+94:9:9">+94 (Sri Lanka)</option>
+            <option value="+60:9:10">+60 (Malaysia)</option>
             <option value="+44:10:10">+44 (UK)</option>
             <option value="+61:9:9">+61 (Australia)</option>
             <option value="+971:9:9">+971 (UAE)</option>
@@ -640,7 +683,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
       <div class="field-row">
         <div class="field">
           <label for="roleApplied">Role <span class="req">*</span></label>
-          <select id="roleApplied">
+          <select id="roleApplied" onchange="updateJD(this.value)">
             <option value="">Select Role</option>
             <option value="AI" <?=$job_role==='AI'?'selected':''?>>AI</option>
             <option value="Sales" <?=$job_role==='Sales'?'selected':''?>>Sales</option>
@@ -659,6 +702,9 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
             <option value="Employment">Employment</option>
           </select>
         </div>
+      </div>
+      <div id="jdBox" style="display:none;margin-top:15px;margin-bottom:15px;padding:18px;border-radius:8px;background:var(--surface);border:1px solid var(--border);">
+        <div id="jdContent"></div>
       </div>
       <div id="remunerationBox" class="info-box" style="display:none;margin-top:15px;margin-bottom:0">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -732,15 +778,15 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
       <div class="field" id="expTypeFieldContainer">
         <label>Experience Type <span class="req">*</span></label>
         <div class="options-grid cols2">
-          <label class="opt-label" id="expTypeFresherLabel"><input type="checkbox" name="expType" value="Fresher / None"><span>Fresher / None</span></label>
-          <label class="opt-label"><input type="checkbox" name="expType" value="Full-time Employment"><span>Full-time Employment</span></label>
-          <label class="opt-label"><input type="checkbox" name="expType" value="Part-time / Freelance"><span>Part-time / Freelance</span></label>
-          <label class="opt-label"><input type="checkbox" name="expType" value="Internship"><span>Internship</span></label>
-          <label class="opt-label"><input type="checkbox" name="expType" value="Research / Academic"><span>Research / Academic</span></label>
-          <label class="opt-label"><input type="checkbox" name="expType" value="Entrepreneurial / Startup"><span>Entrepreneurial / Startup</span></label>
+          <label class="opt-label" id="expTypeFresherLabel"><input type="radio" name="expType" value="Fresher / None"><span>Fresher / None</span></label>
+          <label class="opt-label"><input type="radio" name="expType" value="Full-time"><span>Full-time Employment</span></label>
+          <label class="opt-label"><input type="radio" name="expType" value="Freelance"><span>Part-time / Freelance</span></label>
+          <label class="opt-label"><input type="radio" name="expType" value="Internship"><span>Internship</span></label>
+          <label class="opt-label"><input type="radio" name="expType" value="Academic Project"><span>Research / Academic</span></label>
+          <label class="opt-label"><input type="radio" name="expType" value="Full-time"><span>Entrepreneurial / Startup</span></label>
         </div>
       </div>
-      <div class="field"><label for="internshipDesc">Past Experience Description</label><textarea id="internshipDesc" placeholder="Briefly describe your most relevant past experience or projects..."></textarea></div>
+      <div class="field"><label for="internshipDesc">Past Experience Description</label><textarea id="internshipDesc" oninput="limitWords(this,50)" placeholder="Briefly describe your most relevant past experience or projects..."></textarea></div>
     </div>
     <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(3)">← Back</button><button class="btn btn-primary" onclick="nextSection(3)">Continue →</button></div>
   </div>
@@ -751,52 +797,21 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
       <div class="section-num">4</div>
       <div>
         <div class="section-title">Compensation</div>
-        <div class="section-desc">Current and expected salary details.</div>
+        <div class="section-desc">Your current and expected remuneration details.</div>
       </div>
     </div>
     <div id="val-banner-4" class="val-banner"></div>
     <div class="card">
       <div class="field-row">
         <div class="field">
-          <label for="currentSalary">Current Salary (₹/month) <span class="req">*</span></label>
-          <select id="currentSalary">
-            <option value="">Select Range</option>
-            <option>0 (Fresher / Student)</option>
-            <option>Up to ₹10,000</option>
-            <option>₹10,001 – ₹20,000</option>
-            <option>₹20,001 – ₹35,000</option>
-            <option>₹35,001 – ₹50,000</option>
-            <option>₹50,001 – ₹75,000</option>
-            <option>₹75,001 – ₹1,00,000</option>
-            <option>Above ₹1,00,000</option>
-          </select>
+          <label for="currentSalary">Current Salary / Stipend (Per Month)</label>
+          <input type="text" id="currentSalary" placeholder="e.g. ₹15,000/month or N/A">
         </div>
         <div class="field">
-          <label for="expectedSalary">Expected Salary (₹/month) <span class="req">*</span></label>
-          <select id="expectedSalary">
-            <option value="">Select Range</option>
-            <option>₹10,000 – ₹15,000</option>
-            <option>₹15,001 – ₹25,000</option>
-            <option>₹25,001 – ₹40,000</option>
-            <option>₹40,001 – ₹60,000</option>
-            <option>₹60,001 – ₹85,000</option>
-            <option>Above ₹85,000</option>
-            <option>Open to Discussion</option>
-          </select>
+          <label for="expectedSalary">Expected Salary / Stipend (Per Month) <span class="req">*</span></label>
+          <input type="text" id="expectedSalary" placeholder="Mention realistic figures (in ₹)">
         </div>
       </div>
-      <div class="field" id="tenureField">
-        <label for="tenure">Internship / Training Tenure</label>
-        <select id="tenure">
-          <option value="">Select Tenure</option>
-          <option>1 Month</option>
-          <option>3 Months</option>
-          <option>6 Months</option>
-          <option>1 Year</option>
-          <option>Flexible</option>
-        </select>
-      </div>
-      <div class="field"><label for="joiningDate">Preferred Joining Date <span class="req">*</span></label><input type="date" id="joiningDate"></div>
     </div>
     <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(4)">← Back</button><button class="btn btn-primary" onclick="nextSection(4)">Continue →</button></div>
   </div>
@@ -806,55 +821,88 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     <div class="section-header">
       <div class="section-num">5</div>
       <div>
-        <div class="section-title">Work Preferences</div>
-        <div class="section-desc">Your work style and availability.</div>
+        <div class="section-title">Internship & Availability</div>
+        <div class="section-desc">Your schedule preferences and joining details.</div>
       </div>
     </div>
     <div id="val-banner-5" class="val-banner"></div>
     <div class="card">
-      <div class="field"><label>Flexible Working Hours? <span class="req">*</span></label>
-        <div class="options-grid"><label class="opt-label"><input type="radio" name="flexHours" value="Yes"><span>Yes, flexible</span></label><label class="opt-label"><input type="radio" name="flexHours" value="No"><span>No, fixed hours only</span></label><label class="opt-label"><input type="radio" name="flexHours" value="Partially"><span>Partially flexible</span></label></div>
+      <div class="field" id="tenureField">
+        <label for="tenure">Internship / Training Tenure <span class="req">*</span></label>
+        <select id="tenure">
+          <option value="">Select Tenure</option>
+          <option value="6 months">6 Months</option>
+          <option value="9 months">9 Months</option>
+          <option value="12 months">12 Months</option>
+          <option value="Flexible">Flexible</option>
+        </select>
       </div>
-      <div class="field"><label>Do you own a Laptop? <span class="req">*</span></label>
-        <div class="options-grid"><label class="opt-label"><input type="radio" name="laptop" value="Yes"><span>Yes</span></label><label class="opt-label"><input type="radio" name="laptop" value="No"><span>No</span></label><label class="opt-label"><input type="radio" name="laptop" value="Shared"><span>Shared / Family</span></label></div>
+      <div class="field-row">
+        <div class="field">
+          <label for="joiningDate">Preferred Joining Date <span class="req">*</span></label>
+          <input type="date" id="joiningDate">
+        </div>
+        <div class="field">
+          <label for="flexHours">Open to Flexible Hours? <span class="req">*</span></label>
+          <select id="flexHours">
+            <option value="">Select Option</option>
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+          </select>
+        </div>
       </div>
-      <div class="field"><label>Reliable Internet Connection? <span class="req">*</span></label>
-        <div class="options-grid"><label class="opt-label"><input type="radio" name="internet" value="Yes – Broadband"><span>Yes – Broadband</span></label><label class="opt-label"><input type="radio" name="internet" value="Yes – Mobile Data"><span>Yes – Mobile Data</span></label><label class="opt-label"><input type="radio" name="internet" value="No"><span>No</span></label></div>
-      </div>
-      <div class="field"><label>Commute Preference <span class="req">*</span></label>
-        <div class="options-grid cols2"><label class="opt-label"><input type="radio" name="commute" value="Work from Home"><span>Work from Home</span></label><label class="opt-label"><input type="radio" name="commute" value="Work from Office"><span>Work from Office</span></label><label class="opt-label"><input type="radio" name="commute" value="Hybrid"><span>Hybrid</span></label><label class="opt-label"><input type="radio" name="commute" value="Flexible / Any"><span>Flexible / Any</span></label></div>
-      </div>
-      <div class="field"><label for="candidateLocation">Your Area / Locality <span class="req">*</span></label><input type="text" id="candidateLocation" placeholder="e.g. Vaishali Nagar, Jaipur"></div>
     </div>
     <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(5)">← Back</button><button class="btn btn-primary" onclick="nextSection(5)">Continue →</button></div>
   </div>
 
-  <!-- ═══ SECTION 6: Key Skills ═══ -->
+  <!-- ═══ SECTION 6: Work Readiness ═══ -->
   <div class="section" id="section-6">
     <div class="section-header">
       <div class="section-num">6</div>
       <div>
-        <div class="section-title">Key Skills</div>
-        <div class="section-desc">Select all technical and soft skills that apply to you.</div>
+        <div class="section-title">Work Readiness</div>
+        <div class="section-desc">Confirm your technical and logistical readiness.</div>
       </div>
     </div>
     <div id="val-banner-6" class="val-banner"></div>
     <div class="card">
-      <div class="field">
-        <label>Technical Skills</label>
-        <div class="options-grid">
-          <?php foreach(['MS Office','Google Workspace','CRM Tools','Data Entry','Python','PHP/Web Dev','SQL/Database','AI/ML Tools','Networking','Linux/DevOps','Mobile Apps','UI/UX Design'] as $sk):?>
-          <label class="opt-label"><input type="checkbox" name="techSkills" value="<?=$sk?>"><span><?=$sk?></span></label>
-          <?php endforeach;?>
+      <div class="field-row">
+        <div class="field">
+          <label for="laptop">Do you own a Laptop? <span class="req">*</span></label>
+          <select id="laptop">
+            <option value="">Select Option</option>
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="internet">Reliable Broadband / Wi-Fi at Home? <span class="req">*</span></label>
+          <select id="internet">
+            <option value="">Select Option</option>
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+          </select>
         </div>
       </div>
-      <div class="field" style="margin-top:16px">
-        <label>Soft Skills</label>
-        <div class="options-grid">
-          <?php foreach(['Communication','Leadership','Teamwork','Problem Solving','Time Management','Adaptability','Customer Service','Sales / Persuasion','Attention to Detail','Critical Thinking'] as $sk):?>
-          <label class="opt-label"><input type="checkbox" name="softSkills" value="<?=$sk?>"><span><?=$sk?></span></label>
-          <?php endforeach;?>
+      <div class="field">
+        <label for="candidateLocation">Check Commute Distance <span style="color:var(--muted);font-size:11px;font-weight:400;">(Optional)</span></label>
+        <div style="display:flex;gap:10px;margin-bottom:8px;">
+          <input type="text" id="candidateLocation" placeholder="Enter your area/city (e.g. Vaishali Nagar, Jaipur)" style="flex:1;">
+          <button type="button" class="btn btn-ghost" onclick="checkDistance()" style="padding:10px 15px;white-space:nowrap;height:42px;">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Check Maps
+          </button>
         </div>
+        <p class="field-hint" style="margin-top:0;font-size:13px;">📍 Office: <a href="https://maps.google.com/?q=Avyukta+Intellicall,+Narayan+Vihar+Rd,+Ganatpura,+Jaipur" target="_blank" style="color:var(--accent);font-weight:500;text-decoration:none;">Avyukta Intellicall, Narayan Vihar Rd, Ganatpura, Jaipur</a></p>
+      </div>
+      <div class="field">
+        <label for="commute">Commute to Office <span class="req">*</span></label>
+        <select id="commute">
+          <option value="">Select Option</option>
+          <option value="Personal vehicle">Personal Vehicle</option>
+          <option value="Self-managed">I will manage on my own</option>
+          <option value="Work from Home">Work from Home</option>
+        </select>
       </div>
     </div>
     <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(6)">← Back</button><button class="btn btn-primary" onclick="nextSection(6)">Continue →</button></div>
@@ -1047,21 +1095,12 @@ const validators = {
     if (!v('salutation')) e.push('Salutation required');
     if (!v('firstName').trim()) e.push('First name required');
     if (!v('lastName').trim()) e.push('Last name required');
-    if (!v('dob')) e.push('Date of birth required');
+    const dobVal = v('dob');
+    if (!dobVal) { e.push('Date of birth required.'); }
+    else { const _t = new Date(); _t.setHours(0,0,0,0); if (new Date(dobVal) > _t) e.push('Date of birth cannot be in the future.'); }
     if (!v('currentCity').trim()) e.push('Current city required');
     
-    const code = v('phoneCode');
-    const ph = v('phone').replace(/\D/g, '');
-    if (!ph) e.push('Phone number required');
-    else if (code === '+91' && ph.length !== 10) e.push('Valid 10-digit phone required for India (+91)');
-    else if (code === 'other') {
-      if (!v('otherCountryCode')) e.push('Select country code');
-      else {
-        const parts = v('otherCountryCode').split(':');
-        const min = parseInt(parts[1]||8), max = parseInt(parts[2]||12);
-        if (ph.length < min || ph.length > max) e.push('Phone number length invalid for selected country');
-      }
-    }
+    const pe = validatePhone(); if (pe) e.push(pe);
     
     if (!v('email').match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) e.push('Valid email required');
     if (!v('college')) e.push('College/University required');
@@ -1095,27 +1134,30 @@ const validators = {
   
   4: () => {
     const e = [];
-    if (!v('currentSalary')) e.push('Current salary required');
-    if (!v('expectedSalary')) e.push('Expected salary required');
-    if (!v('joiningDate')) e.push('Preferred joining date required');
+    if (!v('expectedSalary').trim()) e.push('Expected salary / stipend is required.');
     return e;
   },
   
   5: () => {
     const e = [];
-    if (!radio('flexHours')) e.push('Flexible hours preference required');
-    if (!radio('laptop')) e.push('Laptop ownership required');
-    if (!radio('internet')) e.push('Internet connection required');
-    if (!radio('commute')) e.push('Commute preference required');
-    if (!v('candidateLocation').trim()) e.push('Your area/locality required');
+    const et = v('engagementType');
+    if (et !== 'Employment' && !v('tenure')) e.push('Internship / training tenure is required.');
+    if (!v('joiningDate')) e.push('Preferred joining date is required.');
+    if (!v('flexHours')) e.push('Flexible hours preference is required.');
     return e;
   },
   
-  6: () => [],
+  6: () => {
+    const e = [];
+    if (!v('laptop')) e.push('Laptop ownership is required.');
+    if (!v('internet')) e.push('Internet availability is required.');
+    if (!v('commute')) e.push('Commute preference is required.');
+    return e;
+  },
   
   7: () => {
     const e = [];
-    if (!document.getElementById('resumeFile').files.length) e.push('Resume/CV is required');
+    if (!document.getElementById('resumeFile').files.length) { e.push('Please upload your Resume / CV.'); } else if (!checkFileSize('resumeFile', 10)) { e.push('Resume file size must be less than 10 MB.'); }
     const vo = v('videoOption');
     if (vo === 'link' && !v('videoLinkInput').trim()) e.push('Video URL required');
     return e;
@@ -1162,8 +1204,19 @@ function updateRemuneration(type) {
 
 // Field helpers
 function handleCityChange() {
-  const city = v('currentCity').trim();
-  document.getElementById('relocateCol').style.display = city ? 'block' : 'none';
+  const city = document.getElementById('currentCity').value.trim().toLowerCase();
+  const relocateCol = document.getElementById('relocateCol');
+  const relocateSelect = document.getElementById('relocate');
+  const timeRow = document.getElementById('relocateTimeRow');
+  const timeSelect = document.getElementById('relocateTime');
+  if (city && city !== 'jaipur') {
+    relocateCol.style.display = 'block';
+  } else {
+    relocateCol.style.display = 'none';
+    relocateSelect.value = '';
+    timeRow.style.display = 'none';
+    timeSelect.value = '';
+  }
 }
 
 function handleRelocateChange() {
@@ -1336,6 +1389,76 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('joiningDate').min = today;
   document.getElementById('dob').max = today;
 });
+
+
+// ── THEME ──────────────────────────────────────────────────────
+function setTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  try { localStorage.setItem('avk_theme', t); } catch(e) {}
+}
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme') || 'light';
+  setTheme(cur === 'light' ? 'midnight' : 'light');
+}
+(function(){
+  try { const t = localStorage.getItem('avk_theme'); if(t) document.documentElement.setAttribute('data-theme', t); } catch(e){}
+})();
+
+// ── JOB DESCRIPTION ────────────────────────────────────────────
+function updateJD(role) {
+  const jdBox = document.getElementById('jdBox');
+  const jdContent = document.getElementById('jdContent');
+  const jds = {
+    "AI": '<strong>AI/ML Role</strong><p>We are looking for passionate individuals in AI/ML. Open to freshers and experienced professionals. Strong English communication and learning mindset required.</p><ul><li>Work on real-world AI/ML projects</li><li>Open to Freshers &amp; Interns</li><li>Opportunity to learn cutting-edge AI tools</li><li>Training and mentorship provided</li></ul>',
+    "Sales": '<strong>Software Sales Executive</strong><p>Promote our tech solutions: Dialer, CRM, AI Voice Bots, Digital Marketing. Good English required. Open to freshers and experienced candidates.</p><ul><li>No sales targets or pressure</li><li>Training provided</li><li>Client relationship management</li><li>Collaborative, growth-oriented environment</li></ul>',
+    "PHP & Developer": '<strong>PHP Developer / Software Engineer</strong><p>Design, develop and maintain web applications. PHP frameworks, database, API integration. Freshers with project experience welcome.</p><ul><li>Real-world PHP/web projects</li><li>Mentorship and guidance provided</li><li>Skill development focused</li><li>CRM, web apps, automation tools</li></ul>',
+    "Support Engineer": '<strong>Support Engineer – Dialer / GSM / DevOps</strong><p>Manage dialer systems, GSM gateways, Linux servers. Monitor performance and troubleshoot issues. Basic networking knowledge required.</p><ul><li>VoIP and Asterisk exposure</li><li>Linux server hands-on experience</li><li>Open to freshers with strong technical base</li><li>Training and technical guidance provided</li></ul>'
+  };
+  if (role && jds[role]) { jdContent.innerHTML = jds[role]; jdBox.style.display = 'block'; }
+  else { jdBox.style.display = 'none'; jdContent.innerHTML = ''; }
+}
+
+// ── WORD LIMIT ─────────────────────────────────────────────────
+function limitWords(field, maxWords) {
+  let words = field.value.trim().split(/\s+/).filter(w => w.length > 0);
+  if (words.length > maxWords) { field.value = words.slice(0, maxWords).join(' ') + ' '; words = words.slice(0, maxWords); }
+  const hint = document.getElementById('wordCountHint');
+  if (hint) hint.innerText = words.length + ' / ' + maxWords + ' words';
+}
+
+// ── GOOGLE MAPS DISTANCE ───────────────────────────────────────
+function checkDistance() {
+  const origin = document.getElementById('candidateLocation').value.trim();
+  if (!origin) { alert('Please enter your area/location first.'); return; }
+  window.open('https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent(origin) + '&destination=' + encodeURIComponent('Avyukta Intellicall, Narayan Vihar Rd, Ganatpura, Jaipur'), '_blank');
+}
+
+// ── BETTER PHONE VALIDATE ──────────────────────────────────────
+function validatePhone() {
+  const code = document.getElementById('phoneCode').value;
+  const ph = document.getElementById('phone').value.trim();
+  const inp = document.getElementById('phone');
+  if (code === '+91') {
+    if (!/^\d{10}$/.test(ph)) { inp.classList.add('input-invalid'); return 'Phone number must be exactly 10 digits.'; }
+  } else if (code === 'other') {
+    const sel = document.getElementById('otherCountryCode');
+    if (!sel.value) return 'Please select a country code.';
+    const [, min, max] = sel.value.split(':');
+    const d = ph.replace(/\D/g, '');
+    if (d.length < parseInt(min) || d.length > parseInt(max)) {
+      inp.classList.add('input-invalid');
+      return 'Phone must be ' + (min === max ? min : min+'–'+max) + ' digits for selected country.';
+    }
+  }
+  inp.classList.remove('input-invalid');
+  return null;
+}
+
+// ── FILE SIZE CHECK ────────────────────────────────────────────
+function checkFileSize(inputId, maxMB) {
+  const fi = document.getElementById(inputId);
+  return !(fi.files.length > 0 && fi.files[0].size > maxMB * 1024 * 1024);
+}
 
 updateProgress();
 </script>

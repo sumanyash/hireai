@@ -1,8 +1,13 @@
 <?php
+ob_start();
+if ($_SERVER["CONTENT_LENGTH"] > 20971520) { header("Content-Type: application/json"); echo json_encode(["success"=>false,"error"=>"File too large. Max 20MB allowed."]); exit; }
+error_reporting(E_ALL);
+ini_set("display_errors", 0);
+ini_set("log_errors", 1);
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') { echo json_encode(['success'=>false,'error'=>'Method not allowed']); exit; }
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') { ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Method not allowed']); exit; }
 
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/config.php';
@@ -10,12 +15,12 @@ require_once __DIR__ . '/../includes/functions.php';
 
 $raw  = file_get_contents('php://input');
 $data = json_decode($raw, true);
-if (!is_array($data)) { echo json_encode(['success'=>false,'error'=>'Invalid JSON']); exit; }
+if (!is_array($data)) { ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Invalid JSON']); exit; }
 
 function s($d,$k){ return isset($d[$k]) ? trim((string)$d[$k]) : ''; }
 
 if (!s($data,'phone') || !s($data,'email')) {
-    echo json_encode(['success'=>false,'error'=>'Missing required fields']); exit;
+    ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Missing required fields']); exit;
 }
 
 $campaign_id = (int)($data['campaign_id'] ?? 0);
@@ -26,12 +31,12 @@ $email       = s($data,'email');
 
 if ($campaign_id) {
     $dup = db_fetch_one("SELECT id FROM candidates WHERE email=? AND campaign_id=?",[$email,$campaign_id],'si');
-    if ($dup) { echo json_encode(['success'=>false,'error'=>'Already applied.','duplicate'=>true]); exit; }
+    if ($dup) { ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Already applied.','duplicate'=>true]); exit; }
 }
 
 $udir = __DIR__.'/../uploads/';
 @mkdir($udir.'resumes',0755,true);
-@mkdir($udir.'video',0755,true);
+@mkdir($udir.'videos',0755,true);
 $resume_path = '';
 $video_path  = '';
 
@@ -41,7 +46,7 @@ if (!empty($data['resume_base64']) && !empty($data['resume_name'])) {
         $ext = strtolower(pathinfo($data['resume_name'],PATHINFO_EXTENSION)) ?: 'pdf';
         $fn  = 'resume_'.time().'_'.bin2hex(random_bytes(4)).'.'.$ext;
         if (file_put_contents($udir.'resumes/'.$fn,$dec) !== false)
-            $resume_path = BASE_URL.'/uploads/resumes/'.$fn;
+            $resume_path = 'uploads/resumes/'.$fn;
     }
 }
 if (s($data,'video_option') === 'link') {
@@ -51,8 +56,8 @@ if (s($data,'video_option') === 'link') {
     if ($dec && strlen($dec) <= 50*1024*1024) {
         $ext = strtolower(pathinfo($data['video_name'] ?? 'v.mp4',PATHINFO_EXTENSION)) ?: 'mp4';
         $fn  = 'video_'.time().'_'.bin2hex(random_bytes(4)).'.'.$ext;
-        if (file_put_contents($udir.'video/'.$fn,$dec) !== false)
-            $video_path = BASE_URL.'/uploads/video/'.$fn;
+        if (file_put_contents($udir.'videos/'.$fn,$dec) !== false)
+            $video_path = 'uploads/videos/'.$fn;
     }
 }
 
@@ -100,9 +105,9 @@ try {
     if (!$stmt) throw new Exception('Prepare: '.$db->error);
 
     $types = '';
-    foreach ($vals as $val) {
-        if (is_int($val))       $types .= 'i';
-        elseif (is_float($val)) $types .= 'd';
+    foreach ($vals as $v) {
+        if (is_int($v))       $types .= 'i';
+        elseif (is_float($v)) $types .= 'd';
         else                  $types .= 's';
     }
 
@@ -111,7 +116,11 @@ try {
     $cid = $db->insert_id;
     $stmt->close();
 
-    // outreach logged in WA block below
+    // Applied log
+    if ($campaign_id && $cid) {
+        $lg = $db->prepare("INSERT INTO outreach_log (candidate_id,campaign_id,channel,status) VALUES (?,?,'whatsapp','sent')");
+        if ($lg) { $lg->bind_param('ii',$cid,$campaign_id); $lg->execute(); $lg->close(); }
+    }
 
     // ── AUTO WHATSAPP + outreach_sent ─────────────────────────
     $wa_sent = false;
@@ -150,7 +159,7 @@ try {
     }
     // ─────────────────────────────────────────────────────────
 
-    echo json_encode([
+    ob_end_clean(); echo json_encode([
         'success'         => true,
         'candidate_id'    => $cid,
         'wa_sent'         => $wa_sent,
@@ -159,5 +168,5 @@ try {
 
 } catch(Exception $e) {
     error_log('[apply] '.$e->getMessage());
-    echo json_encode(['success'=>false,'error'=>$e->getMessage()]);
+    ob_end_clean(); echo json_encode(['success'=>false,'error'=>$e->getMessage()]);
 }

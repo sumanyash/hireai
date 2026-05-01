@@ -14,6 +14,6 @@ $fname='session_'.$c['id'].'_'.time().'.webm';
 $fpath=$dir.$fname;
 $url=BASE_URL.'/uploads/video/'.$fname;
 if(move_uploaded_file($_FILES['video']['tmp_name'],$fpath)){
-  if($sid)db_execute("UPDATE interview_sessions SET recording_url=? WHERE id=?",[$url,$sid],'si');
+  if($sid){db_execute("UPDATE interview_sessions SET recording_url=? WHERE id=?",[$url,$sid],"si");}else{db_execute("UPDATE interview_sessions SET recording_url=? WHERE candidate_id=? ORDER BY id DESC LIMIT 1",[$url,$c["id"]],"si");}
   echo json_encode(['url'=>$url,'filename'=>$fname]);
 }else{echo json_encode(['error'=>'Upload failed - check permissions']);}

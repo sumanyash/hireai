@@ -772,7 +772,7 @@ async function finishInterview() {
 async function uploadVideo() {
   if (!videoChunks.length) return;
   const blob = new Blob(videoChunks, { type: 'video/webm' });
-  if (blob.size > 250 * 1024 * 1024) return;
+  if (blob.size > 20 * 1024 * 1024) return;
   const fd = new FormData();
   fd.append('video', blob, 'session_' + TOKEN + '.webm');
   fd.append('token', TOKEN);

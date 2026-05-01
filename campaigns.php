@@ -16,23 +16,33 @@ function options_to_json($value) {
     return empty($items) ? null : json_encode($items);
 }
 
+function campaign_apply_link($campaign) {
+    $token = $campaign['share_token'] ?? '';
+    return BASE_URL . '/apply.php?' . ($token ? 'c=' . urlencode($token) : 'campaign_id=' . (int)$campaign['id']);
+}
+
 // ─── POST HANDLERS ────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf_or_die();
     if ($action === 'save') {
+        $share_token = bin2hex(random_bytes(12));
+        $start_date = trim($_POST['start_date'] ?? '') ?: null;
+        $end_date = trim($_POST['end_date'] ?? '') ?: null;
         $id = db_insert(
-            "INSERT INTO campaigns (org_id,created_by,name,job_role,description,el_agent_id,passing_score,num_questions,language,status) VALUES (?,?,?,?,?,?,?,?,?,'draft')",
-            [$user['org_id'],$user['user_id'],$_POST['name'],$_POST['job_role'],$_POST['description'],$_POST['el_agent_id'],(int)$_POST['passing_score'],(int)$_POST['num_questions'],$_POST['language']],
-            'iissssiis'
+            "INSERT INTO campaigns (org_id,created_by,name,job_role,description,share_token,start_date,end_date,el_agent_id,passing_score,num_questions,language,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'draft')",
+            [$user['org_id'],$user['user_id'],$_POST['name'],$_POST['job_role'],$_POST['description'],$share_token,$start_date,$end_date,$_POST['el_agent_id'],(int)$_POST['passing_score'],(int)$_POST['num_questions'],$_POST['language']],
+            'iisssssssiis'
         );
         audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $id, 'campaign_created');
         header("Location: campaigns.php?action=questions&id=$id&msg=created"); exit;
     }
     if ($action === 'edit_save') {
+        $start_date = trim($_POST['start_date'] ?? '') ?: null;
+        $end_date = trim($_POST['end_date'] ?? '') ?: null;
         db_execute(
-            "UPDATE campaigns SET name=?,job_role=?,description=?,el_agent_id=?,passing_score=?,num_questions=?,language=? WHERE id=? AND org_id=?",
-            [$_POST['name'],$_POST['job_role'],$_POST['description'],$_POST['el_agent_id'],(int)$_POST['passing_score'],(int)$_POST['num_questions'],$_POST['language'],$campaign_id,$user['org_id']],
-            'ssssiisii'
+            "UPDATE campaigns SET name=?,job_role=?,description=?,start_date=?,end_date=?,el_agent_id=?,passing_score=?,num_questions=?,language=?,share_token=COALESCE(share_token, ?) WHERE id=? AND org_id=?",
+            [$_POST['name'],$_POST['job_role'],$_POST['description'],$start_date,$end_date,$_POST['el_agent_id'],(int)$_POST['passing_score'],(int)$_POST['num_questions'],$_POST['language'],bin2hex(random_bytes(12)),$campaign_id,$user['org_id']],
+            'ssssssiissii'
         );
         audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'campaign_updated');
         header("Location: campaigns.php?action=questions&id=$campaign_id&msg=updated"); exit;
@@ -51,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: campaigns.php?action=questions&id=$campaign_id&msg=question_added"); exit;
     }
     if ($action === 'activate') {
-        db_execute("UPDATE campaigns SET status='active' WHERE id=? AND org_id=?", [$campaign_id,$user['org_id']], 'ii');
+        db_execute("UPDATE campaigns SET status='active', share_token=COALESCE(share_token, ?) WHERE id=? AND org_id=?", [bin2hex(random_bytes(12)),$campaign_id,$user['org_id']], 'sii');
         audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'campaign_activated');
         header("Location: campaigns.php?msg=activated"); exit;
     }
@@ -102,6 +112,7 @@ $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign
       <tbody>
         <?php foreach ($campaigns as $c): ?>
         <tr>
+          <?php $applyLink = campaign_apply_link($c); ?>
           <td><strong><?= htmlspecialchars($c['name']) ?></strong><br><small style="color:#8892A4"><?= date('d M Y', strtotime($c['created_at'])) ?></small></td>
           <td><?= htmlspecialchars($c['job_role']) ?></td>
           <td><small style="font-family:monospace;color:#0066FF"><?= $c['el_agent_id'] ? substr($c['el_agent_id'],0,20).'...' : '<span style="color:#dc3545">Not set</span>' ?></small></td>
@@ -112,6 +123,8 @@ $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign
             <a href="campaigns.php?action=edit&id=<?= $c['id'] ?>" class="btn-sm">✏️ Edit</a>
             <a href="campaigns.php?action=questions&id=<?= $c['id'] ?>" class="btn-sm">Questions</a>
             <a href="candidates.php?campaign_id=<?= $c['id'] ?>" class="btn-sm">Leads</a>
+            <button type="button" class="btn-sm" onclick="copyCampaignLink(<?= htmlspecialchars(json_encode($applyLink), ENT_QUOTES, 'UTF-8') ?>)">Copy Link</button>
+            <a href="https://wa.me/?text=<?= urlencode('Apply here: ' . $applyLink) ?>" target="_blank" rel="noopener" class="btn-sm" style="color:#16A34A;border-color:#16A34A40;background:#16A34A10">WhatsApp</a>
             <?php if ($c['status'] !== 'active'): ?>
               <form method="POST" action="campaigns.php?action=activate&id=<?= $c['id'] ?>" style="display:inline">
                 <?= csrf_input() ?>
@@ -150,6 +163,16 @@ $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign
       <div class="form-group">
         <label class="form-label">Description</label>
         <textarea name="description" class="form-control"><?= htmlspecialchars($campaign['description'] ?? '') ?></textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="form-group">
+          <label class="form-label">Start Date</label>
+          <input type="date" name="start_date" class="form-control" value="<?= htmlspecialchars($campaign['start_date'] ?? '') ?>">
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Date</label>
+          <input type="date" name="end_date" class="form-control" value="<?= htmlspecialchars($campaign['end_date'] ?? '') ?>">
+        </div>
       </div>
 
       <!-- ElevenLabs Agent Selector -->
@@ -215,6 +238,7 @@ $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign
   </script>
 
 <?php elseif ($action === 'questions' && $campaign): ?>
+  <?php $applyLink = campaign_apply_link($campaign); ?>
   <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
     <div>
       <h2><?= htmlspecialchars($campaign['name']) ?></h2>
@@ -225,8 +249,18 @@ $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign
       </p>
     </div>
     <div style="display:flex;gap:8px">
+      <button type="button" onclick="copyCampaignLink(<?= htmlspecialchars(json_encode($applyLink), ENT_QUOTES, 'UTF-8') ?>)" class="btn-green">Copy Apply Link</button>
+      <a href="https://wa.me/?text=<?= urlencode('Apply here: ' . $applyLink) ?>" target="_blank" rel="noopener" class="btn-sm" style="color:#16A34A;border-color:#16A34A40;background:#16A34A10">Share WA</a>
       <a href="campaigns.php?action=edit&id=<?= $campaign_id ?>" class="btn-sm">✏️ Edit</a>
       <a href="campaigns.php" class="btn-sm">← Back</a>
+    </div>
+  </div>
+
+  <div class="card" style="padding:16px 18px">
+    <div style="font-size:12px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Public Apply Link</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <code style="flex:1;min-width:260px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:9px 12px;color:#2563EB;word-break:break-all"><?= htmlspecialchars($applyLink) ?></code>
+      <a class="btn-sm" href="<?= htmlspecialchars($applyLink) ?>" target="_blank" rel="noopener">Preview</a>
     </div>
   </div>
 
@@ -358,6 +392,16 @@ $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign
 
 <?php endif; ?>
 </div>
+<script>
+async function copyCampaignLink(link) {
+  try {
+    await navigator.clipboard.writeText(link);
+    alert('Campaign apply link copied');
+  } catch (e) {
+    prompt('Copy campaign apply link', link);
+  }
+}
+</script>
 <?php include __DIR__ . '/includes/footer.php'; ?>
 </body>
 </html>

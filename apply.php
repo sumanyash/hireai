@@ -6,7 +6,7 @@
  * 
  * Usage:
  *   - ?campaign_id=123 (direct campaign ID)
- *   - ?t=unique_token (campaign token)
+ *   - ?c=share_token (public campaign share token)
  */
 
 require_once __DIR__ . '/includes/db.php';
@@ -14,7 +14,7 @@ require_once __DIR__ . '/includes/config.php';
 
 // Get campaign from ID or token
 $campaign_id = (int)($_GET['campaign_id'] ?? 0);
-$token       = trim($_GET['t'] ?? '');
+$token       = trim($_GET['c'] ?? $_GET['t'] ?? '');
 $ref_token   = trim($_GET['ref'] ?? '');
 $referrer    = null;
 if ($ref_token !== '') {
@@ -31,7 +31,7 @@ if ($campaign_id) {
     );
 } elseif ($token) {
     $campaign = db_fetch_one(
-        "SELECT * FROM campaigns WHERE unique_token=? AND status='active'",
+        "SELECT * FROM campaigns WHERE share_token=? AND status='active'",
         [$token],
         's'
     );

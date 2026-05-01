@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS campaigns (
     name VARCHAR(255) NOT NULL,
     job_role VARCHAR(255),
     description TEXT,
+    share_token VARCHAR(64) UNIQUE,
+    start_date DATE NULL,
+    end_date DATE NULL,
     el_agent_id VARCHAR(150),
     passing_score INT DEFAULT 70,
     max_duration_minutes INT DEFAULT 15,
@@ -174,6 +177,10 @@ ALTER TABLE questions ADD COLUMN IF NOT EXISTS question_type ENUM('text','textar
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS options_json JSON NULL;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS branch_rules_json JSON NULL;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS is_required TINYINT DEFAULT 1;
+
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS share_token VARCHAR(64) UNIQUE;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS start_date DATE NULL;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS end_date DATE NULL;
 
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS salutation VARCHAR(20);
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS dob DATE NULL;

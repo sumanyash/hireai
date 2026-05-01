@@ -5,6 +5,29 @@ header('Content-Type: application/json');
 
 $action = $_GET['action'] ?? '';
 
+if ($action === 'whatsapp_status') {
+    $user = verify_jwt();
+    if (!$user) { json_response(['error' => 'Unauthorized'], 401); }
+    json_response([
+        'configured' => [
+            'WA_API_URL' => WA_API_URL !== '',
+            'WA_INSTANCE_ID' => WA_INSTANCE_ID !== '',
+            'WA_TOKEN' => WA_TOKEN !== '',
+        ],
+        'api_url_host' => WA_API_URL ? parse_url(WA_API_URL, PHP_URL_HOST) : null,
+    ]);
+}
+
+if ($action === 'send_test') {
+    $user = verify_jwt();
+    if (!$user) { json_response(['error' => 'Unauthorized'], 401); }
+    $phone = trim($_GET['phone'] ?? '');
+    if ($phone === '') json_response(['error' => 'phone required'], 400);
+    $result = send_whatsapp($phone, "HireAI WhatsApp test message\n\nIf you received this, WhatsApp is configured correctly.");
+    $ok = ($result['code'] >= 200 && $result['code'] < 300);
+    json_response(['success' => $ok, 'provider' => $result], $ok ? 200 : 502);
+}
+
 if ($action === 'send_single') {
     $user = verify_jwt();
     if (!$user) { json_response(['error' => 'Unauthorized'], 401); }
@@ -20,7 +43,7 @@ if ($action === 'send_single') {
     $status = ($result['code'] >= 200 && $result['code'] < 300) ? 'sent' : 'failed';
     db_execute("INSERT INTO outreach_log (candidate_id,campaign_id,channel,status) VALUES (?,?,'whatsapp',?)", [$candidate_id, $c['campaign_id'], $status], 'iis');
     if ($status === 'sent') db_execute("UPDATE candidates SET status='outreach_sent' WHERE id=?", [$candidate_id], 'i');
-    json_response(['status' => $status, 'message' => "WhatsApp $status to {$c['phone']}"]);
+    json_response(['status' => $status, 'message' => "WhatsApp $status to {$c['phone']}", 'provider' => $result]);
 }
 
 if ($action === 'bulk_send') {

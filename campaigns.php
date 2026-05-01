@@ -58,6 +58,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 if ($action === 'delete_question' && $campaign_id) {
+    $sent = $_GET['csrf_token'] ?? '';
+    if (!$sent || !hash_equals(csrf_token(), $sent)) {
+        http_response_code(419);
+        exit('Invalid security token. Please refresh and try again.');
+    }
     $qid = (int)$_GET['qid'];
     db_execute("DELETE FROM questions WHERE id=? AND campaign_id=?", [$qid,$campaign_id], 'ii');
     header("Location: campaigns.php?action=questions&id=$campaign_id"); exit;
@@ -258,7 +263,7 @@ $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign
           <td style="font-size:12px;color:#64748B">
             <?= !empty($q['branch_rules_json']) ? 'Branching' : 'Linear' ?>
           </td>
-          <td><a href="campaigns.php?action=delete_question&id=<?= $campaign_id ?>&qid=<?= $q['id'] ?>" class="btn-danger" style="font-size:12px" onclick="return confirm('Delete?')">🗑</a></td>
+          <td><a href="campaigns.php?action=delete_question&id=<?= $campaign_id ?>&qid=<?= $q['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" class="btn-danger" style="font-size:12px" onclick="return confirm('Delete?')">🗑</a></td>
         </tr>
         <?php endforeach; ?>
       </tbody>

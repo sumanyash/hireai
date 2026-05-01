@@ -15,6 +15,12 @@ require_once __DIR__ . '/includes/config.php';
 // Get campaign from ID or token
 $campaign_id = (int)($_GET['campaign_id'] ?? 0);
 $token       = trim($_GET['t'] ?? '');
+$ref_token   = trim($_GET['ref'] ?? '');
+$referrer    = null;
+if ($ref_token !== '') {
+    $referrer = db_fetch_one("SELECT id,campaign_id FROM candidates WHERE unique_token=?", [$ref_token], 's');
+    if (!$campaign_id && $referrer) $campaign_id = (int)$referrer['campaign_id'];
+}
 
 $campaign = null;
 if ($campaign_id) {
@@ -1064,12 +1070,10 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     </div>
     <h2>Application Submitted! 🎉</h2>
     <p>Thank you for applying to <?=htmlspecialchars($org_name)?>. Our team will review your application and contact you shortly.</p>
-    <?php if($campaign && !empty($campaign['unique_token'])):?>
-    <a href="<?= defined('INTERVIEW_URL') ? INTERVIEW_URL.'?t='.$campaign['unique_token'] : '#' ?>" class="ai-link">
+    <a href="#" id="aiInterviewLink" class="ai-link" style="display:none">
       <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
       Begin AI Interview Test
     </a>
-    <?php endif;?>
   </div>
 </div><!-- container -->
 
@@ -1077,6 +1081,8 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
 const TOTAL = 9;
 let currentSection = 1;
 const CAMPAIGN_ID = <?=$campaign_id?>;
+const REF_TOKEN = <?= json_encode($ref_token) ?>;
+const INTERVIEW_URL_PUBLIC = <?= json_encode(defined('INTERVIEW_URL') ? INTERVIEW_URL : '/interview.php') ?>;
 
 function gotoSection(id) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -1416,6 +1422,7 @@ async function submitForm() {
       video_option: g('videoOption'),
       video_link: g('videoLinkInput'),
       ai_test_willing: g('aiTestWilling'),
+      ref_token: REF_TOKEN,
       timestamp: new Date().toISOString()
     };
     
@@ -1445,6 +1452,11 @@ async function submitForm() {
     
     const d = await res.json();
     if (!d.success) throw new Error(d.error || 'Submit failed');
+    if (d.interview_token) {
+      const link = document.getElementById('aiInterviewLink');
+      link.href = INTERVIEW_URL_PUBLIC + '?t=' + encodeURIComponent(d.interview_token);
+      link.style.display = 'inline-flex';
+    }
     
   } catch (err) {
     console.error(err);

@@ -198,6 +198,9 @@ $toast         = $_GET['toast'] ?? '';
   <button onclick="openStatusModal()" class="btn-primary" style="padding:8px 16px;font-size:13px">
     <i class="fa-solid fa-pen fa-sm"></i> Update Status
   </button>
+  <button onclick="scheduleReminder()" class="btn-green" style="padding:8px 16px;font-size:13px">
+    <i class="fa-solid fa-bell fa-sm"></i> Reminder
+  </button>
   <a href="export_candidate.php?id=<?= $c['id'] ?>" target="_blank" class="btn-primary" style="padding:8px 16px;font-size:13px;background:linear-gradient(135deg,#6B21A8,#7C3AED);text-decoration:none">
     <i class="fa-solid fa-file-export fa-sm"></i> Export PDF
   </a>
@@ -731,6 +734,22 @@ async function saveStatus() {
       btn.disabled = false;
       btn.innerHTML = '<i class="fa-solid fa-floppy-disk fa-sm"></i> Save';
     }
+  } catch (e) {
+    showToast('Network error', 'error');
+  }
+}
+
+async function scheduleReminder() {
+  showToast('Scheduling reminder...', 'info');
+  try {
+    const r = await fetch('/api/reminders.php?action=schedule', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidate_id: <?= $c['id'] ?>, hours: 24 })
+    });
+    const d = await r.json();
+    if (d.success) showToast(d.message || 'Reminder scheduled', 'success');
+    else showToast('Error: ' + (d.error || 'Reminder failed'), 'error');
   } catch (e) {
     showToast('Network error', 'error');
   }

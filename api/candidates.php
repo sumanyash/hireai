@@ -2,8 +2,9 @@
 require_once __DIR__ . '/../includes/functions.php';
 header('Content-Type: application/json');
 
-// Allow CORS for same-origin AJAX
-header('Access-Control-Allow-Origin: *');
+if (!empty($_SERVER['HTTP_ORIGIN']) && rtrim($_SERVER['HTTP_ORIGIN'], '/') === BASE_URL) {
+    header('Access-Control-Allow-Origin: ' . $_SERVER['HTTP_ORIGIN']);
+}
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
@@ -188,11 +189,15 @@ if ($action === 'delete' && $method === 'POST') {
 if ($action === 'update_status' && $method === 'POST') {
     $candidate_id = (int)($input['candidate_id'] ?? 0);
     $status       = trim($input['status'] ?? '');
+    $notes        = trim($input['notes'] ?? '');
     $allowed      = ['pending','outreach_sent','interview_started','interview_completed','shortlisted','rejected','on_hold'];
     if (!$candidate_id || !in_array($status, $allowed)) json_response(['error' => 'Invalid request'], 400);
     $c = db_fetch_one("SELECT id FROM candidates WHERE id=? AND org_id=?", [$candidate_id, $user['org_id']], 'ii');
     if (!$c) json_response(['error' => 'Not found'], 404);
     db_execute("UPDATE candidates SET status=? WHERE id=?", [$status, $candidate_id], 'si');
+    if ($notes !== '') {
+        db_insert("INSERT INTO recruiter_notes (candidate_id,user_id,note) VALUES (?,?,?)", [$candidate_id, $user['user_id'] ?? 0, $notes], 'iis');
+    }
     audit_log($user['org_id'], $user['user_id'] ?? null, 'candidate', $candidate_id, 'status_updated', ['status' => $status]);
     json_response(['success' => true]);
 }

@@ -4,13 +4,16 @@ if ($_SERVER["CONTENT_LENGTH"] > 20971520) { header("Content-Type: application/j
 error_reporting(E_ALL);
 ini_set("display_errors", 0);
 ini_set("log_errors", 1);
+require_once __DIR__ . '/../includes/config.php';
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
+if (!empty($_SERVER['HTTP_ORIGIN'])) {
+    $origin = rtrim($_SERVER['HTTP_ORIGIN'], '/');
+    if ($origin === BASE_URL) header('Access-Control-Allow-Origin: ' . $_SERVER['HTTP_ORIGIN']);
+}
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Method not allowed']); exit; }
 
 require_once __DIR__ . '/../includes/db.php';
-require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/functions.php';
 
 $raw  = file_get_contents('php://input');
@@ -28,6 +31,14 @@ $campaign_id = $campaign_id ?: (int)((db_fetch_one("SELECT id FROM campaigns WHE
 $campaign    = $campaign_id ? db_fetch_one("SELECT * FROM campaigns WHERE id=?",[$campaign_id],'i') : null;
 $org_id      = $campaign ? (int)$campaign['org_id'] : 1;
 $email       = s($data,'email');
+$ref_token   = s($data,'ref_token');
+$referred_by_candidate_id = null;
+if ($ref_token !== '') {
+    $referrer = db_fetch_one("SELECT id,campaign_id FROM candidates WHERE unique_token=?", [$ref_token], 's');
+    if ($referrer && (!$campaign_id || (int)$referrer['campaign_id'] === $campaign_id)) {
+        $referred_by_candidate_id = (int)$referrer['id'];
+    }
+}
 
 if ($campaign_id) {
     $dup = db_fetch_one("SELECT id FROM candidates WHERE email=? AND campaign_id=?",[$email,$campaign_id],'si');
@@ -80,7 +91,7 @@ try {
         'exp_type','exp_desc','current_salary','expected_salary',
         'tenure','joining_date','flex_hours','laptop','internet',
         'commute','tech_skills','soft_skills',
-        'resume_path','video_path','portfolio','ai_test_willing'
+        'resume_path','video_path','portfolio','ai_test_willing','referred_by_candidate_id'
     ];
 
     $vals = [
@@ -94,7 +105,7 @@ try {
         s($data,'exp_type'), s($data,'exp_desc'), s($data,'current_salary'), s($data,'expected_salary'),
         s($data,'tenure'), $jd, s($data,'flex_hours'), s($data,'laptop'), s($data,'internet'),
         s($data,'commute'), s($data,'tech_skills'), s($data,'soft_skills'),
-        $resume_path, $video_path, s($data,'portfolio'), s($data,'ai_test_willing'),
+        $resume_path, $video_path, s($data,'portfolio'), s($data,'ai_test_willing'), $referred_by_candidate_id,
     ];
 
     $placeholders = implode(',', array_fill(0, count($cols), '?'));

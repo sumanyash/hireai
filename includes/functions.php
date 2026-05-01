@@ -71,6 +71,15 @@ function audit_log($org_id, $user_id, $entity_type, $entity_id, $action, $detail
 }
 
 function send_whatsapp($phone, $message) {
+    if (!WA_API_URL || !WA_INSTANCE_ID || !WA_TOKEN) {
+        $missing = [];
+        if (!WA_API_URL) $missing[] = 'WA_API_URL';
+        if (!WA_INSTANCE_ID) $missing[] = 'WA_INSTANCE_ID';
+        if (!WA_TOKEN) $missing[] = 'WA_TOKEN';
+        $error = 'WhatsApp config missing: ' . implode(', ', $missing);
+        error_log('[send_whatsapp] ' . $error);
+        return ['code' => 0, 'response' => $error, 'error' => $error];
+    }
     $phone = preg_replace('/[^0-9]/', '', $phone);
     if (strlen($phone) == 10) $phone = '91' . $phone;
     $payload = json_encode(['instanceId'=>WA_INSTANCE_ID,'accessToken'=>WA_TOKEN,'to'=>$phone,'content'=>['text'=>$message]]);
@@ -81,9 +90,13 @@ function send_whatsapp($phone, $message) {
         CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_SSL_VERIFYPEER => false
     ]);
     $resp = curl_exec($ch);
+    $err = curl_error($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-    return ['code' => $code, 'response' => $resp];
+    if ($err || $code < 200 || $code >= 300) {
+        error_log('[send_whatsapp] code=' . $code . ' phone=' . $phone . ' curl_error=' . $err . ' response=' . substr((string)$resp, 0, 500));
+    }
+    return ['code' => $code, 'response' => $resp, 'error' => $err];
 }
 
 function call_openai($prompt, $max_tokens = 400) {

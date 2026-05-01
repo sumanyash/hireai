@@ -513,7 +513,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 <script>
 const TOKEN   = <?= json_encode($token) ?>;
 const QUESTIONS = <?= json_encode(array_values($questions)) ?>;
-const CAMPAIGN_LINK = <?= json_encode(INTERVIEW_URL . '?ref=' . ($candidate['unique_token'] ?? '')) ?>;
+const CAMPAIGN_LINK = <?= json_encode(BASE_URL . '/apply.php?campaign_id=' . (int)$candidate['campaign_id'] . '&ref=' . ($candidate['unique_token'] ?? '')) ?>;
 const SHARE_TEXT = <?= json_encode('I just completed my HireAI interview. You can apply using this campaign link: ') ?> + CAMPAIGN_LINK;
 const TIMER_S = 180;
 const CIRC    = 2 * Math.PI * 22; // SVG arc length ≈ 138.2

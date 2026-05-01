@@ -20,7 +20,7 @@ $candidates = db_fetch_all(
      LEFT JOIN campaigns camp ON c.campaign_id=camp.id
      LEFT JOIN interview_results ir ON c.id=ir.candidate_id
      WHERE $where ORDER BY c.created_at DESC",
-    [$params], $types
+    $params, $types
 );
 $total = count($candidates);
 $status_counts = [];
@@ -158,6 +158,9 @@ foreach ($candidates as $c) $status_counts[$c['status']] = ($status_counts[$c['s
     <button onclick="openAddModal()" class="btn-primary" style="padding:10px 22px;font-size:14px;white-space:nowrap">
       <i class="fa-solid fa-plus fa-sm"></i> Add Candidate
     </button>
+    <a href="export_candidates.php?<?= http_build_query(['campaign_id'=>$sel_campaign ?: null,'status'=>($_GET['status'] ?? '') !== 'all' ? ($_GET['status'] ?? '') : null]) ?>" class="btn-outline" style="padding:10px 18px;font-size:14px;white-space:nowrap;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18);color:#fff">
+      <i class="fa-solid fa-file-csv fa-sm"></i> Export CSV
+    </a>
   </div>
 </div>
 
@@ -349,6 +352,10 @@ $active_status = $_GET['status'] ?? 'all';
           </div>
         </div>
         <div class="field-group">
+          <label class="field-label">Expected CTC</label>
+          <input class="field-input" type="text" id="addExpectedCtc" placeholder="8 LPA">
+        </div>
+        <div class="field-group">
           <label class="field-label">Source</label>
           <select class="field-input" id="addSource">
             <option value="">Select source...</option>
@@ -381,7 +388,14 @@ $active_status = $_GET['status'] ?? 'all';
 Jane Smith, +91 9123456789
 Ravi Kumar, , ravi@email.com"></textarea>
           <div class="bulk-hint">
-            <strong>Format:</strong> Name, Phone, Email (one per line) &nbsp;|&nbsp; Phone & Email are optional
+            <strong>Quick paste:</strong> Name, Phone, Email (one per line) &nbsp;|&nbsp; Phone & Email are optional
+          </div>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Or Upload CSV</label>
+          <input class="field-input" type="file" id="bulkCsvFile" accept=".csv,text/csv">
+          <div class="bulk-hint">
+            <strong>CSV headers:</strong> First Name, Last Name, Phone Code, Phone Number, Email, City, Experience, Current CTC, Expected CTC
           </div>
         </div>
         <div class="add-btn-row">
@@ -462,6 +476,7 @@ async function submitAdd() {
         city: document.getElementById('addCity').value.trim(),
         experience_years: document.getElementById('addExp').value.trim(),
         current_ctc: document.getElementById('addCtc').value.trim(),
+        expected_ctc: document.getElementById('addExpectedCtc').value.trim(),
         source: document.getElementById('addSource').value,
       })
     });
@@ -484,25 +499,28 @@ async function submitAdd() {
 async function submitBulk() {
   const camp = document.getElementById('bulkCampaign').value;
   const raw  = document.getElementById('bulkData').value.trim();
+  const file = document.getElementById('bulkCsvFile').files[0];
   if (!camp) { showToast('Please select a campaign', 'error'); return; }
-  if (!raw)  { showToast('Please paste candidate data', 'error'); return; }
+  if (!raw && !file)  { showToast('Paste candidate data or upload a CSV', 'error'); return; }
 
-  const rows = raw.split('\n').map(line => {
+  let rows = raw ? raw.split('\n').map(line => {
     const p = line.split(',').map(s => s.trim());
     return { name: p[0] || '', phone: p[1] || '', email: p[2] || '' };
-  }).filter(r => r.name);
+  }).filter(r => r.name) : [];
 
-  if (!rows.length) { showToast('No valid rows found', 'error'); return; }
+  let csvText = '';
+  if (file) csvText = await file.text();
+  if (!rows.length && !csvText.trim()) { showToast('No valid rows found', 'error'); return; }
 
   const btn = document.getElementById('bulkSubmitBtn');
   btn.disabled = true;
-  btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin fa-xs"></i> Importing ${rows.length}...`;
+  btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin fa-xs"></i> Importing...`;
 
   try {
     const r = await fetch('/api/candidates.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'bulk_import', campaign_id: parseInt(camp), rows })
+      body: JSON.stringify({ action: 'bulk_import', campaign_id: parseInt(camp), rows, csv_text: csvText })
     });
     const d = await r.json();
     if (d.success) {

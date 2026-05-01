@@ -20,18 +20,19 @@ $notes_db  = db_fetch_all(
     [$id], 'i'
 );
 $answers   = db_fetch_all(
-    "SELECT ia.*, iq.question_text, iq.question_number
-     FROM interview_answers ia LEFT JOIN interview_questions iq ON ia.question_id=iq.id
-     WHERE ia.candidate_id=? ORDER BY iq.question_number ASC",
+    "SELECT ia.*, q.question_text, q.order_no AS question_number
+     FROM interview_answers ia LEFT JOIN questions q ON ia.question_id=q.id
+     WHERE ia.candidate_id=? ORDER BY q.order_no ASC, ia.id ASC",
     [$id], 'i'
 );
 $questions = db_fetch_all(
-    "SELECT * FROM interview_questions WHERE campaign_id=? ORDER BY question_number ASC",
+    "SELECT *, order_no AS question_number FROM questions WHERE campaign_id=? ORDER BY order_no ASC",
     [$c['campaign_id']], 'i'
 );
 
 // Handle POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf_or_die();
     if (isset($_POST['add_note'])) {
         db_insert("INSERT INTO recruiter_notes (candidate_id,user_id,note) VALUES (?,?,?)",
             [$id, $user['user_id'], $_POST['note']], 'iis');
@@ -269,6 +270,7 @@ $toast         = $_GET['toast'] ?? '';
         <i class="fa-solid fa-bolt fa-xs"></i> Override Score
       </div>
       <form method="POST" style="display:flex;gap:6px;align-items:flex-end">
+        <?= csrf_input() ?>
         <input type="number" name="override_score" class="form-control"
           style="width:70px;padding:7px 10px;font-size:13px"
           placeholder="Score" min="0" max="100" value="<?= $result['recruiter_override_score'] ?? '' ?>">
@@ -542,6 +544,7 @@ $toast         = $_GET['toast'] ?? '';
         <h3><i class="fa-solid fa-note-sticky" style="color:var(--orange)"></i> Recruiter Notes</h3>
       </div>
       <form method="POST" style="display:flex;gap:8px;margin-bottom:16px">
+        <?= csrf_input() ?>
         <input type="text" name="note" class="form-control" placeholder="Add a note about this candidate..." required>
         <button type="submit" name="add_note" class="btn-primary" style="white-space:nowrap;padding:10px 18px">
           <i class="fa-solid fa-plus fa-sm"></i> Add

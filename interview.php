@@ -159,6 +159,17 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 }
 .text-answer:focus{border-color:var(--blue);background:rgba(37,99,235,.05)}
 .text-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px}
+.dynamic-answer{display:flex;flex-direction:column;gap:10px}
+.dynamic-answer input,.dynamic-answer select{
+  width:100%;background:rgba(255,255,255,.03);border:1.5px solid var(--border);
+  border-radius:10px;color:var(--text);padding:13px 14px;font-size:14px;outline:none;font-family:inherit;
+}
+.dynamic-answer select option{color:#111827}
+.choice-list{display:flex;flex-direction:column;gap:8px}
+.choice-item{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;color:var(--text)}
+.share-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px}
+.share-btn{border:none;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer;color:#fff;display:inline-flex;align-items:center;gap:7px;text-decoration:none}
+.share-wa{background:#16A34A}.share-mail{background:#2563EB}.share-copy{background:#7C3AED}
 
 /* ══ NEXT BUTTON ═════════════════════════════════════════════════════════════ */
 .btn-next{
@@ -423,7 +434,9 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 
           <!-- TEXT PANEL -->
           <div id="text-panel" style="display:none">
-            <textarea class="text-answer" id="text-answer" placeholder="Type your answer here…" maxlength="2000"></textarea>
+            <div id="dynamic-answer" class="dynamic-answer">
+              <textarea class="text-answer" id="text-answer" placeholder="Type your answer here…" maxlength="2000"></textarea>
+            </div>
             <div class="text-meta">
               <span id="char-count">0 / 2000</span>
               <span id="paste-warn" style="color:var(--orange);display:none">⚠️ Paste detected</span>
@@ -486,6 +499,11 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
       You will receive a <strong>WhatsApp message</strong> from our team shortly.
     </div>
     <div class="done-badge">✅ Responses Submitted</div>
+    <div class="share-row">
+      <a id="share-wa" class="share-btn share-wa" target="_blank" rel="noopener">WhatsApp</a>
+      <a id="share-mail" class="share-btn share-mail">Email</a>
+      <button class="share-btn share-copy" onclick="copyReferral()">Copy Link</button>
+    </div>
     <div class="powered-by">Powered by <strong>HireAI</strong> — Avyukta Intellicall</div>
   </div>
 </div>
@@ -493,8 +511,10 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 <?php endif; ?>
 
 <script>
-const TOKEN   = '<?= addslashes($token) ?>';
+const TOKEN   = <?= json_encode($token) ?>;
 const QUESTIONS = <?= json_encode(array_values($questions)) ?>;
+const CAMPAIGN_LINK = <?= json_encode(INTERVIEW_URL . '?ref=' . ($candidate['unique_token'] ?? '')) ?>;
+const SHARE_TEXT = <?= json_encode('I just completed my HireAI interview. You can apply using this campaign link: ') ?> + CAMPAIGN_LINK;
 const TIMER_S = 180;
 const CIRC    = 2 * Math.PI * 22; // SVG arc length ≈ 138.2
 
@@ -591,8 +611,11 @@ function loadQuestion(index) {
   document.getElementById('char-count').textContent = '0 / 2000';
   document.getElementById('audio-preview').style.display = 'none';
   document.getElementById('paste-warn').style.display = 'none';
+  renderDynamicAnswer(q);
   audioChunks = [];
   if (isRecording) stopRecording();
+  const type = q.question_type || 'textarea';
+  if (['dropdown','multi_select','number','decimal','date','text','hyperlink','file'].includes(type)) switchTab('text');
 
   // Next / Submit label
   const isLast = index === QUESTIONS.length - 1;
@@ -611,6 +634,74 @@ function loadQuestion(index) {
     updateTimer();
     if (timeLeft <= 0) { clearInterval(timerInt); logCheat('Time expired'); nextQuestion(); }
   }, 1000);
+}
+
+function parseQuestionOptions(q) {
+  try {
+    if (!q.options_json) return [];
+    const parsed = typeof q.options_json === 'string' ? JSON.parse(q.options_json) : q.options_json;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch(e) { return []; }
+}
+
+function renderDynamicAnswer(q) {
+  const wrap = document.getElementById('dynamic-answer');
+  const type = q.question_type || 'textarea';
+  const options = parseQuestionOptions(q);
+  if (type === 'dropdown') {
+    wrap.innerHTML = `<select id="text-answer"><option value="">Select an option...</option>${options.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('')}</select>`;
+  } else if (type === 'multi_select') {
+    wrap.innerHTML = `<div id="text-answer" class="choice-list" data-multi="1">${options.map((o, i) => `<label class="choice-item"><input type="checkbox" value="${escapeHtml(o)}"> ${escapeHtml(o)}</label>`).join('')}</div>`;
+  } else if (type === 'number' || type === 'decimal') {
+    wrap.innerHTML = `<input id="text-answer" type="number" ${type === 'decimal' ? 'step="0.01"' : 'step="1"'} placeholder="Enter number">`;
+  } else if (type === 'date') {
+    wrap.innerHTML = `<input id="text-answer" type="date">`;
+  } else if (type === 'hyperlink') {
+    wrap.innerHTML = `<input id="text-answer" type="url" placeholder="https://...">`;
+  } else if (type === 'file') {
+    wrap.innerHTML = `<input id="text-answer" type="text" placeholder="Paste file link or drive URL">`;
+  } else if (type === 'text') {
+    wrap.innerHTML = `<input id="text-answer" type="text" maxlength="500" placeholder="Type your answer here...">`;
+  } else {
+    wrap.innerHTML = `<textarea class="text-answer" id="text-answer" placeholder="Type your answer here…" maxlength="2000"></textarea>`;
+  }
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[s]));
+}
+
+function getCurrentAnswerValue() {
+  const el = document.getElementById('text-answer');
+  if (!el) return '';
+  if (el.dataset && el.dataset.multi) {
+    return Array.from(el.querySelectorAll('input:checked')).map(i => i.value).join(', ');
+  }
+  return (el.value || '').trim();
+}
+
+function resolveNextQuestionIndex(answerText) {
+  const q = QUESTIONS[currentQ];
+  let rules = [];
+  try {
+    rules = q.branch_rules_json ? (typeof q.branch_rules_json === 'string' ? JSON.parse(q.branch_rules_json) : q.branch_rules_json) : [];
+  } catch(e) { rules = []; }
+  const answer = String(answerText || '').toLowerCase();
+  for (const rule of rules) {
+    const when = String(rule.when || '').toLowerCase();
+    const op = rule.operator || 'contains';
+    const matched =
+      op === 'equals' ? answer === when :
+      op === 'not_empty' ? answer.length > 0 :
+      answer.includes(when);
+    if (!matched) continue;
+    const order = parseInt(rule.jump_to_order || rule.skip_to_order || 0, 10);
+    if (order > 0) {
+      const idx = QUESTIONS.findIndex(item => parseInt(item.order_no, 10) === order);
+      if (idx >= 0) return idx;
+    }
+  }
+  return currentQ + 1;
 }
 
 // ── TIMER ───────────────────────────────────────────────────────────────────
@@ -693,7 +784,7 @@ async function nextQuestion() {
   if (isRecording) stopRecording();
   await new Promise(r => setTimeout(r, 350));
 
-  const textAnswer = document.getElementById('text-answer').value.trim();
+  const textAnswer = getCurrentAnswerValue();
   const answer = {
     question_id     : QUESTIONS[currentQ].id,
     question_text   : QUESTIONS[currentQ].question_text,
@@ -727,7 +818,7 @@ async function nextQuestion() {
   await saveAnswer(answer);
   copyCount = 0;
   btn.disabled = false;
-  loadQuestion(currentQ + 1);
+  loadQuestion(resolveNextQuestionIndex(textAnswer));
 }
 
 async function saveAnswer(answer) {
@@ -751,6 +842,8 @@ async function finishInterview() {
     videoRecorder.onstop = async () => { await uploadVideo(); };
   }
   if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+  document.getElementById('share-wa').href = 'https://wa.me/?text=' + encodeURIComponent(SHARE_TEXT);
+  document.getElementById('share-mail').href = 'mailto:?subject=' + encodeURIComponent('HireAI campaign referral') + '&body=' + encodeURIComponent(SHARE_TEXT);
 
   try {
     await fetch('api/interview.php?action=complete_interview', {
@@ -767,6 +860,15 @@ async function finishInterview() {
       }),
     });
   } catch(e) {}
+}
+
+async function copyReferral() {
+  try {
+    await navigator.clipboard.writeText(CAMPAIGN_LINK);
+    alert('Referral link copied');
+  } catch(e) {
+    prompt('Copy this referral link', CAMPAIGN_LINK);
+  }
 }
 
 async function uploadVideo() {
@@ -787,8 +889,8 @@ function startAntiCheat() {
   });
   window.addEventListener('blur', () => logCheat('Window focus lost'));
 
-  const ta = document.getElementById('text-answer');
-  ta.addEventListener('paste', e => {
+  document.addEventListener('paste', e => {
+    if (!e.target.closest('#text-panel')) return;
     const txt = e.clipboardData?.getData('text') || '';
     if (txt.length > 20) {
       copyCount++;
@@ -804,8 +906,10 @@ function startAntiCheat() {
       logCheat('Paste detected (' + txt.length + ' chars — under threshold)');
     }
   });
-  ta.addEventListener('input', () => {
-    document.getElementById('char-count').textContent = ta.value.length + ' / 2000';
+  document.addEventListener('input', e => {
+    if (!e.target.closest('#text-panel')) return;
+    const value = getCurrentAnswerValue();
+    document.getElementById('char-count').textContent = value.length + ' / 2000';
   });
   document.addEventListener('contextmenu', e => e.preventDefault());
   document.addEventListener('keydown', e => {

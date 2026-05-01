@@ -4,34 +4,55 @@ require_once __DIR__ . '/includes/auth_check.php';
 $action      = $_GET['action'] ?? 'list';
 $campaign_id = (int)($_GET['id'] ?? 0);
 
+function normalize_json_text($value) {
+    $value = trim((string)$value);
+    if ($value === '') return null;
+    $decoded = json_decode($value, true);
+    return json_last_error() === JSON_ERROR_NONE ? json_encode($decoded) : null;
+}
+
+function options_to_json($value) {
+    $items = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string)$value))));
+    return empty($items) ? null : json_encode($items);
+}
+
 // ─── POST HANDLERS ────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf_or_die();
     if ($action === 'save') {
         $id = db_insert(
             "INSERT INTO campaigns (org_id,created_by,name,job_role,description,el_agent_id,passing_score,num_questions,language,status) VALUES (?,?,?,?,?,?,?,?,?,'draft')",
             [$user['org_id'],$user['user_id'],$_POST['name'],$_POST['job_role'],$_POST['description'],$_POST['el_agent_id'],(int)$_POST['passing_score'],(int)$_POST['num_questions'],$_POST['language']],
-            'iisssssii'
+            'iissssiis'
         );
+        audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $id, 'campaign_created');
         header("Location: campaigns.php?action=questions&id=$id&msg=created"); exit;
     }
     if ($action === 'edit_save') {
         db_execute(
             "UPDATE campaigns SET name=?,job_role=?,description=?,el_agent_id=?,passing_score=?,num_questions=?,language=? WHERE id=? AND org_id=?",
             [$_POST['name'],$_POST['job_role'],$_POST['description'],$_POST['el_agent_id'],(int)$_POST['passing_score'],(int)$_POST['num_questions'],$_POST['language'],$campaign_id,$user['org_id']],
-            'sssssiiis'
+            'ssssiisii'
         );
+        audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'campaign_updated');
         header("Location: campaigns.php?action=questions&id=$campaign_id&msg=updated"); exit;
     }
     if ($action === 'add_question') {
+        $question_type = $_POST['question_type'] ?? 'textarea';
+        $options_json = options_to_json($_POST['options_text'] ?? '');
+        $branch_rules_json = normalize_json_text($_POST['branch_rules_json'] ?? '');
+        $is_required = isset($_POST['is_required']) ? 1 : 0;
         db_insert(
-            "INSERT INTO questions (campaign_id,parameter,parameter_label,weight,max_marks,question_text,ideal_answer_hint,order_no) VALUES (?,?,?,?,?,?,?,?)",
-            [$campaign_id,$_POST['parameter'],$_POST['parameter_label'],(int)$_POST['weight'],(int)$_POST['max_marks'],$_POST['question_text'],$_POST['ideal_answer_hint'],(int)$_POST['order_no']],
-            'issiissi'
+            "INSERT INTO questions (campaign_id,parameter,parameter_label,weight,max_marks,question_text,ideal_answer_hint,question_type,options_json,branch_rules_json,is_required,order_no) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            [$campaign_id,$_POST['parameter'],$_POST['parameter_label'],(int)$_POST['weight'],(int)$_POST['max_marks'],$_POST['question_text'],$_POST['ideal_answer_hint'],$question_type,$options_json,$branch_rules_json,$is_required,(int)$_POST['order_no']],
+            'issiisssssii'
         );
+        audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'question_added', ['type' => $question_type]);
         header("Location: campaigns.php?action=questions&id=$campaign_id&msg=question_added"); exit;
     }
     if ($action === 'activate') {
         db_execute("UPDATE campaigns SET status='active' WHERE id=? AND org_id=?", [$campaign_id,$user['org_id']], 'ii');
+        audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'campaign_activated');
         header("Location: campaigns.php?msg=activated"); exit;
     }
 }
@@ -88,6 +109,7 @@ $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign
             <a href="candidates.php?campaign_id=<?= $c['id'] ?>" class="btn-sm">Leads</a>
             <?php if ($c['status'] !== 'active'): ?>
               <form method="POST" action="campaigns.php?action=activate&id=<?= $c['id'] ?>" style="display:inline">
+                <?= csrf_input() ?>
                 <button type="submit" class="btn-green" style="padding:5px 12px;font-size:13px">▶ Activate</button>
               </form>
             <?php endif; ?>
@@ -109,6 +131,7 @@ $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign
   </div>
   <div class="card" style="max-width:720px">
     <form method="POST" action="campaigns.php?action=<?= $is_edit ? 'edit_save' : 'save' ?><?= $is_edit ? '&id='.$campaign_id : '' ?>">
+      <?= csrf_input() ?>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="form-group">
           <label class="form-label">Campaign Name *</label>
@@ -222,15 +245,19 @@ $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign
       </span>
     </div>
     <table class="table">
-      <thead><tr><th>#</th><th>Parameter</th><th>Weight</th><th>Max Marks</th><th>Question</th><th></th></tr></thead>
+      <thead><tr><th>#</th><th>Parameter</th><th>Type</th><th>Weight</th><th>Max Marks</th><th>Question</th><th>Logic</th><th></th></tr></thead>
       <tbody>
         <?php foreach ($questions as $q): ?>
         <tr>
           <td><?= $q['order_no'] ?></td>
           <td><strong><?= htmlspecialchars($q['parameter_label']) ?></strong><br><small style="color:#8892A4"><?= htmlspecialchars($q['parameter']) ?></small></td>
+          <td><span class="badge badge-draft"><?= htmlspecialchars(str_replace('_', ' ', $q['question_type'] ?? 'textarea')) ?></span></td>
           <td><strong><?= $q['weight'] ?>%</strong></td>
           <td><?= $q['max_marks'] ?></td>
           <td style="max-width:280px;font-size:13px"><?= htmlspecialchars($q['question_text']) ?></td>
+          <td style="font-size:12px;color:#64748B">
+            <?= !empty($q['branch_rules_json']) ? 'Branching' : 'Linear' ?>
+          </td>
           <td><a href="campaigns.php?action=delete_question&id=<?= $campaign_id ?>&qid=<?= $q['id'] ?>" class="btn-danger" style="font-size:12px" onclick="return confirm('Delete?')">🗑</a></td>
         </tr>
         <?php endforeach; ?>
@@ -243,6 +270,7 @@ $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign
   <div class="card" style="max-width:720px">
     <div class="card-header"><h3>Add Question</h3></div>
     <form method="POST" action="campaigns.php?action=add_question&id=<?= $campaign_id ?>">
+      <?= csrf_input() ?>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="form-group">
           <label class="form-label">Parameter Key</label>
@@ -261,6 +289,31 @@ $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign
         <div class="form-group">
           <label class="form-label">Display Label *</label>
           <input type="text" name="parameter_label" class="form-control" placeholder="English Communication Skills" required>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="form-group">
+          <label class="form-label">Field Type</label>
+          <select name="question_type" class="form-control">
+            <option value="textarea">Long Text / Interview Answer</option>
+            <option value="text">Short Text</option>
+            <option value="number">Numeric</option>
+            <option value="decimal">Decimal</option>
+            <option value="date">Date</option>
+            <option value="dropdown">Dropdown</option>
+            <option value="multi_select">Multi-select</option>
+            <option value="rating">Rating</option>
+            <option value="file">Upload Section</option>
+            <option value="audio">Record Audio</option>
+            <option value="video">Record Video</option>
+            <option value="hyperlink">Hyperlink</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Required</label>
+          <label style="display:flex;align-items:center;gap:8px;padding:11px 0;font-size:14px">
+            <input type="checkbox" name="is_required" checked> Candidate must answer this field
+          </label>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
@@ -284,6 +337,15 @@ $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign
       <div class="form-group">
         <label class="form-label">Ideal Answer Hint (AI scoring criteria)</label>
         <textarea name="ideal_answer_hint" class="form-control" rows="2" placeholder="Keywords or criteria AI should look for..."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Options (for dropdown / multi-select / rating labels)</label>
+        <textarea name="options_text" class="form-control" rows="3" placeholder="One option per line, e.g.&#10;Yes&#10;No&#10;Maybe"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Conditional Logic JSON</label>
+        <textarea name="branch_rules_json" class="form-control" rows="4" placeholder='Example: [{"when":"yes","jump_to_order":5},{"when":"no","skip_to_order":8}]'></textarea>
+        <small style="color:#8892A4">Use answer keywords to jump or skip questions. Leave blank for linear flow.</small>
       </div>
       <button type="submit" class="btn-primary">+ Add Question</button>
     </form>

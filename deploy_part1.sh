@@ -20,12 +20,12 @@ define('JWT_SECRET', 'hireai_jwt_2025_change_this');
 define('BASE_URL', 'https://hire.clouddialer.in');
 define('INTERVIEW_URL', 'https://hire.clouddialer.in/interview.php');
 
-define('EL_API_KEY', 'sk_f121e4d4345569ac4771c0e509a6ae0636c8bc2b2731e43e');
+define('EL_API_KEY', 'your-elevenlabs-key-here');
 define('OPENAI_API_KEY', 'your-openai-key-here');
 
 define('WA_API_URL', 'https://wa.clouddialer.in/api/v2/messages');
-define('WA_INSTANCE_ID', 'RHS2B4V4AY');
-define('WA_TOKEN', 'D6D9Q6VM');
+define('WA_INSTANCE_ID', 'your-whatsapp-instance-id');
+define('WA_TOKEN', 'your-whatsapp-token');
 
 session_start();
 PHPEOF

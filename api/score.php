@@ -59,7 +59,7 @@ if($pct_score>=80){
   log_s("Score>=80 — triggering EL call");
   $agent_id=$candidate['el_agent_id']?:EL_AGENT_ID;
   if($agent_id&&$agent_id!=='PASTE_YOUR_EL_AGENT_ID'){
-    $phone=preg_replace('/[^0-9]/','',$$candidate['phone']??'');
+    $phone=preg_replace('/[^0-9]/','',$candidate['phone']??'');
     if(strlen($phone)==10)$phone='+91'.$phone;elseif(!str_starts_with($phone,'+'))$phone='+'.$phone;
     $payload=['agent_id'=>$agent_id,'agent_phone_number_id'=>EL_PHONE_NUMBER_ID,'to_number'=>$phone,
       'conversation_config_override'=>['agent'=>['first_message'=>"Hello $name! Congratulations on completing your interview for $role. You scored {$pct_score}% and have been shortlisted! Our recruiter will contact you soon."]]];

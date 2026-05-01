@@ -15,9 +15,9 @@ $session  = db_fetch_one("SELECT * FROM interview_sessions WHERE candidate_id=? 
 $result   = db_fetch_one("SELECT * FROM interview_results WHERE candidate_id=? ORDER BY id DESC LIMIT 1", [$id], 'i');
 $scores   = db_fetch_all("SELECT * FROM scores WHERE candidate_id=? ORDER BY id", [$id], 'i');
 $answers  = db_fetch_all(
-    "SELECT ia.*, iq.question_text, iq.question_number, iq.parameter_label
-     FROM interview_answers ia LEFT JOIN interview_questions iq ON ia.question_id=iq.id
-     WHERE ia.candidate_id=? ORDER BY iq.question_number ASC",
+    "SELECT ia.*, q.question_text, q.order_no AS question_number, q.parameter_label
+     FROM interview_answers ia LEFT JOIN questions q ON ia.question_id=q.id
+     WHERE ia.candidate_id=? ORDER BY q.order_no ASC, ia.id ASC",
     [$id], 'i'
 );
 $cheat    = !empty($session['cheat_summary']) ? json_decode($session['cheat_summary'], true) : null;

@@ -120,6 +120,10 @@ try {
     if ($campaign_id && $cid) {
         $lg = $db->prepare("INSERT INTO outreach_log (candidate_id,campaign_id,channel,status) VALUES (?,?,'whatsapp','sent')");
         if ($lg) { $lg->bind_param('ii',$cid,$campaign_id); $lg->execute(); $lg->close(); }
+        db_insert(
+            "INSERT INTO reminder_jobs (candidate_id,campaign_id,channel,scheduled_at) VALUES (?,?,'whatsapp',DATE_ADD(NOW(), INTERVAL 24 HOUR))",
+            [$cid, $campaign_id], 'ii'
+        );
     }
 
     // ── AUTO WHATSAPP + outreach_sent ─────────────────────────
@@ -163,7 +167,7 @@ try {
         'success'         => true,
         'candidate_id'    => $cid,
         'wa_sent'         => $wa_sent,
-        'interview_token' => $campaign['unique_token'] ?? null,
+        'interview_token' => $tok,
     ]);
 
 } catch(Exception $e) {

@@ -544,14 +544,16 @@ async function sendWA(id, name) {
   showToast('Sending WhatsApp...', 'info');
   try {
     const r = await fetch(`/api/outreach.php?action=send_single&candidate_id=${id}`, {
-      headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('hireai_token') || '') }
+      credentials: 'same-origin',
+      cache: 'no-store'
     });
     const d = await r.json();
     if (d.status === 'sent') {
       showToast('✅ WhatsApp sent successfully!', 'success');
       setTimeout(() => location.reload(), 1500);
     } else {
-      showToast('❌ ' + (d.message || d.error || 'Failed to send'), 'error');
+      const providerError = d.provider?.error || d.provider?.response || '';
+      showToast('❌ ' + (d.message || d.error || 'Failed to send') + (providerError ? ': ' + String(providerError).slice(0, 120) : ''), 'error');
     }
   } catch(e) {
     showToast('❌ Network error', 'error');

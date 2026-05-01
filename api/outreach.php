@@ -41,6 +41,7 @@ if ($action === 'send_single') {
 
     $result = send_whatsapp($c['phone'], $msg);
     $status = ($result['code'] >= 200 && $result['code'] < 300) ? 'sent' : 'failed';
+    error_log("[outreach send_single] candidate_id=$candidate_id phone={$c['phone']} status=$status code={$result['code']}");
     db_execute("INSERT INTO outreach_log (candidate_id,campaign_id,channel,status) VALUES (?,?,'whatsapp',?)", [$candidate_id, $c['campaign_id'], $status], 'iis');
     if ($status === 'sent') db_execute("UPDATE candidates SET status='outreach_sent' WHERE id=?", [$candidate_id], 'i');
     json_response(['status' => $status, 'message' => "WhatsApp $status to {$c['phone']}", 'provider' => $result]);

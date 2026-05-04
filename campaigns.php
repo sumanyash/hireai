@@ -28,6 +28,44 @@ function campaign_apply_link($campaign) {
     return BASE_URL . '/apply.php?' . ($token ? 'c=' . urlencode($token) : 'campaign_id=' . (int)$campaign['id']);
 }
 
+function legacy_application_template_fields() {
+    return [
+        ['Salutation','salutation','dropdown','Select salutation','', "Mr.\nMs.\nMrs.\nDr."],
+        ['First Name','first_name','text','First name','', ''],
+        ['Last Name','last_name','text','Last name','', ''],
+        ['Date of Birth','dob','date','','', ''],
+        ['Current City','city','text','Your city','', ''],
+        ['Comfortable to Relocate?','relocate','dropdown','Select','', "Yes\nNo"],
+        ['Relocation Time','relocate_time','dropdown','Select relocation time','', "Immediate\nWithin 15 days\nWithin 1 month\nWithin 3 months\nMore than 3 months"],
+        ['Phone Code','phone_code','dropdown','Select phone code','', "+91 (India)\nOther"],
+        ['Phone Number','phone','phone','WhatsApp number','Required for WhatsApp and interview outreach.', ''],
+        ['Email ID','email','email','you@example.com','', ''],
+        ['College / University','college','dropdown','Select institution','', "University of Rajasthan\nJECRC University\nManipal University Jaipur\nAmity University Jaipur\nPoornima University\nIIS University\nMNIT Jaipur\nJaipur National University\nNIMS University\nArya College\nOther"],
+        ['How did you hear about us?','source','dropdown','Select source','', "Direct Website\nLinkedIn\nInternshala\nNaukri.com\nMonster.com\nDice.com\nIndeed.com\nWorkIndia\nOther"],
+        ['Role','role_applied','text','Role applied for','', ''],
+        ['Engagement Type','engagement_type','dropdown','Select engagement type','', "Paid Training\nUnpaid Internship\nPaid Internship\nEmployment"],
+        ['English Communication','english_level','dropdown','Select level','', "1 - Basic\n2 - Fair\n3 - Good\n4 - Very Good\n5 - Fluent / Native"],
+        ['Years of Experience','years_exp','dropdown','Select experience','', "Fresher\n0.5 Years\n1-2 Years\n2-5 Years\n5-7 Years\n7-10 Years\n10-15 Years\n15+ Years"],
+        ['Industry Background','industry','dropdown','Select industry','', "Fresher / None\nIT/Software\nTelecom\nSales/Marketing\nCustomer Support\nOther"],
+        ['Experience Type','exp_type','multi_select','Select experience type','', "Fresher / None\nFull-time Employment\nPart-time / Freelance\nInternship\nResearch / Academic\nEntrepreneurial / Startup"],
+        ['Describe Your Past Experience','exp_desc','textarea','Briefly describe relevant experience','Max 50 words.', ''],
+        ['Current Salary / Stipend','current_salary','text','e.g. 15000/month or N/A','', ''],
+        ['Expected Salary / Stipend','expected_salary','text','Mention realistic figures','', ''],
+        ['Internship / Training Tenure','tenure','dropdown','Select tenure','', "6 months\n9 months\n12 months\n18 months\n24 months"],
+        ['Preferred Joining Date','joining_date','date','','', ''],
+        ['Open to Flexible Hours?','flex_hours','dropdown','Select option','', "Yes\nNo"],
+        ['Do you own a Laptop?','laptop','dropdown','Select option','', "Yes\nNo"],
+        ['Reliable Broadband / Wi-Fi at Home?','internet','dropdown','Select option','', "Yes\nNo"],
+        ['Candidate Location','location','text','Area / city for commute check','', ''],
+        ['Commute to Office','commute','dropdown','Select commute preference','', "Personal vehicle\nSelf-managed"],
+        ['Resume / CV','resume','file','Upload PDF or DOCX CV','', ''],
+        ['Photo','photo','file','Upload recent photo','', ''],
+        ['Video Introduction Link','video_link','url','https://...','Optional video intro URL.', ''],
+        ['Portfolio / Project Links','portfolio','url','GitHub, LinkedIn, or website URL','', ''],
+        ['Willing to Take the AI Test?','ai_test_willing','dropdown','Select option','', "Yes\nNo"],
+    ];
+}
+
 // ─── POST HANDLERS ────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf_or_die();
@@ -86,6 +124,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         );
         audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'application_field_added', ['label' => $field_label, 'type' => $field_type]);
         header("Location: campaigns.php?action=apply_form&id=$campaign_id&msg=field_added"); exit;
+    }
+    if ($action === 'add_application_template') {
+        $campaign_exists = db_fetch_one("SELECT id FROM campaigns WHERE id=? AND org_id=?", [$campaign_id,$user['org_id']], 'ii');
+        if (!$campaign_exists) {
+            header("Location: campaigns.php?action=apply_form&id=$campaign_id&msg=template_error"); exit;
+        }
+        $existing_count = (int)((db_fetch_one("SELECT COUNT(*) c FROM application_fields WHERE campaign_id=? AND is_active=1", [$campaign_id], 'i') ?: ['c'=>0])['c']);
+        $added = 0;
+        foreach (legacy_application_template_fields() as $idx => $field) {
+            [$label,$key,$type,$placeholder,$help,$options] = $field;
+            $exists = db_fetch_one("SELECT id FROM application_fields WHERE campaign_id=? AND field_key=? AND is_active=1", [$campaign_id,$key], 'is');
+            if ($exists) continue;
+            db_insert(
+                "INSERT INTO application_fields (campaign_id,field_key,field_label,field_type,placeholder,help_text,options_json,is_required,order_no,is_active) VALUES (?,?,?,?,?,?,?,?,?,1)",
+                [$campaign_id,$key,$label,$type,$placeholder,$help,options_to_json($options),1,$existing_count + $idx + 1],
+                'issssssii'
+            );
+            $added++;
+        }
+        audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'application_template_added', ['added' => $added]);
+        header("Location: campaigns.php?action=apply_form&id=$campaign_id&msg=template_added_$added"); exit;
     }
     if ($action === 'activate') {
         db_execute("UPDATE campaigns SET status='active', share_token=COALESCE(share_token, ?) WHERE id=? AND org_id=?", [bin2hex(random_bytes(12)),$campaign_id,$user['org_id']], 'sii');
@@ -470,6 +529,9 @@ $application_fields = $campaign_id ? db_fetch_all("SELECT * FROM application_fie
     .quick-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:16px 20px 4px}
     .quick-chip{border:1px solid #E5E7EB;background:#F8FAFC;color:#334155;border-radius:10px;padding:9px 10px;font-size:12px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:8px;text-align:left}
     .quick-chip:hover{border-color:#7C3AED;background:#F5F3FF;color:#6B21A8}
+    .template-actions{padding:14px 20px 0;display:grid;gap:8px}
+    .template-btn{width:100%;border:1px solid #C4B5FD;background:linear-gradient(135deg,#F5F3FF,#EEF2FF);color:#5B21B6;border-radius:12px;padding:11px 12px;font-size:13px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+    .template-btn:hover{border-color:#7C3AED;background:#7C3AED;color:#fff}
     .panel-body{padding:18px 20px 20px}
     .panel-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .panel-grid-3{display:grid;grid-template-columns:1fr 110px 130px;gap:12px;align-items:end}
@@ -551,6 +613,12 @@ $application_fields = $campaign_id ? db_fetch_all("SELECT * FROM application_fie
         <button type="button" class="quick-chip" onclick="presetField('Photo','photo','file','Upload a recent photo')"><i class="fa-solid fa-image"></i> Photo</button>
         <button type="button" class="quick-chip" onclick="presetField('LinkedIn Profile','linkedin','url','https://linkedin.com/in/...')"><i class="fa-brands fa-linkedin"></i> LinkedIn</button>
       </div>
+      <div class="template-actions">
+        <form method="POST" action="campaigns.php?action=add_application_template&id=<?= $campaign_id ?>" onsubmit="return confirm('Add the complete legacy application form fields to this campaign? Existing matching keys will be skipped.')">
+          <?= csrf_input() ?>
+          <button type="submit" class="template-btn"><i class="fa-solid fa-wand-magic-sparkles"></i> Add Complete Apply Form</button>
+        </form>
+      </div>
       <div class="panel-body">
         <form method="POST" action="campaigns.php?action=add_application_field&id=<?= $campaign_id ?>">
           <?= csrf_input() ?>
@@ -607,33 +675,6 @@ $application_fields = $campaign_id ? db_fetch_all("SELECT * FROM application_fie
         </form>
       </div>
     </div>
-  </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Order</label>
-          <input type="number" name="order_no" class="form-control" value="<?= count($application_fields)+1 ?>" min="1">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Required</label>
-          <label style="display:flex;align-items:center;gap:8px;padding:11px 0;font-size:14px">
-            <input type="checkbox" name="is_required" checked> Candidate must fill
-          </label>
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Placeholder</label>
-        <input type="text" name="placeholder" class="form-control" placeholder="What should candidate enter?">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Help Text</label>
-        <input type="text" name="help_text" class="form-control" placeholder="Small instruction shown below field">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Options</label>
-        <textarea name="options_text" class="form-control" rows="3" placeholder="One option per line for dropdown, multi-select, or checkbox"></textarea>
-      </div>
-      <button type="submit" class="btn-primary">+ Add Field</button>
-    </form>
   </div>
 
 <?php endif; ?>

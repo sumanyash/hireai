@@ -104,6 +104,7 @@ $udir = __DIR__.'/../uploads/';
 @mkdir($udir.'application',0755,true);
 $resume_path = '';
 $video_path  = '';
+$photo_path  = '';
 
 foreach ($clean_application_answers as $fid => &$answer) {
     if (($answer['type'] ?? '') !== 'file') continue;
@@ -115,9 +116,13 @@ foreach ($clean_application_answers as $fid => &$answer) {
     $safe_ext = preg_replace('/[^a-z0-9]/', '', $ext) ?: 'bin';
     $fn = 'app_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $safe_ext;
     if (file_put_contents($udir . 'application/' . $fn, $dec) !== false) {
-        $answer['value'] = 'uploads/application/' . $fn;
+        $path = 'uploads/application/' . $fn;
+        $answer['value'] = $path;
         $answer['original_name'] = $file['name'];
         $answer['mime_type'] = $file['type'] ?? '';
+        $key = strtolower((string)($answer['key'] ?? ''));
+        if ($resume_path === '' && (str_contains($key, 'resume') || str_contains($key, 'cv'))) $resume_path = $path;
+        if ($photo_path === '' && (str_contains($key, 'photo') || str_contains($key, 'image') || str_contains($key, 'picture'))) $photo_path = $path;
     }
 }
 unset($answer);

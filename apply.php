@@ -56,7 +56,7 @@ $job_desc  = $campaign['description'] ?? '';
 // Fetch all active campaigns for dropdown
 $all_campaigns = db_fetch_all("SELECT id, name, job_role FROM campaigns WHERE status='active' ORDER BY name ASC", [], '');
 $application_fields = $campaign_id ? db_fetch_all("SELECT * FROM application_fields WHERE campaign_id=? AND is_active=1 ORDER BY order_no,id", [$campaign_id], 'i') : [];
-$is_dynamic_apply = !empty($application_fields);
+$is_dynamic_apply = true;
 
 ?>
 <!DOCTYPE html>
@@ -433,6 +433,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
 
 .file-upload-area:hover{border-color:var(--accent);background:rgba(0,102,255,.03)}
 .file-upload-area input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.file-upload-area.has-file{border-color:var(--success);background:rgba(34,211,165,.06)}
 
 .upload-title{font-size:14px;font-weight:600;color:var(--text);margin:10px 0 4px}
 .upload-sub{font-size:12px;color:var(--muted)}
@@ -595,12 +596,25 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     </div>
     <div id="val-banner-1" class="val-banner"></div>
     <div class="card">
+      <?php if (empty($application_fields)): ?>
+        <div class="info-box" style="margin:0">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <div>This campaign application form is not configured yet. Please contact the recruiter.</div>
+        </div>
+      <?php endif; ?>
       <?php foreach ($application_fields as $field):
         $fid = (int)$field['id'];
         $fieldId = 'appField_' . $fid;
         $type = $field['field_type'] ?? 'text';
         $options = json_decode($field['options_json'] ?? '[]', true) ?: [];
         $required = !empty($field['is_required']);
+        $fieldKey = strtolower($field['field_key'] ?? '');
+        $accept = '';
+        if ($type === 'file') {
+          if (str_contains($fieldKey, 'photo') || str_contains($fieldKey, 'image') || str_contains($fieldKey, 'picture')) $accept = 'image/*';
+          elseif (str_contains($fieldKey, 'cv') || str_contains($fieldKey, 'resume')) $accept = '.pdf,.doc,.docx';
+          else $accept = '.pdf,.doc,.docx,image/*,.mp4,.mov,.avi';
+        }
       ?>
       <div class="field" data-app-wrap="<?= $fid ?>">
         <label for="<?= $fieldId ?>"><?= htmlspecialchars($field['field_label']) ?><?= $required ? ' <span class="req">*</span>' : '' ?></label>
@@ -631,7 +645,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
             <div class="upload-title"><?= htmlspecialchars($field['placeholder'] ?: 'Click to upload file') ?></div>
             <div class="upload-sub">PDF, DOCX, image, or video · Max 20 MB</div>
             <div class="file-name" id="<?= $fieldId ?>Name"></div>
-            <input type="file" id="<?= $fieldId ?>" data-app-field="<?= $fid ?>" onchange="showFileName('<?= $fieldId ?>','<?= $fieldId ?>Name')">
+            <input type="file" id="<?= $fieldId ?>" data-app-field="<?= $fid ?>" accept="<?= htmlspecialchars($accept) ?>" onchange="showFileName('<?= $fieldId ?>','<?= $fieldId ?>Name')">
           </div>
         <?php else:
           $inputType = in_array($type, ['number','date','email','url'], true) ? $type : ($type === 'decimal' ? 'number' : ($type === 'phone' ? 'tel' : 'text'));
@@ -643,7 +657,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
       </div>
       <?php endforeach; ?>
     </div>
-    <div class="nav-bar"><div></div><button class="btn btn-primary" onclick="nextSection(1)">Continue →</button></div>
+    <div class="nav-bar"><div></div><button class="btn btn-primary" onclick="nextSection(1)" <?= empty($application_fields) ? 'disabled' : '' ?>>Continue →</button></div>
   </div>
 
   <div class="section" id="section-2">
@@ -1602,6 +1616,7 @@ function showFileName(inputId, displayId) {
     const d = document.getElementById(displayId);
     d.textContent = '✓ ' + f.name;
     d.style.display = 'block';
+    document.getElementById(inputId).closest('.file-upload-area')?.classList.add('has-file');
   }
 }
 

@@ -462,7 +462,7 @@ $application_fields = $campaign_id ? db_fetch_all("SELECT * FROM application_fie
   </div>
 
   <div class="alert alert-info">
-    Use field keys like <code>name</code>, <code>phone</code>, <code>email</code>, <code>city</code>, <code>current_ctc</code>, <code>expected_ctc</code>, <code>linkedin</code>. A <code>phone</code> field is required for WhatsApp/interview outreach.
+    Use field keys like <code>name</code>, <code>phone</code>, <code>email</code>, <code>city</code>, <code>resume</code>, <code>photo</code>, <code>current_ctc</code>, <code>expected_ctc</code>, <code>linkedin</code>. A <code>phone</code> field is required for WhatsApp/interview outreach. CV and photo should be added as <code>File Upload</code> fields.
   </div>
 
   <?php if (!empty($application_fields)): ?>

@@ -122,6 +122,7 @@ foreach ($clean_application_answers as $fid => &$answer) {
         $answer['mime_type'] = $file['type'] ?? '';
         $key = strtolower((string)($answer['key'] ?? ''));
         if ($resume_path === '' && (str_contains($key, 'resume') || str_contains($key, 'cv'))) $resume_path = $path;
+        if ($video_path === '' && str_contains($key, 'video')) $video_path = $path;
         if ($photo_path === '' && (str_contains($key, 'photo') || str_contains($key, 'image') || str_contains($key, 'picture'))) $photo_path = $path;
     }
 }

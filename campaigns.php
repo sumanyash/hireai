@@ -30,39 +30,46 @@ function campaign_apply_link($campaign) {
 
 function legacy_application_template_fields() {
     return [
-        ['Salutation','salutation','dropdown','Select salutation','', "Mr.\nMs.\nMrs.\nDr."],
-        ['First Name','first_name','text','First name','', ''],
-        ['Last Name','last_name','text','Last name','', ''],
-        ['Date of Birth','dob','date','','', ''],
-        ['Current City','city','text','Your city','', ''],
-        ['Comfortable to Relocate?','relocate','dropdown','Select','', "Yes\nNo"],
-        ['Relocation Time','relocate_time','dropdown','Select relocation time','', "Immediate\nWithin 15 days\nWithin 1 month\nWithin 3 months\nMore than 3 months"],
-        ['Phone Code','phone_code','dropdown','Select phone code','', "+91 (India)\nOther"],
-        ['Phone Number','phone','phone','WhatsApp number','Required for WhatsApp and interview outreach.', ''],
-        ['Email ID','email','email','you@example.com','', ''],
-        ['College / University','college','dropdown','Select institution','', "University of Rajasthan\nJECRC University\nManipal University Jaipur\nAmity University Jaipur\nPoornima University\nIIS University\nMNIT Jaipur\nJaipur National University\nNIMS University\nArya College\nOther"],
-        ['How did you hear about us?','source','dropdown','Select source','', "Direct Website\nLinkedIn\nInternshala\nNaukri.com\nMonster.com\nDice.com\nIndeed.com\nWorkIndia\nOther"],
-        ['Role','role_applied','text','Role applied for','', ''],
-        ['Engagement Type','engagement_type','dropdown','Select engagement type','', "Paid Training\nUnpaid Internship\nPaid Internship\nEmployment"],
-        ['English Communication','english_level','dropdown','Select level','', "1 - Basic\n2 - Fair\n3 - Good\n4 - Very Good\n5 - Fluent / Native"],
-        ['Years of Experience','years_exp','dropdown','Select experience','', "Fresher\n0.5 Years\n1-2 Years\n2-5 Years\n5-7 Years\n7-10 Years\n10-15 Years\n15+ Years"],
-        ['Industry Background','industry','dropdown','Select industry','', "Fresher / None\nIT/Software\nTelecom\nSales/Marketing\nCustomer Support\nOther"],
-        ['Experience Type','exp_type','multi_select','Select experience type','', "Fresher / None\nFull-time Employment\nPart-time / Freelance\nInternship\nResearch / Academic\nEntrepreneurial / Startup"],
-        ['Describe Your Past Experience','exp_desc','textarea','Briefly describe relevant experience','Max 50 words.', ''],
-        ['Current Salary / Stipend','current_salary','text','e.g. 15000/month or N/A','', ''],
-        ['Expected Salary / Stipend','expected_salary','text','Mention realistic figures','', ''],
-        ['Internship / Training Tenure','tenure','dropdown','Select tenure','', "6 months\n9 months\n12 months\n18 months\n24 months"],
-        ['Preferred Joining Date','joining_date','date','','', ''],
-        ['Open to Flexible Hours?','flex_hours','dropdown','Select option','', "Yes\nNo"],
-        ['Do you own a Laptop?','laptop','dropdown','Select option','', "Yes\nNo"],
-        ['Reliable Broadband / Wi-Fi at Home?','internet','dropdown','Select option','', "Yes\nNo"],
-        ['Candidate Location','location','text','Area / city for commute check','', ''],
-        ['Commute to Office','commute','dropdown','Select commute preference','', "Personal vehicle\nSelf-managed"],
-        ['Resume / CV','resume','file','Upload PDF or DOCX CV','', ''],
-        ['Photo','photo','file','Upload recent photo','', ''],
-        ['Video Introduction Link','video_link','url','https://...','Optional video intro URL.', ''],
-        ['Portfolio / Project Links','portfolio','url','GitHub, LinkedIn, or website URL','', ''],
-        ['Willing to Take the AI Test?','ai_test_willing','dropdown','Select option','', "Yes\nNo"],
+        ['Salutation','salutation','dropdown','Select salutation','Personal Information', "Mr.\nMs.\nMrs.\nDr."],
+        ['First Name','first_name','text','Enter first name','Personal Information', ''],
+        ['Last Name','last_name','text','Enter last name','Personal Information', ''],
+        ['Date of Birth','dob','date','','Personal Information', ''],
+        ['Current City','city','text','Enter your current city','Personal Information', ''],
+        ['Comfortable to Relocate?','relocate','dropdown','Select Option','Personal Information', "Yes\nNo"],
+        ['Relocation Time','relocate_time','dropdown','Select Option','Show when relocation is yes.', "Immediate\nWithin 15 days\nWithin 1 month\nWithin 3 months\nMore than 3 months"],
+        ['Phone Code','phone_code','dropdown','Select phone code','Personal Information', "+91 (India)\nOther"],
+        ['Country Code','other_country_code','dropdown','Select country','Use when phone code is Other.', "+1 (USA / Canada)\n+44 (United Kingdom)\n+61 (Australia)\n+49 (Germany)\n+33 (France)\n+971 (UAE)\n+966 (Saudi Arabia)\n+65 (Singapore)\n+81 (Japan)\n+86 (China)\n+7 (Russia)\n+55 (Brazil)\n+27 (South Africa)\n+92 (Pakistan)\n+880 (Bangladesh)\n+94 (Sri Lanka)\n+977 (Nepal)\n+60 (Malaysia)\n+62 (Indonesia)\n+234 (Nigeria)"],
+        ['Phone Number','phone','phone','10-digit number','Required for WhatsApp and interview outreach.', ''],
+        ['Email ID','email','email','you@example.com','Personal Information', ''],
+        ['College / University','college','dropdown','Select your institution','Personal Information', "University of Rajasthan\nJECRC University\nManipal University Jaipur\nAmity University Jaipur\nPoornima University\nIIS University\nMNIT Jaipur\nJaipur National University\nNIMS University\nArya College\nOther - specify"],
+        ['Specify College / University','college_other','text','Enter the full name of your college or university','Use when College / University is Other.', ''],
+        ['How did you hear about us?','source','dropdown','Select source','Personal Information', "Direct Website\nLinkedIn\nInternshala\nNaukri.com\nMonster.com\nDice.com\nIndeed.com\nWorkIndia\nOther - specify"],
+        ['Please specify source','source_other','text','Where did you hear about this opportunity?','Use when source is Other.', ''],
+        ['Role','role_applied','dropdown','Select Role','Role Selection', "AI\nSales\nPHP & Developer Engineer\nSupport Engineer"],
+        ['Engagement Type','engagement_type','dropdown','Select Engagement Type','Role Selection', "Paid Training\nUnpaid Internship\nPaid Internship\nEmployment"],
+        ['English Communication','english_level','dropdown','Select Level','General Experience & Skills', "1 - Basic\n2 - Fair\n3 - Good\n4 - Very Good\n5 - Fluent / Native"],
+        ['Years of Experience','years_exp','dropdown','Select Experience','General Experience & Skills', "Fresher\n0.5 Years\n1-2 Years\n2-5 Years\n5-7 Years\n7-10 Years\n10-15 Years\n15+ Years"],
+        ['Industry Background','industry','dropdown','Select Industry','General Experience & Skills', "Fresher / None\nIT / Software\nTelecom\nSales / Marketing\nCustomer Support\nOther"],
+        ['Specify Industry','industry_other','text','Please specify other industry','Use when industry is Other.', ''],
+        ['Experience Type','exp_type','dropdown','Select experience type','General Experience & Skills', "Fresher / None\nInternship\nFull-time\nFreelance\nAcademic Project"],
+        ['Describe Your Past Experience','exp_desc','textarea','Briefly describe any relevant internship or project experience','Max 50 words.', ''],
+        ['Current Salary / Stipend (Per Month)','current_salary','text','e.g. Rs. 15,000/month or N/A','Compensation', ''],
+        ['Expected Salary / Stipend (Per Month)','expected_salary','text','Mention realistic figures in Rs.','Compensation', ''],
+        ['Internship Tenure','tenure','dropdown','Select Tenure','Internship & Availability', "6 months\n9 months\n12 months"],
+        ['Preferred Joining Date','joining_date','date','','Internship & Availability', ''],
+        ['Open to Flexible Hours?','flex_hours','dropdown','Select Option','Internship & Availability', "Yes\nNo"],
+        ['Do you own a Laptop?','laptop','dropdown','Select Option','Work Readiness', "Yes\nNo"],
+        ['Reliable Broadband / Wi-Fi at Home?','internet','dropdown','Select Option','Work Readiness', "Yes\nNo"],
+        ['Candidate Location','location','text','Enter your area/city, e.g. Vaishali Nagar, Jaipur','Optional commute utility.', ''],
+        ['Commute to Office','commute','dropdown','Select Option','Work Readiness', "Personal vehicle\nSelf-managed"],
+        ['Resume / CV','resume','file','Upload PDF or DOCX CV','Documents & Portfolio', ''],
+        ['Photo','photo','file','Upload recent photo','Documents & Portfolio', ''],
+        ['Video Introduction Preference','video_option','dropdown','Select video option','Documents & Portfolio', "Skip (Optional)\nProvide a Video Link\nUpload a Video File"],
+        ['Video Introduction Link','video_link','url','https://...','Use when candidate provides video link.', ''],
+        ['Video Introduction File','video_file','file','Upload video file','MP4, MOV or AVI.', ''],
+        ['Portfolio / Project Links','portfolio','url','GitHub, LinkedIn, or personal website URL','Separate multiple URLs with a comma.', ''],
+        ['Willing to Take the AI Test?','ai_test_willing','dropdown','Select Option','AI Test Section', "Yes\nNo"],
+        ['Declaration Confirmation','declaration_confirmation','checkbox','Confirm declaration','Candidate confirms information is true and accurate.', "I confirm that the information provided is true and accurate."],
     ];
 }
 
@@ -132,13 +139,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $existing_count = (int)((db_fetch_one("SELECT COUNT(*) c FROM application_fields WHERE campaign_id=? AND is_active=1", [$campaign_id], 'i') ?: ['c'=>0])['c']);
         $added = 0;
+        $optional_keys = ['relocate','relocate_time','other_country_code','college_other','source_other','industry_other','exp_desc','current_salary','location','video_option','video_link','video_file','portfolio'];
         foreach (legacy_application_template_fields() as $idx => $field) {
             [$label,$key,$type,$placeholder,$help,$options] = $field;
             $exists = db_fetch_one("SELECT id FROM application_fields WHERE campaign_id=? AND field_key=? AND is_active=1", [$campaign_id,$key], 'is');
             if ($exists) continue;
+            $required = in_array($key, $optional_keys, true) ? 0 : 1;
             db_insert(
                 "INSERT INTO application_fields (campaign_id,field_key,field_label,field_type,placeholder,help_text,options_json,is_required,order_no,is_active) VALUES (?,?,?,?,?,?,?,?,?,1)",
-                [$campaign_id,$key,$label,$type,$placeholder,$help,options_to_json($options),1,$existing_count + $idx + 1],
+                [$campaign_id,$key,$label,$type,$placeholder,$help,options_to_json($options),$required,$existing_count + $idx + 1],
                 'issssssii'
             );
             $added++;

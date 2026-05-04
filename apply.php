@@ -612,6 +612,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
         $accept = '';
         if ($type === 'file') {
           if (str_contains($fieldKey, 'photo') || str_contains($fieldKey, 'image') || str_contains($fieldKey, 'picture')) $accept = 'image/*';
+          elseif (str_contains($fieldKey, 'video')) $accept = 'video/*';
           elseif (str_contains($fieldKey, 'cv') || str_contains($fieldKey, 'resume')) $accept = '.pdf,.doc,.docx';
           else $accept = '.pdf,.doc,.docx,image/*,.mp4,.mov,.avi';
         }

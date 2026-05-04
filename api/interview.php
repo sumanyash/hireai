@@ -75,7 +75,12 @@ if($action==='complete_interview'&&$method==='POST'){
   db_execute("UPDATE candidates SET status='interview_completed' WHERE id=?",[$c['id']],'i');
   $name=$c['name']?:'Candidate';
   $wa="🎉 *Interview Submitted!*\n\nHi $name,\n\nThank you for completing your interview for *{$c['job_role']}* at *{$c['campaign_name']}*.\n\nOur team will review your responses and reach out to you accordingly.\n\n*HireAI — Avyukta Intellicall*";
-  send_whatsapp($c['phone'],$wa);
+  send_whatsapp($c['phone'],$wa, [
+    'org_id' => $c['org_id'],
+    'candidate_id' => $c['id'],
+    'campaign_id' => $c['campaign_id'],
+    'reason' => 'interview_submission_confirmation',
+  ]);
   $log="/tmp/score_{$c['id']}.log";
   exec("php ".escapeshellarg(__DIR__."/score.php")." {$c['id']} {$c['campaign_id']} > $log 2>&1 &");
   json_response(['status'=>'completed']);

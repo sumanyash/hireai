@@ -99,7 +99,9 @@ CREATE TABLE IF NOT EXISTS candidates (
     portfolio TEXT,
     ai_test_willing VARCHAR(50),
     referred_by_candidate_id INT NULL,
+    referred_medium VARCHAR(50),
     unique_token VARCHAR(128) UNIQUE NOT NULL,
+    link_expires_at DATETIME NULL,
     status ENUM('pending','outreach_sent','interview_started','interview_completed','shortlisted','rejected','on_hold') DEFAULT 'pending',
     call_id VARCHAR(150),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -208,6 +210,8 @@ ALTER TABLE candidates ADD COLUMN IF NOT EXISTS video_path TEXT;
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS portfolio TEXT;
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS ai_test_willing VARCHAR(50);
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS referred_by_candidate_id INT NULL;
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS referred_medium VARCHAR(50);
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS link_expires_at DATETIME NULL;
 
 CREATE TABLE IF NOT EXISTS audit_logs (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -238,6 +242,44 @@ CREATE TABLE IF NOT EXISTS recruiter_notes (
     candidate_id INT NOT NULL,
     user_id INT NOT NULL,
     note TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS credit_wallets (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    org_id INT NOT NULL UNIQUE,
+    whatsapp_credits INT NOT NULL DEFAULT 0,
+    sms_credits INT NOT NULL DEFAULT 0,
+    email_credits INT NOT NULL DEFAULT 0,
+    rcs_credits INT NOT NULL DEFAULT 0,
+    low_balance_threshold INT NOT NULL DEFAULT 100,
+    auto_recharge_enabled TINYINT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS credit_transactions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    org_id INT NOT NULL,
+    user_id INT NULL,
+    provider ENUM('razorpay','paypal','payoneer','manual') NOT NULL DEFAULT 'manual',
+    provider_payment_id VARCHAR(180) NULL,
+    amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+    currency VARCHAR(8) NOT NULL DEFAULT 'INR',
+    credits_json JSON NOT NULL,
+    status ENUM('pending','confirmed','failed') NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS credit_usage (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    org_id INT NOT NULL,
+    candidate_id INT NULL,
+    campaign_id INT NULL,
+    channel ENUM('whatsapp','sms','email','rcs') NOT NULL,
+    credits_used INT NOT NULL DEFAULT 1,
+    balance_after INT NULL,
+    reason VARCHAR(120) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

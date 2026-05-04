@@ -4,8 +4,10 @@ $id = (int)($_GET['id'] ?? 0);
 if (!$id) { header('Location: candidates.php'); exit; }
 
 $c = db_fetch_one(
-    "SELECT c.*, camp.name campaign_name, camp.id campaign_id, camp.job_role, camp.passing_score
+    "SELECT c.*, camp.name campaign_name, camp.id campaign_id, camp.job_role, camp.passing_score,
+            ref.name AS referred_by_name, ref.phone AS referred_by_phone
      FROM candidates c LEFT JOIN campaigns camp ON c.campaign_id=camp.id
+     LEFT JOIN candidates ref ON c.referred_by_candidate_id=ref.id
      WHERE c.id=? AND c.org_id=?",
     [$id, $user['org_id']], 'ii'
 );
@@ -198,6 +200,9 @@ $toast         = $_GET['toast'] ?? '';
   <button onclick="openStatusModal()" class="btn-primary" style="padding:8px 16px;font-size:13px">
     <i class="fa-solid fa-pen fa-sm"></i> Update Status
   </button>
+  <button onclick="openEditModal()" class="btn-primary" style="padding:8px 16px;font-size:13px;background:linear-gradient(135deg,#2563EB,#3B82F6)">
+    <i class="fa-solid fa-user-pen fa-sm"></i> Edit Details
+  </button>
   <button onclick="scheduleReminder()" class="btn-green" style="padding:8px 16px;font-size:13px">
     <i class="fa-solid fa-bell fa-sm"></i> Reminder
   </button>
@@ -295,7 +300,7 @@ $toast         = $_GET['toast'] ?? '';
   <div class="card animate-in">
     <div class="card-header"><h3><i class="fa-solid fa-id-card" style="color:var(--blue)"></i> Info</h3></div>
     <?php
-    $fields = ['phone'=>'Phone','email'=>'Email','city'=>'City','experience_years'=>'Exp','current_ctc'=>'CTC','source'=>'Source','job_role'=>'Role','campaign_name'=>'Campaign'];
+    $fields = ['phone'=>'Phone','email'=>'Email','city'=>'City','experience_years'=>'Exp','current_ctc'=>'CTC','expected_ctc'=>'Expected','source'=>'Source','job_role'=>'Role','campaign_name'=>'Campaign'];
     foreach ($fields as $k => $l): if (!empty($c[$k])): ?>
     <div class="info-row">
       <div class="info-key"><?= $l ?></div>
@@ -306,6 +311,16 @@ $toast         = $_GET['toast'] ?? '';
       <div class="info-key">Applied</div>
       <div class="info-val"><?= $c['created_at'] ? date('d M Y', strtotime($c['created_at'])) : '—' ?></div>
     </div>
+    <?php if (!empty($c['referred_by_name']) || !empty($c['referred_medium'])): ?>
+    <div class="info-row">
+      <div class="info-key">Referred</div>
+      <div class="info-val">
+        <?= htmlspecialchars($c['referred_by_name'] ?? '—') ?>
+        <?php if (!empty($c['referred_by_phone'])): ?><br><small style="color:var(--gray)"><?= htmlspecialchars($c['referred_by_phone']) ?></small><?php endif; ?>
+        <?php if (!empty($c['referred_medium'])): ?><br><small style="color:var(--blue)">Medium: <?= htmlspecialchars($c['referred_medium']) ?></small><?php endif; ?>
+      </div>
+    </div>
+    <?php endif; ?>
   </div>
 
   <!-- INTEGRITY -->
@@ -604,6 +619,30 @@ $toast         = $_GET['toast'] ?? '';
   </div>
 </div>
 
+<!-- EDIT CANDIDATE MODAL -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Edit Candidate Details</h3>
+      <button class="modal-close" onclick="closeModal('editModal')">✕</button>
+    </div>
+    <div class="grid-2">
+      <div class="form-group"><label class="form-label">Name</label><input class="form-control" id="editName" value="<?= htmlspecialchars($c['name'] ?? '') ?>"></div>
+      <div class="form-group"><label class="form-label">Phone</label><input class="form-control" id="editPhone" value="<?= htmlspecialchars($c['phone'] ?? '') ?>"></div>
+      <div class="form-group"><label class="form-label">Email</label><input class="form-control" id="editEmail" value="<?= htmlspecialchars($c['email'] ?? '') ?>"></div>
+      <div class="form-group"><label class="form-label">City</label><input class="form-control" id="editCity" value="<?= htmlspecialchars($c['city'] ?? '') ?>"></div>
+      <div class="form-group"><label class="form-label">Experience Years</label><input class="form-control" id="editExp" value="<?= htmlspecialchars($c['experience_years'] ?? '') ?>"></div>
+      <div class="form-group"><label class="form-label">Current CTC</label><input class="form-control" id="editCtc" value="<?= htmlspecialchars($c['current_ctc'] ?? '') ?>"></div>
+      <div class="form-group"><label class="form-label">Expected CTC</label><input class="form-control" id="editExpected" value="<?= htmlspecialchars($c['expected_ctc'] ?? '') ?>"></div>
+      <div class="form-group"><label class="form-label">Source</label><input class="form-control" id="editSource" value="<?= htmlspecialchars($c['source'] ?? '') ?>"></div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn-outline" onclick="closeModal('editModal')">Cancel</button>
+      <button class="btn-primary" onclick="saveCandidateDetails()"><i class="fa-solid fa-floppy-disk fa-sm"></i> Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- DELETE CONFIRM MODAL -->
 <div class="confirm-overlay" id="deleteModal">
   <div class="confirm-box">
@@ -669,6 +708,7 @@ function showToast(msg, type = 'success') {
 
 // ── MODALS ────────────────────────────────────────────────────
 function openStatusModal() { document.getElementById('statusModal').classList.add('active'); }
+function openEditModal() { document.getElementById('editModal').classList.add('active'); }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 
 document.querySelectorAll('.modal-overlay, .confirm-overlay').forEach(m => {
@@ -736,6 +776,38 @@ async function saveStatus() {
     }
   } catch (e) {
     showToast('Network error', 'error');
+  }
+}
+
+async function saveCandidateDetails() {
+  const btn = document.querySelector('#editModal .btn-primary');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin fa-xs"></i> Saving...';
+  try {
+    const r = await fetch('/api/candidates.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'update',
+        candidate_id: <?= $c['id'] ?>,
+        name: document.getElementById('editName').value.trim(),
+        phone: document.getElementById('editPhone').value.trim(),
+        email: document.getElementById('editEmail').value.trim(),
+        city: document.getElementById('editCity').value.trim(),
+        experience_years: document.getElementById('editExp').value.trim(),
+        current_ctc: document.getElementById('editCtc').value.trim(),
+        expected_ctc: document.getElementById('editExpected').value.trim(),
+        source: document.getElementById('editSource').value.trim()
+      })
+    });
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error || 'Update failed');
+    showToast('Candidate updated', 'success');
+    setTimeout(() => location.reload(), 700);
+  } catch (e) {
+    showToast(e.message || 'Update failed', 'error');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-floppy-disk fa-sm"></i> Save';
   }
 }
 

@@ -74,7 +74,12 @@ if($pf==='pass'){
 }else{
   $wa="📋 *Interview Update*\n\nHi $name, thank you for your interview for *$role* at *$camp*.\n\nWe will keep your profile and reach out if a suitable opportunity arises.\n\n*HireAI — Avyukta Intellicall*";
 }
-send_whatsapp($candidate['phone'],$wa);
+send_whatsapp($candidate['phone'],$wa, [
+  'org_id' => $candidate['org_id'],
+  'candidate_id' => $candidate_id,
+  'campaign_id' => $campaign_id,
+  'reason' => 'interview_result_notification',
+]);
 log_s("WhatsApp sent. Done.");
 if(php_sapi_name()!=='cli')echo json_encode(['status'=>'done','score'=>$total_score,'max'=>$max_total,'pass_fail'=>$pf]);
 function log_s($m){echo '['.date('H:i:s')."] $m\n";}

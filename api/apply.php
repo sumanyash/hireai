@@ -21,6 +21,7 @@ $data = json_decode($raw, true);
 if (!is_array($data)) { ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Invalid JSON']); exit; }
 
 function s($d,$k){ return isset($d[$k]) ? trim((string)$d[$k]) : ''; }
+function norm_phone_apply($phone){ return preg_replace('/[^0-9]/', '', (string)$phone); }
 
 if (!s($data,'phone') || !s($data,'email')) {
     ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Missing required fields']); exit;
@@ -32,6 +33,7 @@ $campaign    = $campaign_id ? db_fetch_one("SELECT * FROM campaigns WHERE id=?",
 $org_id      = $campaign ? (int)$campaign['org_id'] : 1;
 $email       = s($data,'email');
 $ref_token   = s($data,'ref_token');
+$ref_medium  = s($data,'ref_medium') ?: 'candidate_share';
 $referred_by_candidate_id = null;
 if ($ref_token !== '') {
     $referrer = db_fetch_one("SELECT id,campaign_id FROM candidates WHERE unique_token=?", [$ref_token], 's');
@@ -41,8 +43,16 @@ if ($ref_token !== '') {
 }
 
 if ($campaign_id) {
-    $dup = db_fetch_one("SELECT id FROM candidates WHERE email=? AND campaign_id=?",[$email,$campaign_id],'si');
-    if ($dup) { ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Already applied.','duplicate'=>true]); exit; }
+    $phone_norm = norm_phone_apply(s($data,'phone'));
+    $existing_rows = db_fetch_all("SELECT id,phone,email FROM candidates WHERE campaign_id=?", [$campaign_id], 'i');
+    foreach ($existing_rows as $row) {
+        if ($email !== '' && strtolower(trim($row['email'] ?? '')) === strtolower($email)) {
+            ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Already applied with this email.','duplicate'=>true]); exit;
+        }
+        if ($phone_norm !== '' && norm_phone_apply($row['phone'] ?? '') === $phone_norm) {
+            ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Already applied with this phone number.','duplicate'=>true]); exit;
+        }
+    }
 }
 
 $udir = __DIR__.'/../uploads/';
@@ -91,7 +101,7 @@ try {
         'exp_type','exp_desc','current_salary','expected_salary',
         'tenure','joining_date','flex_hours','laptop','internet',
         'commute','tech_skills','soft_skills',
-        'resume_path','video_path','portfolio','ai_test_willing','referred_by_candidate_id'
+        'resume_path','video_path','portfolio','ai_test_willing','referred_by_candidate_id','referred_medium','link_expires_at'
     ];
 
     $vals = [
@@ -105,7 +115,7 @@ try {
         s($data,'exp_type'), s($data,'exp_desc'), s($data,'current_salary'), s($data,'expected_salary'),
         s($data,'tenure'), $jd, s($data,'flex_hours'), s($data,'laptop'), s($data,'internet'),
         s($data,'commute'), s($data,'tech_skills'), s($data,'soft_skills'),
-        $resume_path, $video_path, s($data,'portfolio'), s($data,'ai_test_willing'), $referred_by_candidate_id,
+        $resume_path, $video_path, s($data,'portfolio'), s($data,'ai_test_willing'), $referred_by_candidate_id, $ref_medium, date('Y-m-d H:i:s', time() + 86400),
     ];
 
     $placeholders = implode(',', array_fill(0, count($cols), '?'));
@@ -132,7 +142,7 @@ try {
         $lg = $db->prepare("INSERT INTO outreach_log (candidate_id,campaign_id,channel,status) VALUES (?,?,'whatsapp','sent')");
         if ($lg) { $lg->bind_param('ii',$cid,$campaign_id); $lg->execute(); $lg->close(); }
         db_insert(
-            "INSERT INTO reminder_jobs (candidate_id,campaign_id,channel,scheduled_at) VALUES (?,?,'whatsapp',DATE_ADD(NOW(), INTERVAL 24 HOUR))",
+            "INSERT INTO reminder_jobs (candidate_id,campaign_id,channel,scheduled_at) VALUES (?,?,'whatsapp',DATE_ADD(NOW(), INTERVAL 12 HOUR))",
             [$cid, $campaign_id], 'ii'
         );
     }
@@ -153,12 +163,19 @@ try {
                  . "⏱ Duration: ~15 min | 🎤 Mic required\n\n"
                  . "*HireAI — Avyukta Intellicall*";
 
-            $result  = send_whatsapp(s($data,'phone'), $msg);
+            $result  = send_whatsapp(s($data,'phone'), $msg, [
+                'org_id' => $org_id,
+                'candidate_id' => $cid,
+                'campaign_id' => $campaign_id,
+                'reason' => 'application_interview_invite',
+            ]);
             $wa_sent = isset($result['code']) && $result['code'] >= 200 && $result['code'] < 300;
             $status  = $wa_sent ? 'sent' : 'failed';
 
-            // Update candidate status
-            db_execute("UPDATE candidates SET status='outreach_sent', updated_at=NOW() WHERE id=?", [$cid], 'i');
+            // Update candidate status only when outreach actually went out.
+            if ($wa_sent) {
+                db_execute("UPDATE candidates SET status='outreach_sent', updated_at=NOW() WHERE id=?", [$cid], 'i');
+            }
 
             // Log WA outreach
             db_execute(
@@ -168,8 +185,7 @@ try {
 
         } catch(Exception $we) {
             error_log('[apply WA] '.$we->getMessage());
-            // Still update status even if WA fails
-            db_execute("UPDATE candidates SET status='outreach_sent', updated_at=NOW() WHERE id=?", [$cid], 'i');
+            // Keep candidate pending so recruiters can retry outreach manually.
         }
     }
     // ─────────────────────────────────────────────────────────
@@ -179,6 +195,8 @@ try {
         'candidate_id'    => $cid,
         'wa_sent'         => $wa_sent,
         'interview_token' => $tok,
+        'campaign_id'     => $campaign_id,
+        'referral_link'   => BASE_URL . '/apply.php?campaign_id=' . (int)$campaign_id . '&ref=' . urlencode($tok),
     ]);
 
 } catch(Exception $e) {

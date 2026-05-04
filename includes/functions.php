@@ -70,7 +70,113 @@ function audit_log($org_id, $user_id, $entity_type, $entity_id, $action, $detail
     );
 }
 
-function send_whatsapp($phone, $message) {
+function ensure_credit_wallet($org_id) {
+    static $credit_tables_ready = false;
+    if (!$credit_tables_ready) {
+        db_execute("CREATE TABLE IF NOT EXISTS credit_wallets (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            org_id INT NOT NULL UNIQUE,
+            whatsapp_credits INT NOT NULL DEFAULT 0,
+            sms_credits INT NOT NULL DEFAULT 0,
+            email_credits INT NOT NULL DEFAULT 0,
+            rcs_credits INT NOT NULL DEFAULT 0,
+            low_balance_threshold INT NOT NULL DEFAULT 100,
+            auto_recharge_enabled TINYINT NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
+        db_execute("CREATE TABLE IF NOT EXISTS credit_transactions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            org_id INT NOT NULL,
+            user_id INT NULL,
+            provider ENUM('razorpay','paypal','payoneer','manual') NOT NULL DEFAULT 'manual',
+            provider_payment_id VARCHAR(180) NULL,
+            amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+            currency VARCHAR(8) NOT NULL DEFAULT 'INR',
+            credits_json JSON NOT NULL,
+            status ENUM('pending','confirmed','failed') NOT NULL DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
+        db_execute("CREATE TABLE IF NOT EXISTS credit_usage (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            org_id INT NOT NULL,
+            candidate_id INT NULL,
+            campaign_id INT NULL,
+            channel ENUM('whatsapp','sms','email','rcs') NOT NULL,
+            credits_used INT NOT NULL DEFAULT 1,
+            balance_after INT NULL,
+            reason VARCHAR(120) NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
+        $credit_tables_ready = true;
+    }
+    $org_id = (int)$org_id;
+    if ($org_id <= 0) return null;
+    $wallet = db_fetch_one("SELECT * FROM credit_wallets WHERE org_id=?", [$org_id], 'i');
+    if ($wallet) return $wallet;
+    db_insert("INSERT INTO credit_wallets (org_id) VALUES (?)", [$org_id], 'i');
+    return db_fetch_one("SELECT * FROM credit_wallets WHERE org_id=?", [$org_id], 'i');
+}
+
+function channel_credit_column($channel) {
+    return match ($channel) {
+        'sms' => 'sms_credits',
+        'email' => 'email_credits',
+        'rcs' => 'rcs_credits',
+        default => 'whatsapp_credits',
+    };
+}
+
+function add_credits($org_id, $credits, $provider = 'manual', $amount = 0, $currency = 'INR', $user_id = null, $payment_id = null) {
+    ensure_credit_wallet($org_id);
+    $credits = array_merge(['whatsapp' => 0, 'sms' => 0, 'email' => 0, 'rcs' => 0], $credits);
+    db_execute(
+        "UPDATE credit_wallets SET whatsapp_credits=whatsapp_credits+?, sms_credits=sms_credits+?, email_credits=email_credits+?, rcs_credits=rcs_credits+? WHERE org_id=?",
+        [(int)$credits['whatsapp'], (int)$credits['sms'], (int)$credits['email'], (int)$credits['rcs'], (int)$org_id],
+        'iiiii'
+    );
+    return db_insert(
+        "INSERT INTO credit_transactions (org_id,user_id,provider,provider_payment_id,amount,currency,credits_json,status) VALUES (?,?,?,?,?,?,?,'confirmed')",
+        [(int)$org_id, $user_id ? (int)$user_id : null, $provider, $payment_id, (float)$amount, $currency, json_encode($credits)],
+        'iissdss'
+    );
+}
+
+function deduct_credit($org_id, $channel = 'whatsapp', $credits = 1, $candidate_id = null, $campaign_id = null, $reason = '') {
+    $org_id = (int)$org_id;
+    $credits = max(1, (int)$credits);
+    if ($org_id <= 0) return ['success' => false, 'error' => 'Missing organization'];
+    $wallet = ensure_credit_wallet($org_id);
+    $column = channel_credit_column($channel);
+    $balance = (int)($wallet[$column] ?? 0);
+    if ($balance < $credits) {
+        return ['success' => false, 'error' => 'Insufficient credits', 'balance' => $balance];
+    }
+    $ok = db_execute("UPDATE credit_wallets SET $column=$column-? WHERE org_id=? AND $column>=?", [$credits, $org_id, $credits], 'iii');
+    if (!$ok) return ['success' => false, 'error' => 'Credit update failed', 'balance' => $balance];
+    $after = max(0, $balance - $credits);
+    db_insert(
+        "INSERT INTO credit_usage (org_id,candidate_id,campaign_id,channel,credits_used,balance_after,reason) VALUES (?,?,?,?,?,?,?)",
+        [$org_id, $candidate_id ? (int)$candidate_id : null, $campaign_id ? (int)$campaign_id : null, $channel, $credits, $after, $reason],
+        'iiisiis'
+    );
+    return ['success' => true, 'balance_after' => $after];
+}
+
+function send_whatsapp($phone, $message, $context = []) {
+    if (CREDIT_ENFORCEMENT && !empty($context['org_id'])) {
+        $wallet = ensure_credit_wallet((int)$context['org_id']);
+        $needed = max(1, (int)($context['credits'] ?? 1));
+        $available = (int)($wallet['whatsapp_credits'] ?? 0);
+        if ($available < $needed) {
+            return [
+                'code' => 402,
+                'response' => 'Insufficient WhatsApp credits',
+                'error' => 'Insufficient WhatsApp credits',
+                'credit' => ['success' => false, 'balance' => $available],
+            ];
+        }
+    }
     if (!WA_API_URL || !WA_INSTANCE_ID || !WA_TOKEN) {
         $missing = [];
         if (!WA_API_URL) $missing[] = 'WA_API_URL';
@@ -96,7 +202,18 @@ function send_whatsapp($phone, $message) {
     if ($err || $code < 200 || $code >= 300) {
         error_log('[send_whatsapp] code=' . $code . ' phone=' . $phone . ' curl_error=' . $err . ' response=' . substr((string)$resp, 0, 500));
     }
-    return ['code' => $code, 'response' => $resp, 'error' => $err];
+    $credit = null;
+    if (!$err && $code >= 200 && $code < 300 && !empty($context['org_id'])) {
+        $credit = deduct_credit(
+            (int)$context['org_id'],
+            'whatsapp',
+            (int)($context['credits'] ?? 1),
+            $context['candidate_id'] ?? null,
+            $context['campaign_id'] ?? null,
+            $context['reason'] ?? 'whatsapp_message'
+        );
+    }
+    return ['code' => $code, 'response' => $resp, 'error' => $err, 'credit' => $credit];
 }
 
 function call_openai($prompt, $max_tokens = 400) {
@@ -164,6 +281,11 @@ function score_candidate($candidate_id, $campaign_id, $transcript) {
         } else {
             $msg = "📋 *Interview Result — HireAI*\n\nHi $name,\n\nThank you for your interview.\n📊 Score: $total/$max_total\n\nWe will keep your profile for future opportunities.\n\n*HireAI — Avyukta Intellicall*";
         }
-        send_whatsapp($cand['phone'], $msg);
+        send_whatsapp($cand['phone'], $msg, [
+            'org_id' => $cand['org_id'],
+            'candidate_id' => $candidate_id,
+            'campaign_id' => $campaign_id,
+            'reason' => 'legacy_interview_result_notification',
+        ]);
     }
 }

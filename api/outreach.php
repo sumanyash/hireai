@@ -23,7 +23,10 @@ if ($action === 'send_test') {
     if (!$user) { json_response(['error' => 'Unauthorized'], 401); }
     $phone = trim($_GET['phone'] ?? '');
     if ($phone === '') json_response(['error' => 'phone required'], 400);
-    $result = send_whatsapp($phone, "HireAI WhatsApp test message\n\nIf you received this, WhatsApp is configured correctly.");
+    $result = send_whatsapp($phone, "HireAI WhatsApp test message\n\nIf you received this, WhatsApp is configured correctly.", [
+        'org_id' => $user['org_id'],
+        'reason' => 'whatsapp_test',
+    ]);
     $ok = ($result['code'] >= 200 && $result['code'] < 300);
     json_response(['success' => $ok, 'provider' => $result], $ok ? 200 : 502);
 }
@@ -39,7 +42,12 @@ if ($action === 'send_single') {
     $name = $c['name'] ?: 'Candidate';
     $msg = "🎯 *Interview Invitation — {$c['campaign_name']}*\n\nHi $name! 👋\n\nYou have been shortlisted for *{$c['job_role']}*.\n\nComplete your AI interview here:\n🔗 $url\n\n⏱ Duration: ~15 min | 🎤 Mic required\n\n*HireAI — Avyukta Intellicall*";
 
-    $result = send_whatsapp($c['phone'], $msg);
+    $result = send_whatsapp($c['phone'], $msg, [
+        'org_id' => $user['org_id'],
+        'candidate_id' => $candidate_id,
+        'campaign_id' => $c['campaign_id'],
+        'reason' => 'manual_interview_invite',
+    ]);
     $status = ($result['code'] >= 200 && $result['code'] < 300) ? 'sent' : 'failed';
     error_log("[outreach send_single] candidate_id=$candidate_id phone={$c['phone']} status=$status code={$result['code']}");
     db_execute("INSERT INTO outreach_log (candidate_id,campaign_id,channel,status) VALUES (?,?,'whatsapp',?)", [$candidate_id, $c['campaign_id'], $status], 'iis');
@@ -61,7 +69,12 @@ if ($action === 'bulk_send') {
         $url = INTERVIEW_URL . '?t=' . $c['unique_token'];
         $name = $c['name'] ?: 'Candidate';
         $msg = "🎯 *Interview Invitation — {$c['campaign_name']}*\n\nHi $name!\n\nPlease complete your AI interview:\n🔗 $url\n\n*HireAI*";
-        $result = send_whatsapp($c['phone'], $msg);
+        $result = send_whatsapp($c['phone'], $msg, [
+            'org_id' => $user['org_id'],
+            'candidate_id' => $id,
+            'campaign_id' => $c['campaign_id'],
+            'reason' => 'bulk_interview_invite',
+        ]);
         if ($result['code'] >= 200 && $result['code'] < 300) {
             $sent++;
             db_execute("UPDATE candidates SET status='outreach_sent' WHERE id=?", [$id], 'i');

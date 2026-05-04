@@ -1074,6 +1074,19 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
       <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
       Begin AI Interview Test
     </a>
+    <div id="referralBox" style="display:none;margin-top:18px">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:10px">Refer someone for the same campaign:</p>
+      <select id="refMedium" style="margin:0 auto 10px;max-width:260px;width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text)">
+        <option value="whatsapp">Medium: WhatsApp</option>
+        <option value="email">Medium: Email</option>
+        <option value="sms">Medium: SMS</option>
+        <option value="copy_link">Medium: Copy Link</option>
+      </select>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        <a href="#" id="refWhatsapp" class="ai-link" target="_blank" rel="noopener" style="background:#16A34A">Share on WhatsApp</a>
+        <button type="button" id="refCopyBtn" class="ai-link" style="border:none;cursor:pointer;background:#7C3AED">Copy Apply Link</button>
+      </div>
+    </div>
   </div>
 </div><!-- container -->
 
@@ -1083,6 +1096,8 @@ let currentSection = 1;
 const CAMPAIGN_ID = <?=$campaign_id?>;
 const REF_TOKEN = <?= json_encode($ref_token) ?>;
 const INTERVIEW_URL_PUBLIC = <?= json_encode(defined('INTERVIEW_URL') ? INTERVIEW_URL : '/interview.php') ?>;
+let referralLink = '';
+const REFERRAL_MESSAGE_PREFIX = 'I have completed my HireAI interview. You can apply using this campaign link: ';
 
 function gotoSection(id) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -1423,6 +1438,7 @@ async function submitForm() {
       video_link: g('videoLinkInput'),
       ai_test_willing: g('aiTestWilling'),
       ref_token: REF_TOKEN,
+      ref_medium: new URLSearchParams(location.search).get('medium') || '',
       timestamp: new Date().toISOString()
     };
     
@@ -1457,6 +1473,11 @@ async function submitForm() {
       link.href = INTERVIEW_URL_PUBLIC + '?t=' + encodeURIComponent(d.interview_token);
       link.style.display = 'inline-flex';
     }
+    if (d.referral_link) {
+      referralLink = d.referral_link;
+      document.getElementById('refWhatsapp').href = 'https://wa.me/?text=' + encodeURIComponent(REFERRAL_MESSAGE_PREFIX + referralLink + '&medium=whatsapp');
+      document.getElementById('referralBox').style.display = 'block';
+    }
     
   } catch (err) {
     console.error(err);
@@ -1470,6 +1491,18 @@ async function submitForm() {
   document.getElementById('progressLabel').textContent = 'Complete!';
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
+document.getElementById('refCopyBtn')?.addEventListener('click', async () => {
+  if (!referralLink) return;
+  const medium = document.getElementById('refMedium')?.value || 'copy_link';
+  const link = referralLink + '&medium=' + encodeURIComponent(medium);
+  try {
+    await navigator.clipboard.writeText(REFERRAL_MESSAGE_PREFIX + link);
+    alert('Same campaign apply link copied');
+  } catch(e) {
+    prompt('Copy same campaign apply link', REFERRAL_MESSAGE_PREFIX + link);
+  }
+});
 
 document.addEventListener('DOMContentLoaded', () => {
   // Default theme: light (midnight available via toggle)

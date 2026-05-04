@@ -28,6 +28,12 @@ define('EL_PHONE_NUMBER_ID', envv('EL_PHONE_NUMBER_ID', ''));
 define('WA_API_URL', envv('WA_API_URL', ''));
 define('WA_INSTANCE_ID', envv('WA_INSTANCE_ID', ''));
 define('WA_TOKEN', envv('WA_TOKEN', ''));
+define('RAZORPAY_KEY_ID', envv('RAZORPAY_KEY_ID', ''));
+define('RAZORPAY_KEY_SECRET', envv('RAZORPAY_KEY_SECRET', ''));
+define('PAYPAL_CLIENT_ID', envv('PAYPAL_CLIENT_ID', ''));
+define('PAYPAL_CLIENT_SECRET', envv('PAYPAL_CLIENT_SECRET', ''));
+define('PAYONEER_PROGRAM_ID', envv('PAYONEER_PROGRAM_ID', ''));
+define('CREDIT_ENFORCEMENT', envv('CREDIT_ENFORCEMENT', '0') === '1');
 session_start();
 
 ini_set('display_errors', envv('APP_DEBUG', '0') === '1' ? 1 : 0);

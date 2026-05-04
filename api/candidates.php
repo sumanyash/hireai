@@ -22,14 +22,11 @@ function normalize_phone($phone) {
 
 function candidate_duplicate_exists($campaign_id, $phone, $email) {
     $phone = normalize_phone($phone);
-    $email = trim((string)$email);
-    if ($phone !== '') {
-        $dup = db_fetch_one("SELECT id FROM candidates WHERE campaign_id=? AND REPLACE(REPLACE(REPLACE(REPLACE(phone,'+',''),' ',''),'-',''),'(', '') LIKE ?", [$campaign_id, '%' . $phone . '%'], 'is');
-        if ($dup) return true;
-    }
-    if ($email !== '') {
-        $dup = db_fetch_one("SELECT id FROM candidates WHERE campaign_id=? AND email=?", [$campaign_id, $email], 'is');
-        if ($dup) return true;
+    $email = strtolower(trim((string)$email));
+    $rows = db_fetch_all("SELECT id,phone,email FROM candidates WHERE campaign_id=?", [$campaign_id], 'i');
+    foreach ($rows as $row) {
+        if ($phone !== '' && normalize_phone($row['phone'] ?? '') === $phone) return true;
+        if ($email !== '' && strtolower(trim($row['email'] ?? '')) === $email) return true;
     }
     return false;
 }
@@ -102,8 +99,8 @@ if ($action === 'add' && $method === 'POST') {
 
     $token = bin2hex(random_bytes(16));
     $id = db_insert(
-        "INSERT INTO candidates (org_id, campaign_id, name, phone, email, city, experience_years, current_ctc, expected_ctc, source, unique_token, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())",
+        "INSERT INTO candidates (org_id, campaign_id, name, phone, email, city, experience_years, current_ctc, expected_ctc, source, unique_token, link_expires_at, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR), 'pending', NOW())",
         [$user['org_id'], $campaign_id, $name, $phone, $email, $city, $experience_years, $current_ctc, trim($input['expected_ctc'] ?? ''), $source, $token],
         'iisssssssss'
     );
@@ -111,7 +108,7 @@ if ($action === 'add' && $method === 'POST') {
     if (!$id) json_response(['error' => 'Failed to add candidate. Please try again.'], 500);
     audit_log($user['org_id'], $user['user_id'] ?? null, 'candidate', $id, 'candidate_added', ['source' => $source, 'campaign_id' => $campaign_id]);
     db_insert(
-        "INSERT INTO reminder_jobs (candidate_id,campaign_id,channel,scheduled_at) VALUES (?,?,'whatsapp',DATE_ADD(NOW(), INTERVAL 24 HOUR))",
+        "INSERT INTO reminder_jobs (candidate_id,campaign_id,channel,scheduled_at) VALUES (?,?,'whatsapp',DATE_ADD(NOW(), INTERVAL 12 HOUR))",
         [$id, $campaign_id], 'ii'
     );
 
@@ -149,14 +146,14 @@ if ($action === 'bulk_import' && $method === 'POST') {
 
         $token = bin2hex(random_bytes(16));
         $r = db_insert(
-            "INSERT INTO candidates (org_id, campaign_id, name, phone, email, city, experience_years, current_ctc, expected_ctc, source, unique_token, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())",
+            "INSERT INTO candidates (org_id, campaign_id, name, phone, email, city, experience_years, current_ctc, expected_ctc, source, unique_token, link_expires_at, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR), 'pending', NOW())",
             [$user['org_id'], $campaign_id, $name, $phone, $email, $row['city'], $row['experience_years'], $row['current_ctc'], $row['expected_ctc'], $row['source'], $token],
             'iisssssssss'
         );
         if ($r) {
             $added++;
             db_insert(
-                "INSERT INTO reminder_jobs (candidate_id,campaign_id,channel,scheduled_at) VALUES (?,?,'whatsapp',DATE_ADD(NOW(), INTERVAL 24 HOUR))",
+                "INSERT INTO reminder_jobs (candidate_id,campaign_id,channel,scheduled_at) VALUES (?,?,'whatsapp',DATE_ADD(NOW(), INTERVAL 12 HOUR))",
                 [$r, $campaign_id], 'ii'
             );
         } else {
@@ -165,6 +162,37 @@ if ($action === 'bulk_import' && $method === 'POST') {
     }
     audit_log($user['org_id'], $user['user_id'] ?? null, 'candidate', null, 'bulk_import', ['campaign_id' => $campaign_id, 'added' => $added, 'dupes' => $dupes, 'errors' => $errors]);
     json_response(['success' => true, 'added' => $added, 'dupes' => $dupes, 'errors' => $errors]);
+}
+
+// ── UPDATE CANDIDATE DETAILS ────────────────────────────────────────────────
+if ($action === 'update' && $method === 'POST') {
+    $candidate_id = (int)($input['candidate_id'] ?? 0);
+    if (!$candidate_id) json_response(['error' => 'Candidate ID required'], 400);
+    $existing = db_fetch_one("SELECT * FROM candidates WHERE id=? AND org_id=?", [$candidate_id, $user['org_id']], 'ii');
+    if (!$existing) json_response(['error' => 'Candidate not found'], 404);
+
+    $name = trim($input['name'] ?? '');
+    $phone = trim($input['phone'] ?? '');
+    $email = trim($input['email'] ?? '');
+    $city = trim($input['city'] ?? '');
+    $experience_years = trim($input['experience_years'] ?? '');
+    $current_ctc = trim($input['current_ctc'] ?? '');
+    $expected_ctc = trim($input['expected_ctc'] ?? '');
+    $source = trim($input['source'] ?? '');
+
+    $dupeRows = db_fetch_all("SELECT id,phone,email FROM candidates WHERE campaign_id=? AND id<>?", [$existing['campaign_id'], $candidate_id], 'ii');
+    foreach ($dupeRows as $row) {
+        if ($phone !== '' && normalize_phone($row['phone'] ?? '') === normalize_phone($phone)) json_response(['error' => 'Another candidate with this phone already exists'], 409);
+        if ($email !== '' && strtolower(trim($row['email'] ?? '')) === strtolower($email)) json_response(['error' => 'Another candidate with this email already exists'], 409);
+    }
+
+    db_execute(
+        "UPDATE candidates SET name=?,phone=?,email=?,city=?,experience_years=?,current_ctc=?,expected_ctc=?,source=?,updated_at=NOW() WHERE id=? AND org_id=?",
+        [$name,$phone,$email,$city,$experience_years,$current_ctc,$expected_ctc,$source,$candidate_id,$user['org_id']],
+        'ssssssssii'
+    );
+    audit_log($user['org_id'], $user['user_id'] ?? null, 'candidate', $candidate_id, 'candidate_updated');
+    json_response(['success' => true, 'message' => 'Candidate updated']);
 }
 
 // ── DELETE CANDIDATE ──────────────────────────────────────────────────────────

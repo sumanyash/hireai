@@ -18,6 +18,10 @@ $candidate = db_fetch_one(
 );
 
 if (!$candidate) { http_response_code(404); die('Invalid or expired interview link.'); }
+if (!empty($candidate['link_expires_at']) && strtotime($candidate['link_expires_at']) < time() && !in_array($candidate['status'], ['interview_completed','shortlisted','rejected'])) {
+    http_response_code(410);
+    die('This interview link has expired. Please contact the recruiter for a fresh link.');
+}
 $already_done = in_array($candidate['status'], ['interview_completed','shortlisted','rejected']);
 $questions = db_fetch_all("SELECT * FROM questions WHERE campaign_id=? ORDER BY order_no ASC", [$candidate['campaign_id']], 'i');
 if (!$already_done && empty($questions)) { die('No questions configured. Please contact the recruiter.'); }
@@ -223,6 +227,8 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 .perm-check-text{font-size:13px;font-weight:600;color:var(--text)}
 .perm-check-sub{font-size:11px;color:var(--muted2);margin-top:1px}
 .perm-error{color:#F87171;font-size:12px;min-height:18px;margin:8px 0;font-weight:600}
+.mobile-permission-note{display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);color:#FCD34D;border-radius:10px;padding:12px 14px;font-size:12px;line-height:1.5;margin-bottom:14px;text-align:left}
+.consent-row{display:flex;gap:10px;text-align:left;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--muted2);line-height:1.5;margin:12px 0}
 .btn-allow{
   width:100%;padding:14px;background:linear-gradient(135deg,var(--blue),#1D4ED8);
   color:#fff;border:none;border-radius:11px;font-size:15px;font-weight:700;
@@ -273,6 +279,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
   .cam-video-wrap{flex:1;height:100%;aspect-ratio:unset}
   .main-scroll{padding:14px}
   .q-nav{display:none}
+  .mobile-permission-note{display:block}
 }
 @media(max-width:380px){
   .hdr{padding:0 12px}
@@ -322,6 +329,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
       </div>
       <div class="perm-title">Before We Begin</div>
       <div class="perm-desc">This AI interview requires your <strong>camera and microphone</strong>. Please grant access to continue.</div>
+      <div class="mobile-permission-note">On mobile, your browser will show a camera and microphone permission popup. Tap Allow to continue the test.</div>
 
       <div class="perm-checks">
         <div class="perm-check" id="pc-camera">
@@ -340,6 +348,10 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
         </div>
       </div>
 
+      <label class="consent-row">
+        <input type="checkbox" id="recording-consent">
+        <span>I consent to voice/video recording and understand my responses may be reviewed by the hiring team for recruitment evaluation.</span>
+      </label>
       <div class="perm-error" id="perm-error"></div>
       <button class="btn-allow" id="allow-btn" onclick="requestPermissions()">
         Allow Access &amp; Start Interview →
@@ -514,7 +526,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 const TOKEN   = <?= json_encode($token) ?>;
 const QUESTIONS = <?= json_encode(array_values($questions)) ?>;
 const CAMPAIGN_LINK = <?= json_encode(BASE_URL . '/apply.php?campaign_id=' . (int)$candidate['campaign_id'] . '&ref=' . ($candidate['unique_token'] ?? '')) ?>;
-const SHARE_TEXT = <?= json_encode('I just completed my HireAI interview. You can apply using this campaign link: ') ?> + CAMPAIGN_LINK;
+const SHARE_TEXT = <?= json_encode('I have completed my HireAI interview. You can apply using this campaign link: ') ?> + CAMPAIGN_LINK;
 const TIMER_S = 180;
 const CIRC    = 2 * Math.PI * 22; // SVG arc length ≈ 138.2
 
@@ -532,6 +544,12 @@ async function requestPermissions() {
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span> Requesting access…';
   err.textContent = '';
+  if (!document.getElementById('recording-consent').checked) {
+    err.textContent = 'Please provide recording consent before starting.';
+    btn.disabled = false;
+    btn.textContent = 'Allow Access & Start Interview →';
+    return;
+  }
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
       video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },

@@ -26,12 +26,13 @@ if ($action === 'send_due') {
         if (!$user) json_response(['error' => 'Unauthorized'], 401);
     }
     $jobs = db_fetch_all(
-        "SELECT r.*, c.name, c.phone, c.unique_token, c.status AS candidate_status, camp.name AS campaign_name, camp.job_role
+        "SELECT r.*, c.name, c.phone, c.unique_token, c.org_id, c.link_expires_at, c.status AS candidate_status, camp.name AS campaign_name, camp.job_role
          FROM reminder_jobs r
          JOIN candidates c ON r.candidate_id=c.id
          JOIN campaigns camp ON r.campaign_id=camp.id
          WHERE r.status='pending' AND r.scheduled_at<=NOW()
            AND c.status IN ('pending','outreach_sent','interview_started')
+           AND (c.link_expires_at IS NULL OR c.link_expires_at > NOW())
          ORDER BY r.scheduled_at ASC
          LIMIT 50"
     );
@@ -39,8 +40,14 @@ if ($action === 'send_due') {
     foreach ($jobs as $job) {
         $link = INTERVIEW_URL . '?t=' . $job['unique_token'];
         $name = $job['name'] ?: 'Candidate';
-        $msg = "⏰ *Interview Reminder — {$job['campaign_name']}*\n\nHi $name,\n\nYour AI interview for *{$job['job_role']}* is still pending.\n\nComplete it here:\n$link\n\n*HireAI — Avyukta Intellicall*";
-        $res = send_whatsapp($job['phone'], $msg);
+        $expiry = !empty($job['link_expires_at']) ? date('d M Y, h:i A', strtotime($job['link_expires_at'])) : 'within 24 hours';
+        $msg = "⏰ *Interview Reminder — {$job['campaign_name']}*\n\nHi $name,\n\nYour AI interview for *{$job['job_role']}* is still pending. This link is active for 24 hours and expires at $expiry.\n\nComplete it here:\n$link\n\n*HireAI — Avyukta Intellicall*";
+        $res = send_whatsapp($job['phone'], $msg, [
+            'org_id' => $job['org_id'],
+            'candidate_id' => $job['candidate_id'],
+            'campaign_id' => $job['campaign_id'],
+            'reason' => 'automated_reminder',
+        ]);
         $ok = isset($res['code']) && $res['code'] >= 200 && $res['code'] < 300;
         db_execute(
             "UPDATE reminder_jobs SET status=?, sent_at=IF(?='sent',NOW(),sent_at), attempts=attempts+1, last_error=? WHERE id=?",

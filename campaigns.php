@@ -437,15 +437,57 @@ $application_fields = $campaign_id ? db_fetch_all("SELECT * FROM application_fie
 
 <?php elseif ($action === 'apply_form' && $campaign): ?>
   <?php $applyLink = campaign_apply_link($campaign); ?>
-  <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
-    <div>
-      <h2>Apply Form Builder</h2>
-      <p><?= htmlspecialchars($campaign['name']) ?> · Candidate-facing fields for this campaign</p>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <a class="btn-sm" href="<?= htmlspecialchars($applyLink) ?>" target="_blank" rel="noopener">Preview Apply Form</a>
-      <a href="campaigns.php?action=questions&id=<?= $campaign_id ?>" class="btn-sm">Interview Questions</a>
-      <a href="campaigns.php" class="btn-sm">← Back</a>
+  <style>
+    .builder-shell{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:20px;align-items:start}
+    .builder-hero{background:linear-gradient(135deg,#101827,#1D2A44 58%,#3A1C63);border-radius:18px;padding:26px 28px;color:#fff;box-shadow:0 20px 70px rgba(15,23,42,.22);margin-bottom:20px;overflow:hidden;position:relative}
+    .builder-hero::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,.08) 1px,transparent 1px),linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px);background-size:34px 34px;mask-image:linear-gradient(90deg,transparent,black 25%,black 75%,transparent);pointer-events:none}
+    .builder-hero>*{position:relative}
+    .builder-title{font-size:28px;font-weight:900;letter-spacing:-.7px;margin-bottom:6px}
+    .builder-sub{font-size:14px;color:rgba(255,255,255,.72)}
+    .builder-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+    .builder-actions a,.builder-actions button{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#fff;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:700;display:inline-flex;align-items:center;gap:7px;cursor:pointer}
+    .builder-actions a:hover,.builder-actions button:hover{background:#fff;color:#111827}
+    .builder-link-card{background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:14px;display:flex;align-items:center;gap:10px;box-shadow:var(--card-shadow);margin-bottom:18px}
+    .builder-link-card code{flex:1;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px;color:#2563EB;word-break:break-all;font-size:13px}
+    .builder-note{background:#EFF6FF;border:1px solid #BFDBFE;color:#1E3A8A;border-radius:14px;padding:14px 16px;margin-bottom:18px;display:flex;gap:12px;font-size:13px;line-height:1.55}
+    .builder-note code{background:#DBEAFE;border-radius:6px;padding:2px 6px;color:#1D4ED8}
+    .canvas-card,.builder-panel{background:#fff;border:1px solid rgba(15,23,42,.08);border-radius:16px;box-shadow:var(--card-shadow);overflow:hidden}
+    .builder-panel{position:sticky;top:88px}
+    .canvas-head,.panel-head{padding:18px 20px;border-bottom:1px solid #EEF2F7;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .canvas-head h3,.panel-head h3{font-size:15px;font-weight:900;color:#0F172A;display:flex;align-items:center;gap:8px}
+    .canvas-meta{font-size:12px;color:#64748B;font-weight:700}
+    .field-list{padding:14px}
+    .field-tile{border:1px solid #E5E7EB;background:#FFFFFF;border-radius:13px;padding:14px 14px;display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:12px;align-items:center;margin-bottom:10px;transition:all .18s}
+    .field-tile:hover{border-color:#A78BFA;box-shadow:0 10px 30px rgba(124,58,237,.12);transform:translateY(-1px)}
+    .field-order{width:34px;height:34px;border-radius:10px;background:#F3E8FF;color:#6B21A8;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900}
+    .field-name{font-size:14px;font-weight:850;color:#111827;margin-bottom:3px}
+    .field-detail{font-size:12px;color:#64748B;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+    .field-key{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:999px;padding:2px 7px;color:#2563EB}
+    .type-pill{background:#F1F5F9;color:#475569;border-radius:999px;padding:2px 8px;font-weight:800;text-transform:capitalize}
+    .req-pill{background:#DCFCE7;color:#166534;border-radius:999px;padding:2px 8px;font-weight:800}
+    .empty-canvas{padding:42px 24px;text-align:center;color:#64748B}
+    .empty-canvas i{font-size:34px;color:#A78BFA;margin-bottom:12px}
+    .quick-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:16px 20px 4px}
+    .quick-chip{border:1px solid #E5E7EB;background:#F8FAFC;color:#334155;border-radius:10px;padding:9px 10px;font-size:12px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:8px;text-align:left}
+    .quick-chip:hover{border-color:#7C3AED;background:#F5F3FF;color:#6B21A8}
+    .panel-body{padding:18px 20px 20px}
+    .panel-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .panel-grid-3{display:grid;grid-template-columns:1fr 110px 130px;gap:12px;align-items:end}
+    .builder-panel .form-control{border-radius:11px;padding:11px 13px}
+    .builder-panel .form-label{font-size:12px;text-transform:uppercase;letter-spacing:.35px;color:#475569}
+    .required-toggle{height:44px;display:flex;align-items:center;gap:9px;border:1.5px solid var(--light);border-radius:11px;padding:0 12px;font-size:13px;font-weight:700;color:#334155;background:#fff}
+    .builder-submit{width:100%;justify-content:center;padding:12px 18px;margin-top:4px}
+    @media(max-width:1100px){.builder-shell{grid-template-columns:1fr}.builder-panel{position:static}.panel-grid-3{grid-template-columns:1fr}.quick-grid{grid-template-columns:1fr 1fr}}
+    @media(max-width:620px){.builder-hero{padding:20px}.builder-title{font-size:22px}.builder-link-card{display:block}.builder-link-card code{display:block;margin-bottom:10px}.field-tile{grid-template-columns:30px minmax(0,1fr)}.field-tile>a{grid-column:1/-1;justify-content:center}.quick-grid,.panel-grid-2{grid-template-columns:1fr}}
+  </style>
+
+  <div class="builder-hero">
+    <div class="builder-title">Apply Form Builder</div>
+    <div class="builder-sub"><?= htmlspecialchars($campaign['name']) ?> · Design the candidate-facing application flow for this campaign.</div>
+    <div class="builder-actions">
+      <a href="<?= htmlspecialchars($applyLink) ?>" target="_blank" rel="noopener"><i class="fa-solid fa-eye"></i> Preview Apply Form</a>
+      <a href="campaigns.php?action=questions&id=<?= $campaign_id ?>"><i class="fa-solid fa-microphone-lines"></i> Interview Questions</a>
+      <a href="campaigns.php"><i class="fa-solid fa-arrow-left"></i> Back</a>
     </div>
   </div>
 
@@ -453,71 +495,119 @@ $application_fields = $campaign_id ? db_fetch_all("SELECT * FROM application_fie
     <div class="alert alert-success">✅ <?= htmlspecialchars(str_replace('_',' ',$_GET['msg'])) ?>!</div>
   <?php endif; ?>
 
-  <div class="card" style="padding:16px 18px">
-    <div style="font-size:12px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Public Apply Link</div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <code style="flex:1;min-width:260px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:9px 12px;color:#2563EB;word-break:break-all"><?= htmlspecialchars($applyLink) ?></code>
-      <button type="button" onclick="copyCampaignLink(<?= htmlspecialchars(json_encode($applyLink), ENT_QUOTES, 'UTF-8') ?>)" class="btn-green">Copy Link</button>
+  <div class="builder-link-card">
+    <code><?= htmlspecialchars($applyLink) ?></code>
+    <button type="button" onclick="copyCampaignLink(<?= htmlspecialchars(json_encode($applyLink), ENT_QUOTES, 'UTF-8') ?>)" class="btn-green"><i class="fa-solid fa-copy"></i> Copy Link</button>
+  </div>
+
+  <div class="builder-note">
+    <i class="fa-solid fa-circle-info" style="margin-top:3px"></i>
+    <div>Use keys like <code>name</code>, <code>phone</code>, <code>email</code>, <code>city</code>, <code>resume</code>, <code>photo</code>, <code>current_ctc</code>, <code>expected_ctc</code>, <code>linkedin</code>. A <code>phone</code> field is required for WhatsApp/interview outreach.</div>
+  </div>
+
+  <div class="builder-shell">
+    <div class="canvas-card">
+      <div class="canvas-head">
+        <h3><i class="fa-solid fa-diagram-project" style="color:#7C3AED"></i> Form Flow</h3>
+        <div class="canvas-meta"><?= count($application_fields) ?> fields</div>
+      </div>
+      <div class="field-list">
+      <?php if (!empty($application_fields)): ?>
+        <?php foreach ($application_fields as $f): $opts = json_decode($f['options_json'] ?? '[]', true) ?: []; ?>
+        <div class="field-tile">
+          <div class="field-order"><?= (int)$f['order_no'] ?></div>
+          <div>
+            <div class="field-name"><?= htmlspecialchars($f['field_label']) ?></div>
+            <div class="field-detail">
+              <span class="field-key"><?= htmlspecialchars($f['field_key']) ?></span>
+              <span class="type-pill"><?= htmlspecialchars(str_replace('_', ' ', $f['field_type'])) ?></span>
+              <?php if (!empty($f['is_required'])): ?><span class="req-pill">Required</span><?php endif; ?>
+              <?php if (!empty($opts)): ?><span><?= htmlspecialchars(implode(', ', array_slice($opts, 0, 3))) ?><?= count($opts) > 3 ? '...' : '' ?></span><?php endif; ?>
+            </div>
+          </div>
+          <a href="campaigns.php?action=delete_application_field&id=<?= $campaign_id ?>&fid=<?= $f['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" class="btn-danger" style="font-size:12px;padding:7px 12px" onclick="return confirm('Remove this application field?')"><i class="fa-solid fa-trash-can"></i></a>
+        </div>
+        <?php endforeach; ?>
+      <?php else: ?>
+        <div class="empty-canvas">
+          <i class="fa-solid fa-layer-group"></i>
+          <h3 style="font-size:17px;color:#0F172A;margin-bottom:4px">Start with a candidate detail</h3>
+          <p>Add fields from the right panel. Name, phone, CV, photo and client-specific questions can all be configured per campaign.</p>
+        </div>
+      <?php endif; ?>
+      </div>
+    </div>
+
+    <div class="builder-panel">
+      <div class="panel-head">
+        <h3><i class="fa-solid fa-plus" style="color:#10B981"></i> Add Field</h3>
+        <span class="canvas-meta">Quick presets</span>
+      </div>
+      <div class="quick-grid">
+        <button type="button" class="quick-chip" onclick="presetField('Full Name','name','text','Candidate full name')"><i class="fa-solid fa-user"></i> Name</button>
+        <button type="button" class="quick-chip" onclick="presetField('Phone','phone','phone','WhatsApp number')"><i class="fa-brands fa-whatsapp"></i> Phone</button>
+        <button type="button" class="quick-chip" onclick="presetField('Email','email','email','Candidate email')"><i class="fa-solid fa-envelope"></i> Email</button>
+        <button type="button" class="quick-chip" onclick="presetField('Upload CV','resume','file','Upload PDF or DOCX CV')"><i class="fa-solid fa-file-arrow-up"></i> CV</button>
+        <button type="button" class="quick-chip" onclick="presetField('Photo','photo','file','Upload a recent photo')"><i class="fa-solid fa-image"></i> Photo</button>
+        <button type="button" class="quick-chip" onclick="presetField('LinkedIn Profile','linkedin','url','https://linkedin.com/in/...')"><i class="fa-brands fa-linkedin"></i> LinkedIn</button>
+      </div>
+      <div class="panel-body">
+        <form method="POST" action="campaigns.php?action=add_application_field&id=<?= $campaign_id ?>">
+          <?= csrf_input() ?>
+          <div class="panel-grid-2">
+            <div class="form-group">
+              <label class="form-label">Field Label *</label>
+              <input type="text" name="field_label" id="fieldLabel" class="form-control" placeholder="LinkedIn Profile" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Field Key</label>
+              <input type="text" name="field_key" id="fieldKey" class="form-control" placeholder="Auto generated if blank">
+            </div>
+          </div>
+          <div class="panel-grid-3">
+            <div class="form-group">
+              <label class="form-label">Field Type</label>
+              <select name="field_type" id="fieldType" class="form-control">
+                <option value="text">Short Text</option>
+                <option value="textarea">Long Text</option>
+                <option value="number">Numeric</option>
+                <option value="decimal">Decimal</option>
+                <option value="date">Date</option>
+                <option value="dropdown">Dropdown</option>
+                <option value="multi_select">Multi-select</option>
+                <option value="checkbox">Checkbox</option>
+                <option value="email">Email</option>
+                <option value="phone">Phone</option>
+                <option value="url">Hyperlink</option>
+                <option value="file">File Upload</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Order</label>
+              <input type="number" name="order_no" class="form-control" value="<?= count($application_fields)+1 ?>" min="1">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Required</label>
+              <label class="required-toggle"><input type="checkbox" name="is_required" checked> Required</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Placeholder</label>
+            <input type="text" name="placeholder" id="fieldPlaceholder" class="form-control" placeholder="What should candidate enter?">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Help Text</label>
+            <input type="text" name="help_text" id="fieldHelp" class="form-control" placeholder="Small instruction shown below field">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Options</label>
+            <textarea name="options_text" id="fieldOptions" class="form-control" rows="3" placeholder="One option per line for dropdown, multi-select, or checkbox"></textarea>
+          </div>
+          <button type="submit" class="btn-primary builder-submit"><i class="fa-solid fa-circle-plus"></i> Add Field to Flow</button>
+        </form>
+      </div>
     </div>
   </div>
-
-  <div class="alert alert-info">
-    Use field keys like <code>name</code>, <code>phone</code>, <code>email</code>, <code>city</code>, <code>resume</code>, <code>photo</code>, <code>current_ctc</code>, <code>expected_ctc</code>, <code>linkedin</code>. A <code>phone</code> field is required for WhatsApp/interview outreach. CV and photo should be added as <code>File Upload</code> fields.
-  </div>
-
-  <?php if (!empty($application_fields)): ?>
-  <div class="card">
-    <div class="card-header"><h3>Application Fields (<?= count($application_fields) ?>)</h3></div>
-    <table class="table">
-      <thead><tr><th>#</th><th>Label</th><th>Key</th><th>Type</th><th>Required</th><th>Options</th><th></th></tr></thead>
-      <tbody>
-      <?php foreach ($application_fields as $f): $opts = json_decode($f['options_json'] ?? '[]', true) ?: []; ?>
-        <tr>
-          <td><?= (int)$f['order_no'] ?></td>
-          <td><strong><?= htmlspecialchars($f['field_label']) ?></strong><br><small style="color:#8892A4"><?= htmlspecialchars($f['help_text'] ?? '') ?></small></td>
-          <td><code><?= htmlspecialchars($f['field_key']) ?></code></td>
-          <td><span class="badge badge-draft"><?= htmlspecialchars(str_replace('_', ' ', $f['field_type'])) ?></span></td>
-          <td><?= !empty($f['is_required']) ? 'Yes' : 'No' ?></td>
-          <td style="font-size:12px;color:#64748B"><?= htmlspecialchars(implode(', ', array_slice($opts, 0, 4))) ?><?= count($opts) > 4 ? '...' : '' ?></td>
-          <td><a href="campaigns.php?action=delete_application_field&id=<?= $campaign_id ?>&fid=<?= $f['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" class="btn-danger" style="font-size:12px" onclick="return confirm('Remove this application field?')">Remove</a></td>
-        </tr>
-      <?php endforeach; ?>
-      </tbody>
-    </table>
-  </div>
-  <?php endif; ?>
-
-  <div class="card" style="max-width:760px">
-    <div class="card-header"><h3>Add Application Field</h3></div>
-    <form method="POST" action="campaigns.php?action=add_application_field&id=<?= $campaign_id ?>">
-      <?= csrf_input() ?>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <div class="form-group">
-          <label class="form-label">Field Label *</label>
-          <input type="text" name="field_label" class="form-control" placeholder="LinkedIn Profile" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Field Key</label>
-          <input type="text" name="field_key" class="form-control" placeholder="Auto generated if blank">
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
-        <div class="form-group">
-          <label class="form-label">Field Type</label>
-          <select name="field_type" class="form-control">
-            <option value="text">Short Text</option>
-            <option value="textarea">Long Text</option>
-            <option value="number">Numeric</option>
-            <option value="decimal">Decimal</option>
-            <option value="date">Date</option>
-            <option value="dropdown">Dropdown</option>
-            <option value="multi_select">Multi-select</option>
-            <option value="checkbox">Checkbox</option>
-            <option value="email">Email</option>
-            <option value="phone">Phone</option>
-            <option value="url">Hyperlink</option>
-            <option value="file">File Upload</option>
-          </select>
         </div>
         <div class="form-group">
           <label class="form-label">Order</label>
@@ -556,6 +646,20 @@ async function copyCampaignLink(link) {
   } catch (e) {
     prompt('Copy campaign apply link', link);
   }
+}
+function presetField(label, key, type, placeholder) {
+  const labelEl = document.getElementById('fieldLabel');
+  const keyEl = document.getElementById('fieldKey');
+  const typeEl = document.getElementById('fieldType');
+  const placeholderEl = document.getElementById('fieldPlaceholder');
+  const helpEl = document.getElementById('fieldHelp');
+  if (!labelEl) return;
+  labelEl.value = label;
+  keyEl.value = key;
+  typeEl.value = type;
+  placeholderEl.value = placeholder || '';
+  helpEl.value = type === 'file' ? 'Candidate can upload this file during application.' : '';
+  labelEl.focus();
 }
 </script>
 <?php include __DIR__ . '/includes/footer.php'; ?>

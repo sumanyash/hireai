@@ -56,6 +56,7 @@ $job_desc  = $campaign['description'] ?? '';
 // Fetch all active campaigns for dropdown
 $all_campaigns = db_fetch_all("SELECT id, name, job_role FROM campaigns WHERE status='active' ORDER BY name ASC", [], '');
 $application_fields = $campaign_id ? db_fetch_all("SELECT * FROM application_fields WHERE campaign_id=? AND is_active=1 ORDER BY order_no,id", [$campaign_id], 'i') : [];
+$is_dynamic_apply = !empty($application_fields);
 
 ?>
 <!DOCTYPE html>
@@ -581,6 +582,88 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
 
 <div class="container">
   <p class="required-note">Fields marked <span>*</span> are required.</p>
+
+<?php if ($is_dynamic_apply): ?>
+  <!-- ═══ FULLY DYNAMIC CAMPAIGN FORM ═══ -->
+  <div class="section active" id="section-1">
+    <div class="section-header">
+      <div class="section-num">1</div>
+      <div>
+        <div class="section-title"><?= htmlspecialchars($campaign['name'] ?? 'Application Form') ?></div>
+        <div class="section-desc"><?= htmlspecialchars($campaign['job_role'] ?? 'Please complete the form below.') ?></div>
+      </div>
+    </div>
+    <div id="val-banner-1" class="val-banner"></div>
+    <div class="card">
+      <?php foreach ($application_fields as $field):
+        $fid = (int)$field['id'];
+        $fieldId = 'appField_' . $fid;
+        $type = $field['field_type'] ?? 'text';
+        $options = json_decode($field['options_json'] ?? '[]', true) ?: [];
+        $required = !empty($field['is_required']);
+      ?>
+      <div class="field" data-app-wrap="<?= $fid ?>">
+        <label for="<?= $fieldId ?>"><?= htmlspecialchars($field['field_label']) ?><?= $required ? ' <span class="req">*</span>' : '' ?></label>
+        <?php if ($type === 'textarea'): ?>
+          <textarea id="<?= $fieldId ?>" data-app-field="<?= $fid ?>" placeholder="<?= htmlspecialchars($field['placeholder'] ?? '') ?>"></textarea>
+        <?php elseif ($type === 'dropdown'): ?>
+          <select id="<?= $fieldId ?>" data-app-field="<?= $fid ?>">
+            <option value="">Select option</option>
+            <?php foreach ($options as $option): ?><option value="<?= htmlspecialchars($option) ?>"><?= htmlspecialchars($option) ?></option><?php endforeach; ?>
+          </select>
+        <?php elseif ($type === 'multi_select'): ?>
+          <div class="options-grid cols2">
+            <?php foreach ($options as $option): ?>
+              <label class="opt-label"><input type="checkbox" name="<?= $fieldId ?>[]" value="<?= htmlspecialchars($option) ?>" data-app-field="<?= $fid ?>"><span><?= htmlspecialchars($option) ?></span></label>
+            <?php endforeach; ?>
+          </div>
+        <?php elseif ($type === 'checkbox'): ?>
+          <div class="options-grid cols2">
+            <?php if (!empty($options)): foreach ($options as $option): ?>
+              <label class="opt-label"><input type="checkbox" name="<?= $fieldId ?>[]" value="<?= htmlspecialchars($option) ?>" data-app-field="<?= $fid ?>"><span><?= htmlspecialchars($option) ?></span></label>
+            <?php endforeach; else: ?>
+              <label class="opt-label"><input type="checkbox" id="<?= $fieldId ?>" value="Yes" data-app-field="<?= $fid ?>"><span>Yes</span></label>
+            <?php endif; ?>
+          </div>
+        <?php elseif ($type === 'file'): ?>
+          <div class="file-upload-area" onclick="document.getElementById('<?= $fieldId ?>').click()">
+            <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <div class="upload-title"><?= htmlspecialchars($field['placeholder'] ?: 'Click to upload file') ?></div>
+            <div class="upload-sub">PDF, DOCX, image, or video · Max 20 MB</div>
+            <div class="file-name" id="<?= $fieldId ?>Name"></div>
+            <input type="file" id="<?= $fieldId ?>" data-app-field="<?= $fid ?>" onchange="showFileName('<?= $fieldId ?>','<?= $fieldId ?>Name')">
+          </div>
+        <?php else:
+          $inputType = in_array($type, ['number','date','email','url'], true) ? $type : ($type === 'decimal' ? 'number' : ($type === 'phone' ? 'tel' : 'text'));
+          $step = $type === 'decimal' ? ' step="0.01"' : '';
+        ?>
+          <input type="<?= $inputType ?>"<?= $step ?> id="<?= $fieldId ?>" data-app-field="<?= $fid ?>" placeholder="<?= htmlspecialchars($field['placeholder'] ?? '') ?>">
+        <?php endif; ?>
+        <?php if (!empty($field['help_text'])): ?><p class="field-hint"><?= htmlspecialchars($field['help_text']) ?></p><?php endif; ?>
+      </div>
+      <?php endforeach; ?>
+    </div>
+    <div class="nav-bar"><div></div><button class="btn btn-primary" onclick="nextSection(1)">Continue →</button></div>
+  </div>
+
+  <div class="section" id="section-2">
+    <div class="section-header">
+      <div class="section-num">2</div>
+      <div>
+        <div class="section-title">Declaration</div>
+        <div class="section-desc">Please review and confirm your submission.</div>
+      </div>
+    </div>
+    <div id="val-banner-2" class="val-banner"></div>
+    <div class="card">
+      <label class="opt-label" style="border-color:rgba(0,153,90,.3);background:rgba(0,153,90,.05);padding:16px;align-items:flex-start">
+        <input type="checkbox" id="declaration">
+        <span style="color:var(--success);font-size:14px;line-height:1.6;font-weight:400">I confirm that the information provided is true and accurate to the best of my knowledge. I understand that any false or misleading information may result in disqualification.</span>
+      </label>
+    </div>
+    <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(2)">← Back</button><button class="btn btn-success" onclick="submitForm()">Submit Application ✓</button></div>
+  </div>
+<?php else: ?>
 
   <!-- ═══ SECTION 1: Personal Information ═══ -->
   <div class="section active" id="section-1">
@@ -1124,6 +1207,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     </div>
     <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(10)">← Back</button><button class="btn btn-success" onclick="submitForm()">Submit Application ✓</button></div>
   </div>
+<?php endif; ?>
 
   <!-- ═══ THANK YOU ═══ -->
   <div class="thankyou" id="thankyou">
@@ -1153,7 +1237,8 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
 </div><!-- container -->
 
 <script>
-const TOTAL = 10;
+const DYNAMIC_APPLY = <?= $is_dynamic_apply ? 'true' : 'false' ?>;
+const TOTAL = DYNAMIC_APPLY ? 2 : 10;
 let currentSection = 1;
 const CAMPAIGN_ID = <?=$campaign_id?>;
 const REF_TOKEN = <?= json_encode($ref_token) ?>;
@@ -1179,7 +1264,7 @@ function gotoSection(id) {
 }
 
 function nextSection(cur) {
-  const e = (validators[cur] || (() => []))();
+  const e = (DYNAMIC_APPLY && cur === 1) ? validateDynamicFields() : (validators[cur] || (() => []))();
   showBanner('val-banner-' + cur, e);
   if (!e.length) gotoSection('section-' + (cur + 1));
 }
@@ -1229,23 +1314,57 @@ function checks(name) {
 
 function dynamicValue(field) {
   const id = 'appField_' + field.id;
+  const el = document.getElementById(id);
+  if (field.type === 'file') {
+    return el && el.files && el.files[0] ? el.files[0].name : '';
+  }
   if (field.type === 'multi_select' || field.type === 'checkbox') {
     return [...document.querySelectorAll(`input[name="${id}[]"]:checked,input#${id}:checked`)].map(e => e.value);
   }
   return v(id).trim();
 }
 
-function collectDynamicAnswers() {
+async function collectDynamicAnswers() {
   const answers = {};
-  APP_FIELDS.forEach(field => {
+  for (const field of APP_FIELDS) {
+    let value = dynamicValue(field);
+    let file = null;
+    if (field.type === 'file') {
+      const el = document.getElementById('appField_' + field.id);
+      if (el && el.files && el.files[0]) {
+        const f = el.files[0];
+        file = { name: f.name, type: f.type, base64: await getBase64(f) };
+        value = f.name;
+      }
+    }
     answers[field.id] = {
       key: field.key,
       label: field.label,
       type: field.type,
-      value: dynamicValue(field)
+      value,
+      file
     };
-  });
+  }
   return answers;
+}
+
+function dynamicByKeys(answers, keys) {
+  keys = keys.map(k => k.toLowerCase());
+  for (const ans of Object.values(answers)) {
+    const key = String(ans.key || '').toLowerCase();
+    if (keys.includes(key)) return Array.isArray(ans.value) ? ans.value.join(', ') : String(ans.value || '').trim();
+  }
+  return '';
+}
+
+function validateDynamicFields() {
+  const e = [];
+  APP_FIELDS.forEach(field => {
+    const value = dynamicValue(field);
+    const empty = Array.isArray(value) ? value.length === 0 : !String(value || '').trim();
+    if (field.required && empty) e.push(`${field.label} is required`);
+  });
+  return e;
 }
 
 // Campaign selector
@@ -1497,6 +1616,9 @@ function getBase64(file) {
 
 // Submit
 async function submitForm() {
+  if (DYNAMIC_APPLY) {
+    return submitDynamicForm();
+  }
   const dynamicErrs = validators[9]();
   showBanner('val-banner-9', dynamicErrs);
   if (dynamicErrs.length) {
@@ -1548,7 +1670,7 @@ async function submitForm() {
       video_option: g('videoOption'),
       video_link: g('videoLinkInput'),
       ai_test_willing: g('aiTestWilling'),
-      application_answers: collectDynamicAnswers(),
+      application_answers: await collectDynamicAnswers(),
       ref_token: REF_TOKEN,
       ref_medium: new URLSearchParams(location.search).get('medium') || '',
       timestamp: new Date().toISOString()
@@ -1604,6 +1726,80 @@ async function submitForm() {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+async function submitDynamicForm() {
+  const fieldErrs = validateDynamicFields();
+  showBanner('val-banner-1', fieldErrs);
+  if (fieldErrs.length) return;
+  const declarationErrs = document.getElementById('declaration').checked ? [] : ['Please confirm the declaration'];
+  showBanner('val-banner-2', declarationErrs);
+  if (declarationErrs.length) {
+    gotoSection('section-2');
+    return;
+  }
+
+  document.getElementById('submitOverlay').classList.add('active');
+  try {
+    const answers = await collectDynamicAnswers();
+    const fullName = dynamicByKeys(answers, ['name','full_name','candidate_name']);
+    let firstName = dynamicByKeys(answers, ['first_name','firstname']);
+    let lastName = dynamicByKeys(answers, ['last_name','lastname']);
+    if (!firstName && fullName) {
+      const parts = fullName.split(/\s+/);
+      firstName = parts.shift() || fullName;
+      lastName = parts.join(' ');
+    }
+    const data = {
+      campaign_id: CAMPAIGN_ID,
+      salutation: dynamicByKeys(answers, ['salutation','title']),
+      first_name: firstName || fullName || 'Candidate',
+      last_name: lastName,
+      phone: dynamicByKeys(answers, ['phone','mobile','mobile_number','phone_number','whatsapp','whatsapp_number']),
+      email: dynamicByKeys(answers, ['email','email_id','email_address']),
+      city: dynamicByKeys(answers, ['city','current_city','location']),
+      source: dynamicByKeys(answers, ['source','application_source','how_did_you_hear']),
+      role_applied: dynamicByKeys(answers, ['role','role_applied','job_role']) || <?= json_encode($job_role) ?>,
+      years_exp: dynamicByKeys(answers, ['experience','years_exp','years_of_experience']),
+      current_salary: dynamicByKeys(answers, ['current_salary','current_ctc']),
+      expected_salary: dynamicByKeys(answers, ['expected_salary','expected_ctc']),
+      portfolio: dynamicByKeys(answers, ['portfolio','linkedin','linkedin_profile','github','website']),
+      application_answers: answers,
+      ref_token: REF_TOKEN,
+      ref_medium: new URLSearchParams(location.search).get('medium') || '',
+      timestamp: new Date().toISOString()
+    };
+
+    const res = await fetch('/api/apply.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const d = await res.json();
+    if (!d.success) throw new Error(d.error || 'Submit failed');
+    if (d.interview_token) {
+      const link = document.getElementById('aiInterviewLink');
+      link.href = INTERVIEW_URL_PUBLIC + '?t=' + encodeURIComponent(d.interview_token);
+      link.style.display = 'inline-flex';
+    }
+    if (d.referral_link) {
+      referralLink = d.referral_link;
+      document.getElementById('refWhatsapp').href = 'https://wa.me/?text=' + encodeURIComponent(REFERRAL_MESSAGE_PREFIX + referralLink + '&medium=whatsapp');
+      document.getElementById('referralBox').style.display = 'block';
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Submission failed. Please try again.\n' + err.message);
+    document.getElementById('submitOverlay').classList.remove('active');
+    return;
+  }
+
+  document.getElementById('submitOverlay').classList.remove('active');
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('thankyou').classList.add('active');
+  document.getElementById('progressBar').style.width = '100%';
+  document.getElementById('progressLabel').textContent = 'Complete!';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 document.getElementById('refCopyBtn')?.addEventListener('click', async () => {
   if (!referralLink) return;
   const medium = document.getElementById('refMedium')?.value || 'copy_link';
@@ -1623,8 +1819,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (saved) { document.documentElement.setAttribute('data-theme', saved); }
     else { setTheme('light'); }
   } catch(e) { setTheme('light'); }
+  updateProgress();
 
-  document.getElementById('phone').addEventListener('input', () => {
+  const phoneInput = document.getElementById('phone');
+  if (phoneInput) phoneInput.addEventListener('input', () => {
     if (v('phoneCode') === '+91') {
       const i = document.getElementById('phone');
       i.value = i.value.replace(/\D/g, '').slice(0, 10);
@@ -1633,8 +1831,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   
   const today = new Date().toISOString().split('T')[0];
-  document.getElementById('joiningDate').min = today;
-  document.getElementById('dob').max = today;
+  const joiningDate = document.getElementById('joiningDate');
+  const dob = document.getElementById('dob');
+  if (joiningDate) joiningDate.min = today;
+  if (dob) dob.max = today;
 });
 
 

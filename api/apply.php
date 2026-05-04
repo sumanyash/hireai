@@ -26,9 +26,16 @@ function dynamic_answer_empty($value) {
     if (is_array($value)) return count(array_filter($value, fn($v) => trim((string)$v) !== '')) === 0;
     return trim((string)$value) === '';
 }
-
-if (!s($data,'phone') || !s($data,'email')) {
-    ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Missing required fields']); exit;
+function dynamic_answer_by_keys($answers, $keys) {
+    $keys = array_map('strtolower', $keys);
+    foreach ($answers as $answer) {
+        $key = strtolower((string)($answer['key'] ?? ''));
+        if (in_array($key, $keys, true)) {
+            $value = $answer['value'] ?? '';
+            return is_array($value) ? trim(implode(', ', $value)) : trim((string)$value);
+        }
+    }
+    return '';
 }
 
 $campaign_id = (int)($data['campaign_id'] ?? 0);
@@ -39,6 +46,21 @@ $email       = s($data,'email');
 $ref_token   = s($data,'ref_token');
 $ref_medium  = s($data,'ref_medium') ?: 'candidate_share';
 $application_answers = is_array($data['application_answers'] ?? null) ? $data['application_answers'] : [];
+if ($email === '') $email = dynamic_answer_by_keys($application_answers, ['email','email_id','email_address']);
+if (s($data,'phone') === '') {
+    $data['phone'] = dynamic_answer_by_keys($application_answers, ['phone','mobile','mobile_number','phone_number','whatsapp','whatsapp_number']);
+}
+if (s($data,'first_name') === '' && s($data,'last_name') === '') {
+    $full_name = dynamic_answer_by_keys($application_answers, ['name','full_name','candidate_name']);
+    if ($full_name !== '') {
+        $parts = preg_split('/\s+/', $full_name);
+        $data['first_name'] = array_shift($parts) ?: $full_name;
+        $data['last_name'] = implode(' ', $parts);
+    }
+}
+if (!s($data,'phone')) {
+    ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Phone field is required for candidate tracking and WhatsApp outreach. Please add a Phone field in this campaign form.']); exit;
+}
 $referred_by_candidate_id = null;
 if ($ref_token !== '') {
     $referrer = db_fetch_one("SELECT id,campaign_id FROM candidates WHERE unique_token=?", [$ref_token], 's');
@@ -79,8 +101,26 @@ foreach ($application_fields as $field) {
 $udir = __DIR__.'/../uploads/';
 @mkdir($udir.'resumes',0755,true);
 @mkdir($udir.'videos',0755,true);
+@mkdir($udir.'application',0755,true);
 $resume_path = '';
 $video_path  = '';
+
+foreach ($clean_application_answers as $fid => &$answer) {
+    if (($answer['type'] ?? '') !== 'file') continue;
+    $file = $application_answers[$fid]['file'] ?? $application_answers[(int)$fid]['file'] ?? null;
+    if (!is_array($file) || empty($file['base64']) || empty($file['name'])) continue;
+    $dec = base64_decode($file['base64'], true);
+    if (!$dec || strlen($dec) > 20 * 1024 * 1024) continue;
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION)) ?: 'bin';
+    $safe_ext = preg_replace('/[^a-z0-9]/', '', $ext) ?: 'bin';
+    $fn = 'app_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $safe_ext;
+    if (file_put_contents($udir . 'application/' . $fn, $dec) !== false) {
+        $answer['value'] = 'uploads/application/' . $fn;
+        $answer['original_name'] = $file['name'];
+        $answer['mime_type'] = $file['type'] ?? '';
+    }
+}
+unset($answer);
 
 if (!empty($data['resume_base64']) && !empty($data['resume_name'])) {
     $dec = base64_decode($data['resume_base64'],true);
@@ -106,6 +146,7 @@ if (s($data,'video_option') === 'link') {
 $ymap = ['Fresher'=>0,'0.5 Years'=>0.5,'1–2 Years'=>1.5,'2–5 Years'=>3.5,'5-7 Years'=>6,'7-10 Years'=>8.5,'10-15 Years'=>12,'15+ Years'=>15];
 $exp  = (float)($ymap[s($data,'years_exp')] ?? 0);
 $name = trim(s($data,'salutation').' '.s($data,'first_name').' '.s($data,'last_name'));
+if ($name === '') $name = 'Candidate';
 $tok  = bin2hex(random_bytes(16));
 $dob  = s($data,'dob')          ?: null;
 $jd   = s($data,'joining_date') ?: null;

@@ -69,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     if ($action === 'add_application_field') {
         $field_type = $_POST['field_type'] ?? 'text';
-        $allowed = ['text','textarea','number','decimal','date','dropdown','multi_select','checkbox','email','phone','url'];
+        $allowed = ['text','textarea','number','decimal','date','dropdown','multi_select','checkbox','email','phone','url','file'];
         if (!in_array($field_type, $allowed, true)) $field_type = 'text';
         $field_label = trim($_POST['field_label'] ?? '');
         $field_key = field_key_from_label($_POST['field_key'] ?? $field_label);
@@ -461,6 +461,10 @@ $application_fields = $campaign_id ? db_fetch_all("SELECT * FROM application_fie
     </div>
   </div>
 
+  <div class="alert alert-info">
+    Use field keys like <code>name</code>, <code>phone</code>, <code>email</code>, <code>city</code>, <code>current_ctc</code>, <code>expected_ctc</code>, <code>linkedin</code>. A <code>phone</code> field is required for WhatsApp/interview outreach.
+  </div>
+
   <?php if (!empty($application_fields)): ?>
   <div class="card">
     <div class="card-header"><h3>Application Fields (<?= count($application_fields) ?>)</h3></div>
@@ -512,6 +516,7 @@ $application_fields = $campaign_id ? db_fetch_all("SELECT * FROM application_fie
             <option value="email">Email</option>
             <option value="phone">Phone</option>
             <option value="url">Hyperlink</option>
+            <option value="file">File Upload</option>
           </select>
         </div>
         <div class="form-group">

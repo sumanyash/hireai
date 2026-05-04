@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS application_fields (
     campaign_id INT NOT NULL,
     field_key VARCHAR(100) NOT NULL,
     field_label VARCHAR(200) NOT NULL,
-    field_type ENUM('text','textarea','number','decimal','date','dropdown','multi_select','checkbox','email','phone','url') DEFAULT 'text',
+    field_type ENUM('text','textarea','number','decimal','date','dropdown','multi_select','checkbox','email','phone','url','file') DEFAULT 'text',
     placeholder VARCHAR(255),
     help_text VARCHAR(255),
     options_json JSON NULL,
@@ -202,7 +202,7 @@ CREATE TABLE IF NOT EXISTS application_fields (
     campaign_id INT NOT NULL,
     field_key VARCHAR(100) NOT NULL,
     field_label VARCHAR(200) NOT NULL,
-    field_type ENUM('text','textarea','number','decimal','date','dropdown','multi_select','checkbox','email','phone','url') DEFAULT 'text',
+    field_type ENUM('text','textarea','number','decimal','date','dropdown','multi_select','checkbox','email','phone','url','file') DEFAULT 'text',
     placeholder VARCHAR(255),
     help_text VARCHAR(255),
     options_json JSON NULL,
@@ -211,6 +211,7 @@ CREATE TABLE IF NOT EXISTS application_fields (
     is_active TINYINT DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE application_fields MODIFY COLUMN field_type ENUM('text','textarea','number','decimal','date','dropdown','multi_select','checkbox','email','phone','url','file') DEFAULT 'text';
 
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS share_token VARCHAR(64) UNIQUE;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS start_date DATE NULL;

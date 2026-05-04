@@ -323,6 +323,23 @@ $toast         = $_GET['toast'] ?? '';
     <?php endif; ?>
   </div>
 
+  <?php $application_answers = json_decode($c['application_answers_json'] ?? '{}', true) ?: []; ?>
+  <?php if (!empty($application_answers)): ?>
+  <div class="card animate-in">
+    <div class="card-header"><h3><i class="fa-solid fa-clipboard-list" style="color:var(--purple)"></i> Apply Form</h3></div>
+    <?php foreach ($application_answers as $ans):
+      $value = $ans['value'] ?? '';
+      if (is_array($value)) $value = implode(', ', array_filter($value));
+      if (trim((string)$value) === '') $value = '—';
+    ?>
+    <div class="info-row">
+      <div class="info-key"><?= htmlspecialchars($ans['label'] ?? $ans['key'] ?? 'Field') ?></div>
+      <div class="info-val"><?= nl2br(htmlspecialchars((string)$value)) ?></div>
+    </div>
+    <?php endforeach; ?>
+  </div>
+  <?php endif; ?>
+
   <!-- INTEGRITY -->
   <?php
   $flags = [];

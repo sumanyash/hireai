@@ -55,6 +55,7 @@ $job_desc  = $campaign['description'] ?? '';
 
 // Fetch all active campaigns for dropdown
 $all_campaigns = db_fetch_all("SELECT id, name, job_role FROM campaigns WHERE status='active' ORDER BY name ASC", [], '');
+$application_fields = $campaign_id ? db_fetch_all("SELECT * FROM application_fields WHERE campaign_id=? AND is_active=1 ORDER BY order_no,id", [$campaign_id], 'i') : [];
 
 ?>
 <!DOCTYPE html>
@@ -1044,23 +1045,84 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(8)">← Back</button><button class="btn btn-primary" onclick="nextSection(8)">Continue →</button></div>
   </div>
 
-  <!-- ═══ SECTION 9: Declaration ═══ -->
+  <!-- ═══ SECTION 9: Campaign Questions ═══ -->
   <div class="section" id="section-9">
     <div class="section-header">
       <div class="section-num">9</div>
+      <div>
+        <div class="section-title">Campaign Questions</div>
+        <div class="section-desc">Additional details requested for this specific campaign.</div>
+      </div>
+    </div>
+    <div id="val-banner-9" class="val-banner"></div>
+    <div class="card">
+      <?php if (!empty($application_fields)): ?>
+        <?php foreach ($application_fields as $field):
+          $fid = (int)$field['id'];
+          $fieldId = 'appField_' . $fid;
+          $type = $field['field_type'] ?? 'text';
+          $options = json_decode($field['options_json'] ?? '[]', true) ?: [];
+          $required = !empty($field['is_required']);
+        ?>
+        <div class="field" data-app-wrap="<?= $fid ?>">
+          <label for="<?= $fieldId ?>"><?= htmlspecialchars($field['field_label']) ?><?= $required ? ' <span class="req">*</span>' : '' ?></label>
+          <?php if ($type === 'textarea'): ?>
+            <textarea id="<?= $fieldId ?>" data-app-field="<?= $fid ?>" placeholder="<?= htmlspecialchars($field['placeholder'] ?? '') ?>"></textarea>
+          <?php elseif ($type === 'dropdown'): ?>
+            <select id="<?= $fieldId ?>" data-app-field="<?= $fid ?>">
+              <option value="">Select option</option>
+              <?php foreach ($options as $option): ?><option value="<?= htmlspecialchars($option) ?>"><?= htmlspecialchars($option) ?></option><?php endforeach; ?>
+            </select>
+          <?php elseif ($type === 'multi_select'): ?>
+            <div class="options-grid cols2">
+              <?php foreach ($options as $option): ?>
+                <label class="opt-label"><input type="checkbox" name="<?= $fieldId ?>[]" value="<?= htmlspecialchars($option) ?>" data-app-field="<?= $fid ?>"><span><?= htmlspecialchars($option) ?></span></label>
+              <?php endforeach; ?>
+            </div>
+          <?php elseif ($type === 'checkbox'): ?>
+            <div class="options-grid cols2">
+              <?php if (!empty($options)): foreach ($options as $option): ?>
+                <label class="opt-label"><input type="checkbox" name="<?= $fieldId ?>[]" value="<?= htmlspecialchars($option) ?>" data-app-field="<?= $fid ?>"><span><?= htmlspecialchars($option) ?></span></label>
+              <?php endforeach; else: ?>
+                <label class="opt-label"><input type="checkbox" id="<?= $fieldId ?>" value="Yes" data-app-field="<?= $fid ?>"><span>Yes</span></label>
+              <?php endif; ?>
+            </div>
+          <?php else:
+            $inputType = in_array($type, ['number','date','email','url'], true) ? $type : ($type === 'decimal' ? 'number' : ($type === 'phone' ? 'tel' : 'text'));
+            $step = $type === 'decimal' ? ' step="0.01"' : '';
+          ?>
+            <input type="<?= $inputType ?>"<?= $step ?> id="<?= $fieldId ?>" data-app-field="<?= $fid ?>" placeholder="<?= htmlspecialchars($field['placeholder'] ?? '') ?>">
+          <?php endif; ?>
+          <?php if (!empty($field['help_text'])): ?><p class="field-hint"><?= htmlspecialchars($field['help_text']) ?></p><?php endif; ?>
+        </div>
+        <?php endforeach; ?>
+      <?php else: ?>
+        <div class="info-box" style="margin:0">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <div>No additional campaign questions are required.</div>
+        </div>
+      <?php endif; ?>
+    </div>
+    <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(9)">← Back</button><button class="btn btn-primary" onclick="nextSection(9)">Continue →</button></div>
+  </div>
+
+  <!-- ═══ SECTION 10: Declaration ═══ -->
+  <div class="section" id="section-10">
+    <div class="section-header">
+      <div class="section-num">10</div>
       <div>
         <div class="section-title">Declaration</div>
         <div class="section-desc">Please review and confirm your submission.</div>
       </div>
     </div>
-    <div id="val-banner-9" class="val-banner"></div>
+    <div id="val-banner-10" class="val-banner"></div>
     <div class="card">
       <label class="opt-label" style="border-color:rgba(0,153,90,.3);background:rgba(0,153,90,.05);padding:16px;align-items:flex-start">
         <input type="checkbox" id="declaration">
         <span style="color:var(--success);font-size:14px;line-height:1.6;font-weight:400">I confirm that the information provided is true and accurate to the best of my knowledge. I understand that any false or misleading information may result in disqualification.</span>
       </label>
     </div>
-    <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(9)">← Back</button><button class="btn btn-success" onclick="submitForm()">Submit Application ✓</button></div>
+    <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(10)">← Back</button><button class="btn btn-success" onclick="submitForm()">Submit Application ✓</button></div>
   </div>
 
   <!-- ═══ THANK YOU ═══ -->
@@ -1091,11 +1153,20 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
 </div><!-- container -->
 
 <script>
-const TOTAL = 9;
+const TOTAL = 10;
 let currentSection = 1;
 const CAMPAIGN_ID = <?=$campaign_id?>;
 const REF_TOKEN = <?= json_encode($ref_token) ?>;
 const INTERVIEW_URL_PUBLIC = <?= json_encode(defined('INTERVIEW_URL') ? INTERVIEW_URL : '/interview.php') ?>;
+const APP_FIELDS = <?= json_encode(array_map(function($f) {
+  return [
+    'id' => (int)$f['id'],
+    'key' => $f['field_key'],
+    'label' => $f['field_label'],
+    'type' => $f['field_type'],
+    'required' => !empty($f['is_required']),
+  ];
+}, $application_fields)) ?>;
 let referralLink = '';
 const REFERRAL_MESSAGE_PREFIX = 'I have completed my HireAI interview. You can apply using this campaign link: ';
 
@@ -1156,9 +1227,34 @@ function checks(name) {
   return [...document.querySelectorAll(`input[name="${name}"]:checked`)].map(e => e.value).join(', ');
 }
 
+function dynamicValue(field) {
+  const id = 'appField_' + field.id;
+  if (field.type === 'multi_select' || field.type === 'checkbox') {
+    return [...document.querySelectorAll(`input[name="${id}[]"]:checked,input#${id}:checked`)].map(e => e.value);
+  }
+  return v(id).trim();
+}
+
+function collectDynamicAnswers() {
+  const answers = {};
+  APP_FIELDS.forEach(field => {
+    answers[field.id] = {
+      key: field.key,
+      label: field.label,
+      type: field.type,
+      value: dynamicValue(field)
+    };
+  });
+  return answers;
+}
+
 // Campaign selector
 function updateCampaign(id) {
   window._selectedCampaignId = parseInt(id) || 0;
+  if (window._selectedCampaignId && window._selectedCampaignId !== CAMPAIGN_ID) {
+    window.location.href = '/apply.php?campaign_id=' + encodeURIComponent(window._selectedCampaignId);
+    return;
+  }
   const sel = document.getElementById('campaignSelect');
   const opt = sel.options[sel.selectedIndex];
   const role = opt ? opt.dataset.role : '';
@@ -1195,7 +1291,7 @@ const validators = {
     if (!v('source')) e.push('Application source required');
     return e;
   },
-  
+
   2: () => {
     const e = [];
     if (!v('campaignSelect')) e.push('Please select a campaign/job opening');
@@ -1256,7 +1352,16 @@ const validators = {
     return e;
   },
   
-  9: () => document.getElementById('declaration').checked ? [] : ['Please confirm the declaration']
+  9: () => {
+    const e = [];
+    APP_FIELDS.forEach(field => {
+      const value = dynamicValue(field);
+      const empty = Array.isArray(value) ? value.length === 0 : !String(value || '').trim();
+      if (field.required && empty) e.push(`${field.label} is required`);
+    });
+    return e;
+  },
+  10: () => document.getElementById('declaration').checked ? [] : ['Please confirm the declaration']
 };
 
 // Remuneration
@@ -1392,8 +1497,14 @@ function getBase64(file) {
 
 // Submit
 async function submitForm() {
-  const errs = validators[9]();
-  showBanner('val-banner-9', errs);
+  const dynamicErrs = validators[9]();
+  showBanner('val-banner-9', dynamicErrs);
+  if (dynamicErrs.length) {
+    gotoSection('section-9');
+    return;
+  }
+  const errs = validators[10]();
+  showBanner('val-banner-10', errs);
   if (errs.length) return;
   
   document.getElementById('submitOverlay').classList.add('active');
@@ -1426,10 +1537,10 @@ async function submitForm() {
       expected_salary: g('expectedSalary'),
       tenure: g('tenure'),
       joining_date: g('joiningDate'),
-      flex_hours: radio('flexHours'),
-      laptop: radio('laptop'),
-      internet: radio('internet'),
-      commute: radio('commute'),
+      flex_hours: g('flexHours'),
+      laptop: g('laptop'),
+      internet: g('internet'),
+      commute: g('commute'),
       location: g('candidateLocation'),
       tech_skills: checks('techSkills'),
       soft_skills: checks('softSkills'),
@@ -1437,6 +1548,7 @@ async function submitForm() {
       video_option: g('videoOption'),
       video_link: g('videoLinkInput'),
       ai_test_willing: g('aiTestWilling'),
+      application_answers: collectDynamicAnswers(),
       ref_token: REF_TOKEN,
       ref_medium: new URLSearchParams(location.search).get('medium') || '',
       timestamp: new Date().toISOString()

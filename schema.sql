@@ -61,6 +61,22 @@ CREATE TABLE IF NOT EXISTS questions (
     FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS application_fields (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    campaign_id INT NOT NULL,
+    field_key VARCHAR(100) NOT NULL,
+    field_label VARCHAR(200) NOT NULL,
+    field_type ENUM('text','textarea','number','decimal','date','dropdown','multi_select','checkbox','email','phone','url') DEFAULT 'text',
+    placeholder VARCHAR(255),
+    help_text VARCHAR(255),
+    options_json JSON NULL,
+    is_required TINYINT DEFAULT 1,
+    order_no INT DEFAULT 1,
+    is_active TINYINT DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS candidates (
     id INT AUTO_INCREMENT PRIMARY KEY,
     org_id INT NOT NULL,
@@ -98,6 +114,7 @@ CREATE TABLE IF NOT EXISTS candidates (
     video_path TEXT,
     portfolio TEXT,
     ai_test_willing VARCHAR(50),
+    application_answers_json JSON NULL,
     referred_by_candidate_id INT NULL,
     referred_medium VARCHAR(50),
     unique_token VARCHAR(128) UNIQUE NOT NULL,
@@ -180,6 +197,21 @@ ALTER TABLE questions ADD COLUMN IF NOT EXISTS options_json JSON NULL;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS branch_rules_json JSON NULL;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS is_required TINYINT DEFAULT 1;
 
+CREATE TABLE IF NOT EXISTS application_fields (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    campaign_id INT NOT NULL,
+    field_key VARCHAR(100) NOT NULL,
+    field_label VARCHAR(200) NOT NULL,
+    field_type ENUM('text','textarea','number','decimal','date','dropdown','multi_select','checkbox','email','phone','url') DEFAULT 'text',
+    placeholder VARCHAR(255),
+    help_text VARCHAR(255),
+    options_json JSON NULL,
+    is_required TINYINT DEFAULT 1,
+    order_no INT DEFAULT 1,
+    is_active TINYINT DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS share_token VARCHAR(64) UNIQUE;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS start_date DATE NULL;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS end_date DATE NULL;
@@ -209,6 +241,7 @@ ALTER TABLE candidates ADD COLUMN IF NOT EXISTS resume_path TEXT;
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS video_path TEXT;
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS portfolio TEXT;
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS ai_test_willing VARCHAR(50);
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS application_answers_json JSON NULL;
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS referred_by_candidate_id INT NULL;
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS referred_medium VARCHAR(50);
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS link_expires_at DATETIME NULL;

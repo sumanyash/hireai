@@ -16,6 +16,13 @@ function options_to_json($value) {
     return empty($items) ? null : json_encode($items);
 }
 
+function field_key_from_label($label) {
+    $key = strtolower(trim((string)$label));
+    $key = preg_replace('/[^a-z0-9]+/', '_', $key);
+    $key = trim($key, '_');
+    return $key ?: 'custom_field';
+}
+
 function campaign_apply_link($campaign) {
     $token = $campaign['share_token'] ?? '';
     return BASE_URL . '/apply.php?' . ($token ? 'c=' . urlencode($token) : 'campaign_id=' . (int)$campaign['id']);
@@ -60,6 +67,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'question_added', ['type' => $question_type]);
         header("Location: campaigns.php?action=questions&id=$campaign_id&msg=question_added"); exit;
     }
+    if ($action === 'add_application_field') {
+        $field_type = $_POST['field_type'] ?? 'text';
+        $allowed = ['text','textarea','number','decimal','date','dropdown','multi_select','checkbox','email','phone','url'];
+        if (!in_array($field_type, $allowed, true)) $field_type = 'text';
+        $field_label = trim($_POST['field_label'] ?? '');
+        $field_key = field_key_from_label($_POST['field_key'] ?? $field_label);
+        $options_json = options_to_json($_POST['options_text'] ?? '');
+        $is_required = isset($_POST['is_required']) ? 1 : 0;
+        $campaign_exists = db_fetch_one("SELECT id FROM campaigns WHERE id=? AND org_id=?", [$campaign_id,$user['org_id']], 'ii');
+        if (!$campaign_exists || $field_label === '') {
+            header("Location: campaigns.php?action=apply_form&id=$campaign_id&msg=field_error"); exit;
+        }
+        db_insert(
+            "INSERT INTO application_fields (campaign_id,field_key,field_label,field_type,placeholder,help_text,options_json,is_required,order_no,is_active) VALUES (?,?,?,?,?,?,?,?,?,1)",
+            [$campaign_id,$field_key,$field_label,$field_type,trim($_POST['placeholder'] ?? ''),trim($_POST['help_text'] ?? ''),$options_json,$is_required,(int)($_POST['order_no'] ?? 1)],
+            'issssssii'
+        );
+        audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'application_field_added', ['label' => $field_label, 'type' => $field_type]);
+        header("Location: campaigns.php?action=apply_form&id=$campaign_id&msg=field_added"); exit;
+    }
     if ($action === 'activate') {
         db_execute("UPDATE campaigns SET status='active', share_token=COALESCE(share_token, ?) WHERE id=? AND org_id=?", [bin2hex(random_bytes(12)),$campaign_id,$user['org_id']], 'sii');
         audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'campaign_activated');
@@ -78,6 +105,21 @@ if ($action === 'delete_question' && $campaign_id) {
     header("Location: campaigns.php?action=questions&id=$campaign_id"); exit;
 }
 
+if ($action === 'delete_application_field' && $campaign_id) {
+    $sent = $_GET['csrf_token'] ?? '';
+    if (!$sent || !hash_equals(csrf_token(), $sent)) {
+        http_response_code(419);
+        exit('Invalid security token. Please refresh and try again.');
+    }
+    $fid = (int)($_GET['fid'] ?? 0);
+    $campaign_exists = db_fetch_one("SELECT id FROM campaigns WHERE id=? AND org_id=?", [$campaign_id,$user['org_id']], 'ii');
+    if ($campaign_exists) {
+        db_execute("UPDATE application_fields SET is_active=0 WHERE id=? AND campaign_id=?", [$fid,$campaign_id], 'ii');
+        audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'application_field_deleted', ['field_id' => $fid]);
+    }
+    header("Location: campaigns.php?action=apply_form&id=$campaign_id"); exit;
+}
+
 // ─── DATA ────────────────────────────────────────────────────────
 $campaigns = db_fetch_all(
     "SELECT ca.*, COUNT(DISTINCT c.id) as total_cands FROM campaigns ca LEFT JOIN candidates c ON ca.id=c.campaign_id WHERE ca.org_id=? GROUP BY ca.id ORDER BY ca.created_at DESC",
@@ -85,6 +127,7 @@ $campaigns = db_fetch_all(
 );
 $campaign  = $campaign_id ? db_fetch_one("SELECT * FROM campaigns WHERE id=? AND org_id=?", [$campaign_id,$user['org_id']], 'ii') : null;
 $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign_id=? ORDER BY order_no", [$campaign_id], 'i') : [];
+$application_fields = $campaign_id ? db_fetch_all("SELECT * FROM application_fields WHERE campaign_id=? AND is_active=1 ORDER BY order_no,id", [$campaign_id], 'i') : [];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -121,6 +164,7 @@ $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign
           <td><span class="badge badge-<?= $c['status'] ?>"><?= ucfirst($c['status']) ?></span></td>
           <td style="display:flex;gap:6px;flex-wrap:wrap">
             <a href="campaigns.php?action=edit&id=<?= $c['id'] ?>" class="btn-sm">✏️ Edit</a>
+            <a href="campaigns.php?action=apply_form&id=<?= $c['id'] ?>" class="btn-sm">Apply Form</a>
             <a href="campaigns.php?action=questions&id=<?= $c['id'] ?>" class="btn-sm">Questions</a>
             <a href="candidates.php?campaign_id=<?= $c['id'] ?>" class="btn-sm">Leads</a>
             <button type="button" class="btn-sm" onclick="copyCampaignLink(<?= htmlspecialchars(json_encode($applyLink), ENT_QUOTES, 'UTF-8') ?>)">Copy Link</button>
@@ -251,6 +295,7 @@ $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign
     <div style="display:flex;gap:8px">
       <button type="button" onclick="copyCampaignLink(<?= htmlspecialchars(json_encode($applyLink), ENT_QUOTES, 'UTF-8') ?>)" class="btn-green">Copy Apply Link</button>
       <a href="https://wa.me/?text=<?= urlencode('Apply here: ' . $applyLink) ?>" target="_blank" rel="noopener" class="btn-sm" style="color:#16A34A;border-color:#16A34A40;background:#16A34A10">Share WA</a>
+      <a href="campaigns.php?action=apply_form&id=<?= $campaign_id ?>" class="btn-sm">Apply Form</a>
       <a href="campaigns.php?action=edit&id=<?= $campaign_id ?>" class="btn-sm">✏️ Edit</a>
       <a href="campaigns.php" class="btn-sm">← Back</a>
     </div>
@@ -387,6 +432,112 @@ $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign
         <small style="color:#8892A4">Use answer keywords to jump or skip questions. Leave blank for linear flow.</small>
       </div>
       <button type="submit" class="btn-primary">+ Add Question</button>
+    </form>
+  </div>
+
+<?php elseif ($action === 'apply_form' && $campaign): ?>
+  <?php $applyLink = campaign_apply_link($campaign); ?>
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <h2>Apply Form Builder</h2>
+      <p><?= htmlspecialchars($campaign['name']) ?> · Candidate-facing fields for this campaign</p>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <a class="btn-sm" href="<?= htmlspecialchars($applyLink) ?>" target="_blank" rel="noopener">Preview Apply Form</a>
+      <a href="campaigns.php?action=questions&id=<?= $campaign_id ?>" class="btn-sm">Interview Questions</a>
+      <a href="campaigns.php" class="btn-sm">← Back</a>
+    </div>
+  </div>
+
+  <?php if (!empty($_GET['msg'])): ?>
+    <div class="alert alert-success">✅ <?= htmlspecialchars(str_replace('_',' ',$_GET['msg'])) ?>!</div>
+  <?php endif; ?>
+
+  <div class="card" style="padding:16px 18px">
+    <div style="font-size:12px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Public Apply Link</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <code style="flex:1;min-width:260px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:9px 12px;color:#2563EB;word-break:break-all"><?= htmlspecialchars($applyLink) ?></code>
+      <button type="button" onclick="copyCampaignLink(<?= htmlspecialchars(json_encode($applyLink), ENT_QUOTES, 'UTF-8') ?>)" class="btn-green">Copy Link</button>
+    </div>
+  </div>
+
+  <?php if (!empty($application_fields)): ?>
+  <div class="card">
+    <div class="card-header"><h3>Application Fields (<?= count($application_fields) ?>)</h3></div>
+    <table class="table">
+      <thead><tr><th>#</th><th>Label</th><th>Key</th><th>Type</th><th>Required</th><th>Options</th><th></th></tr></thead>
+      <tbody>
+      <?php foreach ($application_fields as $f): $opts = json_decode($f['options_json'] ?? '[]', true) ?: []; ?>
+        <tr>
+          <td><?= (int)$f['order_no'] ?></td>
+          <td><strong><?= htmlspecialchars($f['field_label']) ?></strong><br><small style="color:#8892A4"><?= htmlspecialchars($f['help_text'] ?? '') ?></small></td>
+          <td><code><?= htmlspecialchars($f['field_key']) ?></code></td>
+          <td><span class="badge badge-draft"><?= htmlspecialchars(str_replace('_', ' ', $f['field_type'])) ?></span></td>
+          <td><?= !empty($f['is_required']) ? 'Yes' : 'No' ?></td>
+          <td style="font-size:12px;color:#64748B"><?= htmlspecialchars(implode(', ', array_slice($opts, 0, 4))) ?><?= count($opts) > 4 ? '...' : '' ?></td>
+          <td><a href="campaigns.php?action=delete_application_field&id=<?= $campaign_id ?>&fid=<?= $f['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" class="btn-danger" style="font-size:12px" onclick="return confirm('Remove this application field?')">Remove</a></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+  <?php endif; ?>
+
+  <div class="card" style="max-width:760px">
+    <div class="card-header"><h3>Add Application Field</h3></div>
+    <form method="POST" action="campaigns.php?action=add_application_field&id=<?= $campaign_id ?>">
+      <?= csrf_input() ?>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="form-group">
+          <label class="form-label">Field Label *</label>
+          <input type="text" name="field_label" class="form-control" placeholder="LinkedIn Profile" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Field Key</label>
+          <input type="text" name="field_key" class="form-control" placeholder="Auto generated if blank">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+        <div class="form-group">
+          <label class="form-label">Field Type</label>
+          <select name="field_type" class="form-control">
+            <option value="text">Short Text</option>
+            <option value="textarea">Long Text</option>
+            <option value="number">Numeric</option>
+            <option value="decimal">Decimal</option>
+            <option value="date">Date</option>
+            <option value="dropdown">Dropdown</option>
+            <option value="multi_select">Multi-select</option>
+            <option value="checkbox">Checkbox</option>
+            <option value="email">Email</option>
+            <option value="phone">Phone</option>
+            <option value="url">Hyperlink</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Order</label>
+          <input type="number" name="order_no" class="form-control" value="<?= count($application_fields)+1 ?>" min="1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Required</label>
+          <label style="display:flex;align-items:center;gap:8px;padding:11px 0;font-size:14px">
+            <input type="checkbox" name="is_required" checked> Candidate must fill
+          </label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Placeholder</label>
+        <input type="text" name="placeholder" class="form-control" placeholder="What should candidate enter?">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Help Text</label>
+        <input type="text" name="help_text" class="form-control" placeholder="Small instruction shown below field">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Options</label>
+        <textarea name="options_text" class="form-control" rows="3" placeholder="One option per line for dropdown, multi-select, or checkbox"></textarea>
+      </div>
+      <button type="submit" class="btn-primary">+ Add Field</button>
     </form>
   </div>
 

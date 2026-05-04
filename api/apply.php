@@ -22,6 +22,10 @@ if (!is_array($data)) { ob_end_clean(); echo json_encode(['success'=>false,'erro
 
 function s($d,$k){ return isset($d[$k]) ? trim((string)$d[$k]) : ''; }
 function norm_phone_apply($phone){ return preg_replace('/[^0-9]/', '', (string)$phone); }
+function dynamic_answer_empty($value) {
+    if (is_array($value)) return count(array_filter($value, fn($v) => trim((string)$v) !== '')) === 0;
+    return trim((string)$value) === '';
+}
 
 if (!s($data,'phone') || !s($data,'email')) {
     ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Missing required fields']); exit;
@@ -34,6 +38,7 @@ $org_id      = $campaign ? (int)$campaign['org_id'] : 1;
 $email       = s($data,'email');
 $ref_token   = s($data,'ref_token');
 $ref_medium  = s($data,'ref_medium') ?: 'candidate_share';
+$application_answers = is_array($data['application_answers'] ?? null) ? $data['application_answers'] : [];
 $referred_by_candidate_id = null;
 if ($ref_token !== '') {
     $referrer = db_fetch_one("SELECT id,campaign_id FROM candidates WHERE unique_token=?", [$ref_token], 's');
@@ -53,6 +58,22 @@ if ($campaign_id) {
             ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Already applied with this phone number.','duplicate'=>true]); exit;
         }
     }
+}
+
+$application_fields = $campaign_id ? db_fetch_all("SELECT id,field_key,field_label,field_type,is_required FROM application_fields WHERE campaign_id=? AND is_active=1 ORDER BY order_no,id", [$campaign_id], 'i') : [];
+$clean_application_answers = [];
+foreach ($application_fields as $field) {
+    $fid = (string)$field['id'];
+    $answer = $application_answers[$fid]['value'] ?? $application_answers[(int)$field['id']]['value'] ?? null;
+    if (!empty($field['is_required']) && dynamic_answer_empty($answer)) {
+        ob_end_clean(); echo json_encode(['success'=>false,'error'=>$field['field_label'].' is required']); exit;
+    }
+    $clean_application_answers[$fid] = [
+        'key' => $field['field_key'],
+        'label' => $field['field_label'],
+        'type' => $field['field_type'],
+        'value' => is_array($answer) ? array_values(array_map('trim', array_map('strval', $answer))) : trim((string)$answer),
+    ];
 }
 
 $udir = __DIR__.'/../uploads/';
@@ -101,7 +122,7 @@ try {
         'exp_type','exp_desc','current_salary','expected_salary',
         'tenure','joining_date','flex_hours','laptop','internet',
         'commute','tech_skills','soft_skills',
-        'resume_path','video_path','portfolio','ai_test_willing','referred_by_candidate_id','referred_medium','link_expires_at'
+        'resume_path','video_path','portfolio','ai_test_willing','application_answers_json','referred_by_candidate_id','referred_medium','link_expires_at'
     ];
 
     $vals = [
@@ -115,7 +136,7 @@ try {
         s($data,'exp_type'), s($data,'exp_desc'), s($data,'current_salary'), s($data,'expected_salary'),
         s($data,'tenure'), $jd, s($data,'flex_hours'), s($data,'laptop'), s($data,'internet'),
         s($data,'commute'), s($data,'tech_skills'), s($data,'soft_skills'),
-        $resume_path, $video_path, s($data,'portfolio'), s($data,'ai_test_willing'), $referred_by_candidate_id, $ref_medium, date('Y-m-d H:i:s', time() + 86400),
+        $resume_path, $video_path, s($data,'portfolio'), s($data,'ai_test_willing'), json_encode($clean_application_answers), $referred_by_candidate_id, $ref_medium, date('Y-m-d H:i:s', time() + 86400),
     ];
 
     $placeholders = implode(',', array_fill(0, count($cols), '?'));

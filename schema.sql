@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS campaigns (
     share_token VARCHAR(64) UNIQUE,
     start_date DATE NULL,
     end_date DATE NULL,
+    integration_type ENUM('none','crm','google_sheet') DEFAULT 'none',
+    integration_endpoint TEXT NULL,
     el_agent_id VARCHAR(150),
     passing_score INT DEFAULT 70,
     max_duration_minutes INT DEFAULT 15,
@@ -216,6 +218,8 @@ ALTER TABLE application_fields MODIFY COLUMN field_type ENUM('text','textarea','
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS share_token VARCHAR(64) UNIQUE;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS start_date DATE NULL;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS end_date DATE NULL;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS integration_type ENUM('none','crm','google_sheet') DEFAULT 'none';
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS integration_endpoint TEXT NULL;
 
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS salutation VARCHAR(20);
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS dob DATE NULL;

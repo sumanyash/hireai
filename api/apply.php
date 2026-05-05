@@ -37,6 +37,42 @@ function dynamic_answer_by_keys($answers, $keys) {
     }
     return '';
 }
+function sync_candidate_application($campaign, $candidate_id, $payload) {
+    $type = $campaign['integration_type'] ?? 'none';
+    $endpoint = trim((string)($campaign['integration_endpoint'] ?? ''));
+    if ($type === 'none' || $endpoint === '') return ['status' => 'skipped'];
+    if (!preg_match('/^https?:\/\//i', $endpoint)) {
+        error_log('[apply sync] Pending non-URL integration endpoint for campaign ' . ($campaign['id'] ?? ''));
+        return ['status' => 'pending_endpoint'];
+    }
+    $body = json_encode([
+        'source' => 'hireai',
+        'integration_type' => $type,
+        'candidate_id' => $candidate_id,
+        'campaign_id' => (int)($campaign['id'] ?? 0),
+        'campaign_name' => $campaign['name'] ?? '',
+        'submitted_at' => date('c'),
+        'candidate' => $payload,
+    ]);
+    $ch = curl_init($endpoint);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $body,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 8,
+        CURLOPT_SSL_VERIFYPEER => false,
+    ]);
+    $resp = curl_exec($ch);
+    $err = curl_error($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($err || $code < 200 || $code >= 300) {
+        error_log('[apply sync] type=' . $type . ' candidate=' . $candidate_id . ' code=' . $code . ' error=' . $err . ' response=' . substr((string)$resp, 0, 300));
+        return ['status' => 'failed', 'code' => $code];
+    }
+    return ['status' => 'sent', 'code' => $code];
+}
 
 $campaign_id = (int)($data['campaign_id'] ?? 0);
 $campaign_id = $campaign_id ?: (int)((db_fetch_one("SELECT id FROM campaigns WHERE status='active' ORDER BY id ASC LIMIT 1", [], '') ?: ['id'=>1])['id']);
@@ -97,6 +133,12 @@ foreach ($application_fields as $field) {
         'value' => is_array($answer) ? array_values(array_map('trim', array_map('strval', $answer))) : trim((string)$answer),
     ];
 }
+$clean_application_answers['_recording_consent'] = [
+    'key' => 'recording_consent',
+    'label' => 'Voice/video recording consent',
+    'type' => 'checkbox',
+    'value' => !empty($data['recording_consent']) ? 'Yes' : 'No',
+];
 
 $udir = __DIR__.'/../uploads/';
 @mkdir($udir.'resumes',0755,true);
@@ -258,10 +300,23 @@ try {
     }
     // ─────────────────────────────────────────────────────────
 
+    $sync_status = sync_candidate_application($campaign ?: [], $cid, [
+        'name' => $name,
+        'phone' => s($data,'phone'),
+        'email' => $email,
+        'city' => s($data,'city'),
+        'resume_path' => $resume_path,
+        'video_path' => $video_path,
+        'answers' => $clean_application_answers,
+        'referred_by_candidate_id' => $referred_by_candidate_id,
+        'referred_medium' => $ref_medium,
+    ]);
+
     ob_end_clean(); echo json_encode([
         'success'         => true,
         'candidate_id'    => $cid,
         'wa_sent'         => $wa_sent,
+        'sync_status'     => $sync_status,
         'interview_token' => $tok,
         'campaign_id'     => $campaign_id,
         'referral_link'   => BASE_URL . '/apply.php?campaign_id=' . (int)$campaign_id . '&ref=' . urlencode($tok),

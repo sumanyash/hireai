@@ -556,7 +556,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
 <div class="submit-overlay" id="submitOverlay">
   <div class="submit-spinner">
     <div class="spinner-ring"></div>
-    <p>Submitting your application...<br><span style="font-size:11px;opacity:.7">This may take a moment</span></p>
+    <p id="submitOverlayText">Submitting your application...<br><span style="font-size:11px;opacity:.7">Uploading files and saving your form. Please do not close this page.</span></p>
   </div>
 </div>
 
@@ -674,6 +674,10 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
       <label class="opt-label" style="border-color:rgba(0,153,90,.3);background:rgba(0,153,90,.05);padding:16px;align-items:flex-start">
         <input type="checkbox" id="declaration">
         <span style="color:var(--success);font-size:14px;line-height:1.6;font-weight:400">I confirm that the information provided is true and accurate to the best of my knowledge. I understand that any false or misleading information may result in disqualification.</span>
+      </label>
+      <label class="opt-label" style="border-color:rgba(79,124,255,.3);background:rgba(79,124,255,.06);padding:16px;align-items:flex-start;margin-top:12px">
+        <input type="checkbox" id="recordingConsent">
+        <span style="color:var(--accent);font-size:14px;line-height:1.6;font-weight:400">I consent to voice/video recording, transcription, and AI-assisted summarisation for hiring evaluation and recruiter review.</span>
       </label>
     </div>
     <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(2)">← Back</button><button class="btn btn-success" onclick="submitForm()">Submit Application ✓</button></div>
@@ -1219,6 +1223,10 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
         <input type="checkbox" id="declaration">
         <span style="color:var(--success);font-size:14px;line-height:1.6;font-weight:400">I confirm that the information provided is true and accurate to the best of my knowledge. I understand that any false or misleading information may result in disqualification.</span>
       </label>
+      <label class="opt-label" style="border-color:rgba(79,124,255,.3);background:rgba(79,124,255,.06);padding:16px;align-items:flex-start;margin-top:12px">
+        <input type="checkbox" id="recordingConsent">
+        <span style="color:var(--accent);font-size:14px;line-height:1.6;font-weight:400">I consent to voice/video recording, transcription, and AI-assisted summarisation for hiring evaluation and recruiter review.</span>
+      </label>
     </div>
     <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(10)">← Back</button><button class="btn btn-success" onclick="submitForm()">Submit Application ✓</button></div>
   </div>
@@ -1495,7 +1503,12 @@ const validators = {
     });
     return e;
   },
-  10: () => document.getElementById('declaration').checked ? [] : ['Please confirm the declaration']
+  10: () => {
+    const e = [];
+    if (!document.getElementById('declaration').checked) e.push('Please confirm the declaration');
+    if (!document.getElementById('recordingConsent')?.checked) e.push('Please provide consent for voice/video recording and AI summarisation');
+    return e;
+  }
 };
 
 // Remuneration
@@ -1630,6 +1643,14 @@ function getBase64(file) {
   });
 }
 
+function setSubmitLoading(isLoading, message) {
+  const overlay = document.getElementById('submitOverlay');
+  const text = document.getElementById('submitOverlayText');
+  if (text && message) text.innerHTML = message + '<br><span style="font-size:11px;opacity:.7">Please do not close this page.</span>';
+  overlay?.classList.toggle('active', !!isLoading);
+  document.querySelectorAll('.btn').forEach(btn => btn.disabled = !!isLoading);
+}
+
 // Submit
 async function submitForm() {
   if (DYNAMIC_APPLY) {
@@ -1645,7 +1666,7 @@ async function submitForm() {
   showBanner('val-banner-10', errs);
   if (errs.length) return;
   
-  document.getElementById('submitOverlay').classList.add('active');
+  setSubmitLoading(true, 'Submitting your application...');
   
   try {
     const g = id => (document.getElementById(id) || {}).value || '';
@@ -1687,6 +1708,7 @@ async function submitForm() {
       video_link: g('videoLinkInput'),
       ai_test_willing: g('aiTestWilling'),
       application_answers: await collectDynamicAnswers(),
+      recording_consent: !!document.getElementById('recordingConsent')?.checked,
       ref_token: REF_TOKEN,
       ref_medium: new URLSearchParams(location.search).get('medium') || '',
       timestamp: new Date().toISOString()
@@ -1734,7 +1756,7 @@ async function submitForm() {
     alert('Submission failed. Please try again.\n' + err.message);
   }
   
-  document.getElementById('submitOverlay').classList.remove('active');
+  setSubmitLoading(false);
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById('thankyou').classList.add('active');
   document.getElementById('progressBar').style.width = '100%';
@@ -1746,14 +1768,16 @@ async function submitDynamicForm() {
   const fieldErrs = validateDynamicFields();
   showBanner('val-banner-1', fieldErrs);
   if (fieldErrs.length) return;
-  const declarationErrs = document.getElementById('declaration').checked ? [] : ['Please confirm the declaration'];
+  const declarationErrs = [];
+  if (!document.getElementById('declaration').checked) declarationErrs.push('Please confirm the declaration');
+  if (!document.getElementById('recordingConsent')?.checked) declarationErrs.push('Please provide consent for voice/video recording and AI summarisation');
   showBanner('val-banner-2', declarationErrs);
   if (declarationErrs.length) {
     gotoSection('section-2');
     return;
   }
 
-  document.getElementById('submitOverlay').classList.add('active');
+  setSubmitLoading(true, 'Preparing uploads and submitting your application...');
   try {
     const answers = await collectDynamicAnswers();
     const fullName = dynamicByKeys(answers, ['name','full_name','candidate_name']);
@@ -1779,6 +1803,7 @@ async function submitDynamicForm() {
       expected_salary: dynamicByKeys(answers, ['expected_salary','expected_ctc']),
       portfolio: dynamicByKeys(answers, ['portfolio','linkedin','linkedin_profile','github','website']),
       application_answers: answers,
+      recording_consent: !!document.getElementById('recordingConsent')?.checked,
       ref_token: REF_TOKEN,
       ref_medium: new URLSearchParams(location.search).get('medium') || '',
       timestamp: new Date().toISOString()
@@ -1804,11 +1829,11 @@ async function submitDynamicForm() {
   } catch (err) {
     console.error(err);
     alert('Submission failed. Please try again.\n' + err.message);
-    document.getElementById('submitOverlay').classList.remove('active');
+    setSubmitLoading(false);
     return;
   }
 
-  document.getElementById('submitOverlay').classList.remove('active');
+  setSubmitLoading(false);
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById('thankyou').classList.add('active');
   document.getElementById('progressBar').style.width = '100%';

@@ -10,6 +10,9 @@
     <a href="/analytics.php" class="<?= $current==='analytics.php'?'active':'' ?>"><i class="fa-solid fa-chart-line fa-sm"></i> Analytics</a>
     <a href="/outreach.php" class="<?= $current==='outreach.php'?'active':'' ?>"><i class="fa-solid fa-paper-plane fa-sm"></i> Outreach</a>
     <a href="/credits.php" class="<?= $current==='credits.php'?'active':'' ?>"><i class="fa-solid fa-coins fa-sm"></i> Credits</a>
+    <?php if (($user['role'] ?? '') === 'super_admin'): ?>
+    <a href="/admins.php" class="<?= $current==='admins.php'?'active':'' ?>"><i class="fa-solid fa-user-shield fa-sm"></i> Admins</a>
+    <?php endif; ?>
   </div>
   <div class="nav-right">
     <div class="nav-user">

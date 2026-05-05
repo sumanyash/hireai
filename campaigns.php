@@ -29,7 +29,7 @@ function campaign_apply_link($campaign) {
 }
 
 function campaign_setup_state($campaign, $questions, $application_fields) {
-    $has_details = !empty($campaign['name']) && !empty($campaign['job_role']) && !empty($campaign['start_date']) && !empty($campaign['end_date']);
+    $has_details = !empty($campaign['name']) && !empty($campaign['job_role']);
     $has_agent = !empty($campaign['el_agent_id']) && $campaign['el_agent_id'] !== 'PASTE_YOUR_EL_AGENT_ID';
     $has_apply = count($application_fields) > 0;
     $has_questions = count($questions) > 0;
@@ -249,8 +249,7 @@ $campaigns = db_fetch_all(
     "SELECT ca.*, u.name AS creator_name,
             COUNT(DISTINCT c.id) as total_cands,
             COUNT(DISTINCT af.id) as apply_field_count,
-            COUNT(DISTINCT q.id) as question_count,
-            COALESCE(SUM(DISTINCT q.weight), 0) as total_question_weight
+            COUNT(DISTINCT q.id) as question_count
      FROM campaigns ca
      LEFT JOIN users u ON ca.created_by=u.id
      LEFT JOIN candidates c ON ca.id=c.campaign_id

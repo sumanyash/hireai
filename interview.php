@@ -591,7 +591,11 @@ function startVideoRecording() {
   try {
     videoChunks = [];
     const mt = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
-    videoRecorder = new MediaRecorder(mediaStream, { mimeType: mt });
+    videoRecorder = new MediaRecorder(mediaStream, {
+      mimeType: mt,
+      videoBitsPerSecond: 250000,
+      audioBitsPerSecond: 64000
+    });
     videoRecorder.ondataavailable = e => { if (e.data.size > 0) videoChunks.push(e.data); };
     videoRecorder.start(5000);
   } catch(e) { console.warn('Video recording unavailable:', e); }
@@ -892,12 +896,21 @@ async function copyReferral() {
 async function uploadVideo() {
   if (!videoChunks.length) return;
   const blob = new Blob(videoChunks, { type: 'video/webm' });
-  if (blob.size > 20 * 1024 * 1024) return;
+  if (blob.size > 95 * 1024 * 1024) {
+    console.warn('Interview recording skipped because it is too large:', blob.size);
+    return;
+  }
   const fd = new FormData();
   fd.append('video', blob, 'session_' + TOKEN + '.webm');
   fd.append('token', TOKEN);
   fd.append('session_id', sessionId || '');
-  try { await fetch('api/upload_video.php', { method: 'POST', body: fd }); } catch(e) {}
+  try {
+    const r = await fetch('api/upload_video.php', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!d.url) console.warn('Video upload failed:', d.error || d);
+  } catch(e) {
+    console.warn('Video upload failed:', e);
+  }
 }
 
 // ── ANTI-CHEAT (silent — no UI indicators to candidate) ─────────────────────

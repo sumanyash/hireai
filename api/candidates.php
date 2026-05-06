@@ -31,6 +31,17 @@ function candidate_duplicate_exists($campaign_id, $phone, $email) {
     return false;
 }
 
+function candidate_duplicate_exists_for_update($campaign_id, $candidate_id, $phone, $email) {
+    $phone = normalize_phone($phone);
+    $email = strtolower(trim((string)$email));
+    $rows = db_fetch_all("SELECT id,phone,email FROM candidates WHERE campaign_id=? AND id<>?", [$campaign_id, $candidate_id], 'ii');
+    foreach ($rows as $row) {
+        if ($phone !== '' && normalize_phone($row['phone'] ?? '') === $phone) return true;
+        if ($email !== '' && strtolower(trim($row['email'] ?? '')) === $email) return true;
+    }
+    return false;
+}
+
 function normalize_candidate_row($row) {
     $get = function($keys) use ($row) {
         foreach ($keys as $key) {
@@ -56,6 +67,7 @@ function normalize_candidate_row($row) {
         'current_ctc' => $get(['current ctc', 'current salary']),
         'expected_ctc' => $get(['expected ctc', 'expected salary']),
         'source' => $get(['source']) ?: 'csv',
+        'referred_by_name' => $get(['referral', 'referral name', 'referred by', 'referred by name']),
     ];
 }
 
@@ -84,6 +96,7 @@ if ($action === 'add' && $method === 'POST') {
     $experience_years = trim($input['experience_years'] ?? '');
     $current_ctc      = trim($input['current_ctc'] ?? '');
     $source           = trim($input['source'] ?? '');
+    $referred_by_name = trim($input['referred_by_name'] ?? '');
 
     if (!$campaign_id) json_response(['error' => 'Campaign is required'], 400);
     if (!$name)        json_response(['error' => 'Name is required'], 400);
@@ -99,14 +112,14 @@ if ($action === 'add' && $method === 'POST') {
 
     $token = bin2hex(random_bytes(16));
     $id = db_insert(
-        "INSERT INTO candidates (org_id, campaign_id, name, phone, email, city, experience_years, current_ctc, expected_ctc, source, unique_token, link_expires_at, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR), 'pending', NOW())",
-        [$user['org_id'], $campaign_id, $name, $phone, $email, $city, $experience_years, $current_ctc, trim($input['expected_ctc'] ?? ''), $source, $token],
-        'iisssssssss'
+        "INSERT INTO candidates (org_id, campaign_id, name, phone, email, city, experience_years, current_ctc, expected_ctc, source, referred_by_name, unique_token, link_expires_at, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR), 'pending', NOW())",
+        [$user['org_id'], $campaign_id, $name, $phone, $email, $city, $experience_years, $current_ctc, trim($input['expected_ctc'] ?? ''), $source, $referred_by_name, $token],
+        'iissssssssss'
     );
 
     if (!$id) json_response(['error' => 'Failed to add candidate. Please try again.'], 500);
-    audit_log($user['org_id'], $user['user_id'] ?? null, 'candidate', $id, 'candidate_added', ['source' => $source, 'campaign_id' => $campaign_id]);
+    audit_log($user['org_id'], $user['user_id'] ?? null, 'candidate', $id, 'candidate_added', ['source' => $source, 'campaign_id' => $campaign_id, 'referred_by_name' => $referred_by_name]);
     db_insert(
         "INSERT INTO reminder_jobs (candidate_id,campaign_id,channel,scheduled_at) VALUES (?,?,'whatsapp',DATE_ADD(NOW(), INTERVAL 12 HOUR))",
         [$id, $campaign_id], 'ii'
@@ -146,9 +159,9 @@ if ($action === 'bulk_import' && $method === 'POST') {
 
         $token = bin2hex(random_bytes(16));
         $r = db_insert(
-            "INSERT INTO candidates (org_id, campaign_id, name, phone, email, city, experience_years, current_ctc, expected_ctc, source, unique_token, link_expires_at, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR), 'pending', NOW())",
-            [$user['org_id'], $campaign_id, $name, $phone, $email, $row['city'], $row['experience_years'], $row['current_ctc'], $row['expected_ctc'], $row['source'], $token],
-            'iisssssssss'
+            "INSERT INTO candidates (org_id, campaign_id, name, phone, email, city, experience_years, current_ctc, expected_ctc, source, referred_by_name, unique_token, link_expires_at, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR), 'pending', NOW())",
+            [$user['org_id'], $campaign_id, $name, $phone, $email, $row['city'], $row['experience_years'], $row['current_ctc'], $row['expected_ctc'], $row['source'], $row['referred_by_name'] ?? '', $token],
+            'iissssssssss'
         );
         if ($r) {
             $added++;
@@ -171,6 +184,7 @@ if ($action === 'update' && $method === 'POST') {
     $existing = db_fetch_one("SELECT * FROM candidates WHERE id=? AND org_id=?", [$candidate_id, $user['org_id']], 'ii');
     if (!$existing) json_response(['error' => 'Candidate not found'], 404);
 
+    $campaign_id = (int)($input['campaign_id'] ?? $existing['campaign_id']);
     $name = trim($input['name'] ?? '');
     $phone = trim($input['phone'] ?? '');
     $email = trim($input['email'] ?? '');
@@ -179,19 +193,20 @@ if ($action === 'update' && $method === 'POST') {
     $current_ctc = trim($input['current_ctc'] ?? '');
     $expected_ctc = trim($input['expected_ctc'] ?? '');
     $source = trim($input['source'] ?? '');
+    $referred_by_name = trim($input['referred_by_name'] ?? '');
 
-    $dupeRows = db_fetch_all("SELECT id,phone,email FROM candidates WHERE campaign_id=? AND id<>?", [$existing['campaign_id'], $candidate_id], 'ii');
-    foreach ($dupeRows as $row) {
-        if ($phone !== '' && normalize_phone($row['phone'] ?? '') === normalize_phone($phone)) json_response(['error' => 'Another candidate with this phone already exists'], 409);
-        if ($email !== '' && strtolower(trim($row['email'] ?? '')) === strtolower($email)) json_response(['error' => 'Another candidate with this email already exists'], 409);
+    $campaign = db_fetch_one("SELECT id FROM campaigns WHERE id=? AND org_id=?", [$campaign_id, $user['org_id']], 'ii');
+    if (!$campaign) json_response(['error' => 'Campaign not found'], 404);
+    if (candidate_duplicate_exists_for_update($campaign_id, $candidate_id, $phone, $email)) {
+        json_response(['error' => 'Another candidate with this phone or email already exists in the selected campaign'], 409);
     }
 
     db_execute(
-        "UPDATE candidates SET name=?,phone=?,email=?,city=?,experience_years=?,current_ctc=?,expected_ctc=?,source=?,updated_at=NOW() WHERE id=? AND org_id=?",
-        [$name,$phone,$email,$city,$experience_years,$current_ctc,$expected_ctc,$source,$candidate_id,$user['org_id']],
-        'ssssssssii'
+        "UPDATE candidates SET campaign_id=?,name=?,phone=?,email=?,city=?,experience_years=?,current_ctc=?,expected_ctc=?,source=?,referred_by_name=?,updated_at=NOW() WHERE id=? AND org_id=?",
+        [$campaign_id,$name,$phone,$email,$city,$experience_years,$current_ctc,$expected_ctc,$source,$referred_by_name,$candidate_id,$user['org_id']],
+        'isssssssssii'
     );
-    audit_log($user['org_id'], $user['user_id'] ?? null, 'candidate', $candidate_id, 'candidate_updated');
+    audit_log($user['org_id'], $user['user_id'] ?? null, 'candidate', $candidate_id, 'candidate_updated', ['campaign_id' => $campaign_id, 'referred_by_name' => $referred_by_name]);
     json_response(['success' => true, 'message' => 'Candidate updated']);
 }
 
@@ -206,7 +221,10 @@ if ($action === 'delete' && $method === 'POST') {
     db_execute("DELETE FROM interview_answers WHERE candidate_id=?", [$candidate_id], 'i');
     db_execute("DELETE FROM interview_sessions WHERE candidate_id=?", [$candidate_id], 'i');
     db_execute("DELETE FROM interview_results WHERE candidate_id=?", [$candidate_id], 'i');
+    db_execute("DELETE FROM scores WHERE candidate_id=?", [$candidate_id], 'i');
     db_execute("DELETE FROM outreach_log WHERE candidate_id=?", [$candidate_id], 'i');
+    db_execute("DELETE FROM reminder_jobs WHERE candidate_id=?", [$candidate_id], 'i');
+    db_execute("DELETE FROM recruiter_notes WHERE candidate_id=?", [$candidate_id], 'i');
     db_execute("DELETE FROM candidates WHERE id=? AND org_id=?", [$candidate_id, $user['org_id']], 'ii');
     audit_log($user['org_id'], $user['user_id'] ?? null, 'candidate', $candidate_id, 'candidate_deleted');
 

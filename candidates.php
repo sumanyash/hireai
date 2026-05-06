@@ -75,6 +75,8 @@ foreach ($candidates as $c) $status_counts[$c['status']] = ($status_counts[$c['s
 .cname-cell{display:flex;align-items:center;gap:10px}
 .cname{font-weight:700;color:var(--text);font-size:13px}
 .cphone{font-size:11px;color:var(--gray);margin-top:1px}
+.referral-cell{font-size:12px;color:var(--gray2);max-width:150px}
+.referral-cell span{display:block;font-size:10px;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}
 .score-pill{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700}
 .score-pass{background:#ECFDF5;color:#065F46}
 .score-fail{background:#FEF2F2;color:#991B1B}
@@ -214,6 +216,7 @@ $active_status = $_GET['status'] ?? 'all';
       <tr>
         <th>Candidate</th>
         <th>Campaign</th>
+        <th>Referral</th>
         <th>Status</th>
         <th>Score</th>
         <th>Applied</th>
@@ -223,7 +226,7 @@ $active_status = $_GET['status'] ?? 'all';
     <tbody>
     <?php if (empty($filtered)): ?>
     <tr>
-      <td colspan="6">
+      <td colspan="7">
         <div class="empty-state">
           <div class="empty-icon">👥</div>
           <div style="font-size:16px;font-weight:700;margin-bottom:6px">No candidates found</div>
@@ -251,6 +254,13 @@ $active_status = $_GET['status'] ?? 'all';
         </div>
       </td>
       <td style="font-size:12px;color:var(--gray2)"><?= htmlspecialchars($c['campaign_name'] ?? '—') ?></td>
+      <td class="referral-cell">
+        <?php if (!empty($c['referred_by_name'])): ?>
+          <span>Referred by</span><?= htmlspecialchars($c['referred_by_name']) ?>
+        <?php else: ?>
+          —
+        <?php endif; ?>
+      </td>
       <td><span class="badge badge-<?= $c['status'] ?>"><?= ucfirst(str_replace('_', ' ', $c['status'])) ?></span></td>
       <td>
         <?php if ($score !== null): ?>
@@ -315,7 +325,7 @@ $active_status = $_GET['status'] ?? 'all';
           <select class="field-input" id="addCampaign">
             <option value="">Select campaign...</option>
             <?php foreach ($campaigns as $camp): ?>
-            <option value="<?= $camp['id'] ?>"><?= htmlspecialchars($camp['name']) ?></option>
+            <option value="<?= $camp['id'] ?>" <?= $sel_campaign === (int)$camp['id'] ? 'selected' : '' ?>><?= htmlspecialchars($camp['name']) ?></option>
             <?php endforeach; ?>
           </select>
           <div class="field-error" id="err-campaign">Please select a campaign</div>
@@ -363,6 +373,10 @@ $active_status = $_GET['status'] ?? 'all';
             <option>Referral</option><option>Walk-in</option><option>Website</option><option>Other</option>
           </select>
         </div>
+        <div class="field-group">
+          <label class="field-label">Referral Name</label>
+          <input class="field-input" type="text" id="addReferralName" placeholder="Who referred this candidate?">
+        </div>
         <div class="add-btn-row">
           <button class="btn-outline" onclick="closeAdd()">Cancel</button>
           <button class="btn-primary" onclick="submitAdd()" id="addSubmitBtn">
@@ -395,7 +409,7 @@ Ravi Kumar, , ravi@email.com"></textarea>
           <label class="field-label">Or Upload CSV</label>
           <input class="field-input" type="file" id="bulkCsvFile" accept=".csv,text/csv">
           <div class="bulk-hint">
-            <strong>CSV headers:</strong> First Name, Last Name, Phone Code, Phone Number, Email, City, Experience, Current CTC, Expected CTC
+            <strong>CSV headers:</strong> First Name, Last Name, Phone Code, Phone Number, Email, City, Experience, Current CTC, Expected CTC, Referral Name
           </div>
         </div>
         <div class="add-btn-row">
@@ -478,6 +492,7 @@ async function submitAdd() {
         current_ctc: document.getElementById('addCtc').value.trim(),
         expected_ctc: document.getElementById('addExpectedCtc').value.trim(),
         source: document.getElementById('addSource').value,
+        referred_by_name: document.getElementById('addReferralName').value.trim(),
       })
     });
     const d = await r.json();

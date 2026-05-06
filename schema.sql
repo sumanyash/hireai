@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS candidates (
     ai_test_willing VARCHAR(50),
     application_answers_json JSON NULL,
     referred_by_candidate_id INT NULL,
+    referred_by_name VARCHAR(255) NULL,
     referred_medium VARCHAR(50),
     unique_token VARCHAR(128) UNIQUE NOT NULL,
     link_expires_at DATETIME NULL,
@@ -248,6 +249,7 @@ ALTER TABLE candidates ADD COLUMN IF NOT EXISTS portfolio TEXT;
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS ai_test_willing VARCHAR(50);
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS application_answers_json JSON NULL;
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS referred_by_candidate_id INT NULL;
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS referred_by_name VARCHAR(255) NULL;
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS referred_medium VARCHAR(50);
 ALTER TABLE candidates ADD COLUMN IF NOT EXISTS link_expires_at DATETIME NULL;
 

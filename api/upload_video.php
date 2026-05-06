@@ -6,8 +6,8 @@ if($_SERVER['REQUEST_METHOD']!=='POST'){http_response_code(405);echo json_encode
 $token=$_POST['token']??'';$sid=(int)($_POST['session_id']??0);
 if(!$token){echo json_encode(['error'=>'Token required']);exit;}
 if(!isset($_FILES['video'])||$_FILES['video']['error']!==UPLOAD_ERR_OK){echo json_encode(['error'=>'No video uploaded','code'=>$_FILES['video']['error']??-1]);exit;}
-if($_FILES['video']['size'] > 25*1024*1024){http_response_code(413);echo json_encode(['error'=>'Video too large. Max 25MB']);exit;}
-$allowed=['video/webm','video/mp4','video/quicktime'];
+if($_FILES['video']['size'] > 100*1024*1024){http_response_code(413);echo json_encode(['error'=>'Video too large. Max 100MB']);exit;}
+$allowed=['video/webm','video/mp4','video/quicktime','video/x-matroska','application/octet-stream'];
 $mime=mime_content_type($_FILES['video']['tmp_name']);
 if(!in_array($mime,$allowed,true)){http_response_code(415);echo json_encode(['error'=>'Invalid video type']);exit;}
 $c=db_fetch_one("SELECT id FROM candidates WHERE unique_token=?",[$token],'s');

@@ -59,6 +59,18 @@ function campaign_setup_state($campaign, $questions, $application_fields) {
     ];
 }
 
+function campaign_duplicate_exists($org_id, $name, $job_role, $exclude_id = 0) {
+    $sql = "SELECT id FROM campaigns WHERE org_id=? AND LOWER(TRIM(name))=LOWER(TRIM(?)) AND LOWER(TRIM(COALESCE(job_role,'')))=LOWER(TRIM(?))";
+    $params = [(int)$org_id, trim((string)$name), trim((string)$job_role)];
+    $types = 'iss';
+    if ($exclude_id) {
+        $sql .= " AND id<>?";
+        $params[] = (int)$exclude_id;
+        $types .= 'i';
+    }
+    return (bool)db_fetch_one($sql . " LIMIT 1", $params, $types);
+}
+
 function legacy_application_template_fields() {
     return [
         ['Salutation','salutation','dropdown','Select salutation','Personal Information', "Mr.\nMs.\nMrs.\nDr."],
@@ -118,6 +130,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($start_date && $end_date && $end_date < $start_date) {
             header("Location: campaigns.php?action=new&msg=end_before_start"); exit;
         }
+        if (campaign_duplicate_exists($user['org_id'], $_POST['name'] ?? '', $_POST['job_role'] ?? '')) {
+            header("Location: campaigns.php?action=new&msg=duplicate_campaign"); exit;
+        }
         $integration_type = $_POST['integration_type'] ?? 'none';
         if (!in_array($integration_type, ['none','crm','google_sheet'], true)) $integration_type = 'none';
         $id = db_insert(
@@ -137,6 +152,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if ($start_date && $end_date && $end_date < $start_date) {
             header("Location: campaigns.php?action=edit&id=$campaign_id&msg=end_before_start"); exit;
+        }
+        if (campaign_duplicate_exists($user['org_id'], $_POST['name'] ?? '', $_POST['job_role'] ?? '', $campaign_id)) {
+            header("Location: campaigns.php?action=edit&id=$campaign_id&msg=duplicate_campaign"); exit;
         }
         $integration_type = $_POST['integration_type'] ?? 'none';
         if (!in_array($integration_type, ['none','crm','google_sheet'], true)) $integration_type = 'none';
@@ -244,6 +262,33 @@ if ($action === 'delete_application_field' && $campaign_id) {
     header("Location: campaigns.php?action=apply_form&id=$campaign_id"); exit;
 }
 
+if ($action === 'delete_campaign' && $campaign_id) {
+    $sent = $_GET['csrf_token'] ?? '';
+    if (!$sent || !hash_equals(csrf_token(), $sent)) {
+        http_response_code(419);
+        exit('Invalid security token. Please refresh and try again.');
+    }
+    $campaign = db_fetch_one("SELECT id,name FROM campaigns WHERE id=? AND org_id=?", [$campaign_id,$user['org_id']], 'ii');
+    if ($campaign) {
+        $candidate_ids = array_map('intval', array_column(db_fetch_all("SELECT id FROM candidates WHERE campaign_id=? AND org_id=?", [$campaign_id,$user['org_id']], 'ii'), 'id'));
+        foreach ($candidate_ids as $cid) {
+            db_execute("DELETE FROM interview_answers WHERE candidate_id=?", [$cid], 'i');
+            db_execute("DELETE FROM interview_sessions WHERE candidate_id=?", [$cid], 'i');
+            db_execute("DELETE FROM interview_results WHERE candidate_id=?", [$cid], 'i');
+            db_execute("DELETE FROM scores WHERE candidate_id=?", [$cid], 'i');
+            db_execute("DELETE FROM outreach_log WHERE candidate_id=?", [$cid], 'i');
+            db_execute("DELETE FROM reminder_jobs WHERE candidate_id=?", [$cid], 'i');
+            db_execute("DELETE FROM recruiter_notes WHERE candidate_id=?", [$cid], 'i');
+        }
+        db_execute("DELETE FROM candidates WHERE campaign_id=? AND org_id=?", [$campaign_id,$user['org_id']], 'ii');
+        db_execute("DELETE FROM application_fields WHERE campaign_id=?", [$campaign_id], 'i');
+        db_execute("DELETE FROM questions WHERE campaign_id=?", [$campaign_id], 'i');
+        audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'campaign_deleted', ['name' => $campaign['name']]);
+        db_execute("DELETE FROM campaigns WHERE id=? AND org_id=?", [$campaign_id,$user['org_id']], 'ii');
+    }
+    header("Location: campaigns.php?msg=deleted"); exit;
+}
+
 // ─── DATA ────────────────────────────────────────────────────────
 $campaigns = db_fetch_all(
     "SELECT ca.*, u.name AS creator_name,
@@ -288,7 +333,7 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
     <a href="campaigns.php?action=new" class="btn-primary">+ New Campaign</a>
   </div>
   <?php if (!empty($_GET['msg'])): ?>
-    <div class="alert alert-success">✅ Campaign <?= htmlspecialchars($_GET['msg']) ?>!</div>
+    <div class="alert alert-success">✅ Campaign <?= htmlspecialchars(str_replace('_',' ',$_GET['msg'])) ?>!</div>
   <?php endif; ?>
   <div class="card campaign-table-wrap">
     <table class="table">
@@ -321,6 +366,7 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
                 <button type="submit" class="btn-green" style="padding:5px 12px;font-size:13px">▶ Activate</button>
               </form>
             <?php endif; ?>
+            <a href="campaigns.php?action=delete_campaign&id=<?= $c['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" class="btn-danger" style="padding:5px 12px;font-size:13px;text-decoration:none" onclick="return confirm('Delete this campaign and all mapped candidates/interview data? This cannot be undone.')">Delete</a>
           </td>
         </tr>
         <?php endforeach; ?>
@@ -339,7 +385,7 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
   </div>
   <?php if (!empty($_GET['msg'])): ?>
     <div class="alert <?= in_array($_GET['msg'], ['start_date_past','end_before_start'], true) ? 'alert-error' : 'alert-success' ?>">
-      <?= $_GET['msg'] === 'start_date_past' ? 'Start date cannot be in the past. Please choose today or a future date.' : ($_GET['msg'] === 'end_before_start' ? 'End date must be after the start date.' : htmlspecialchars(str_replace('_',' ',$_GET['msg']))) ?>
+      <?= $_GET['msg'] === 'start_date_past' ? 'Start date cannot be in the past. Please choose today or a future date.' : ($_GET['msg'] === 'end_before_start' ? 'End date must be after the start date.' : ($_GET['msg'] === 'duplicate_campaign' ? 'A campaign with the same name and job role already exists.' : htmlspecialchars(str_replace('_',' ',$_GET['msg'])))) ?>
     </div>
   <?php endif; ?>
   <div class="card" style="max-width:720px">
@@ -348,6 +394,12 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
       <div class="alert alert-info" style="margin-bottom:18px">
         <i class="fa-solid fa-user-shield"></i>
         Creator: <strong><?= htmlspecialchars($is_edit ? ($campaign['creator_name'] ?: $user['name']) : $user['name']) ?></strong>. This name is stored for reporting and audit logs.
+      </div>
+      <div class="alert alert-info" style="margin-bottom:18px;align-items:flex-start">
+        <i class="fa-solid fa-route" style="margin-top:2px"></i>
+        <div>
+          Guided setup: 1. Save campaign details, 2. Add apply form fields, 3. Add MCQ/video/audio questions, 4. Check 100% scoring weight, 5. Activate and share.
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="form-group">
@@ -404,6 +456,14 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
         <label class="form-label">Connection URL / Sheet GID</label>
         <input type="text" name="integration_endpoint" id="integrationEndpoint" class="form-control" value="<?= htmlspecialchars($campaign['integration_endpoint'] ?? '') ?>" placeholder="Paste CRM webhook URL or Google Sheet GID">
         <small id="integrationHelp" style="color:#64748B">This can be completed later, but the campaign journey will show it as pending.</small>
+        <details style="margin-top:10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px">
+          <summary style="cursor:pointer;font-weight:800;color:#334155">Google Sheet setup guide</summary>
+          <ol style="margin:10px 0 0 18px;color:#64748B;font-size:13px;line-height:1.7">
+            <li>Create a Google Sheet with columns like Name, Phone, Email, Campaign, Status.</li>
+            <li>Use Apps Script or your CRM webhook to accept JSON submissions.</li>
+            <li>Paste the Apps Script webhook URL here. A plain Sheet GID can be saved for tracking, but webhook URL is required for automatic sync.</li>
+          </ol>
+        </details>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
@@ -603,8 +663,8 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
             <option value="number">Numeric</option>
             <option value="decimal">Decimal</option>
             <option value="date">Date</option>
-            <option value="dropdown">Dropdown</option>
-            <option value="multi_select">Multi-select</option>
+            <option value="dropdown">MCQ - Single Choice</option>
+            <option value="multi_select">MCQ - Multiple Choice</option>
             <option value="rating">Rating</option>
             <option value="file">Upload Section</option>
             <option value="audio">Record Audio</option>

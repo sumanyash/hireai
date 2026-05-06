@@ -5,7 +5,7 @@ if (!$id) { header('Location: candidates.php'); exit; }
 
 $c = db_fetch_one(
     "SELECT c.*, camp.name campaign_name, camp.id campaign_id, camp.job_role, camp.passing_score,
-            ref.name AS referred_by_name, ref.phone AS referred_by_phone
+            COALESCE(ref.name, c.referred_by_name) AS referred_by_display_name, ref.phone AS referred_by_phone
      FROM candidates c LEFT JOIN campaigns camp ON c.campaign_id=camp.id
      LEFT JOIN candidates ref ON c.referred_by_candidate_id=ref.id
      WHERE c.id=? AND c.org_id=?",
@@ -31,6 +31,7 @@ $questions = db_fetch_all(
     "SELECT *, order_no AS question_number FROM questions WHERE campaign_id=? ORDER BY order_no ASC",
     [$c['campaign_id']], 'i'
 );
+$campaigns = db_fetch_all("SELECT id,name,job_role FROM campaigns WHERE org_id=? ORDER BY name", [$user['org_id']], 'i');
 
 // Handle POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -311,11 +312,11 @@ $toast         = $_GET['toast'] ?? '';
       <div class="info-key">Applied</div>
       <div class="info-val"><?= $c['created_at'] ? date('d M Y', strtotime($c['created_at'])) : '—' ?></div>
     </div>
-    <?php if (!empty($c['referred_by_name']) || !empty($c['referred_medium'])): ?>
+    <?php if (!empty($c['referred_by_display_name']) || !empty($c['referred_medium'])): ?>
     <div class="info-row">
       <div class="info-key">Referred</div>
       <div class="info-val">
-        <?= htmlspecialchars($c['referred_by_name'] ?? '—') ?>
+        <?= htmlspecialchars($c['referred_by_display_name'] ?? '—') ?>
         <?php if (!empty($c['referred_by_phone'])): ?><br><small style="color:var(--gray)"><?= htmlspecialchars($c['referred_by_phone']) ?></small><?php endif; ?>
         <?php if (!empty($c['referred_medium'])): ?><br><small style="color:var(--blue)">Medium: <?= htmlspecialchars($c['referred_medium']) ?></small><?php endif; ?>
       </div>
@@ -644,6 +645,16 @@ $toast         = $_GET['toast'] ?? '';
       <button class="modal-close" onclick="closeModal('editModal')">✕</button>
     </div>
     <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label">Campaign</label>
+        <select class="form-control" id="editCampaign">
+          <?php foreach ($campaigns as $camp): ?>
+          <option value="<?= $camp['id'] ?>" <?= (int)$c['campaign_id'] === (int)$camp['id'] ? 'selected' : '' ?>>
+            <?= htmlspecialchars($camp['name']) ?><?= !empty($camp['job_role']) ? ' - ' . htmlspecialchars($camp['job_role']) : '' ?>
+          </option>
+          <?php endforeach; ?>
+        </select>
+      </div>
       <div class="form-group"><label class="form-label">Name</label><input class="form-control" id="editName" value="<?= htmlspecialchars($c['name'] ?? '') ?>"></div>
       <div class="form-group"><label class="form-label">Phone</label><input class="form-control" id="editPhone" value="<?= htmlspecialchars($c['phone'] ?? '') ?>"></div>
       <div class="form-group"><label class="form-label">Email</label><input class="form-control" id="editEmail" value="<?= htmlspecialchars($c['email'] ?? '') ?>"></div>
@@ -652,6 +663,7 @@ $toast         = $_GET['toast'] ?? '';
       <div class="form-group"><label class="form-label">Current CTC</label><input class="form-control" id="editCtc" value="<?= htmlspecialchars($c['current_ctc'] ?? '') ?>"></div>
       <div class="form-group"><label class="form-label">Expected CTC</label><input class="form-control" id="editExpected" value="<?= htmlspecialchars($c['expected_ctc'] ?? '') ?>"></div>
       <div class="form-group"><label class="form-label">Source</label><input class="form-control" id="editSource" value="<?= htmlspecialchars($c['source'] ?? '') ?>"></div>
+      <div class="form-group"><label class="form-label">Referral Name</label><input class="form-control" id="editReferralName" value="<?= htmlspecialchars($c['referred_by_display_name'] ?? '') ?>"></div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn-outline" onclick="closeModal('editModal')">Cancel</button>
@@ -807,6 +819,7 @@ async function saveCandidateDetails() {
       body: JSON.stringify({
         action: 'update',
         candidate_id: <?= $c['id'] ?>,
+        campaign_id: parseInt(document.getElementById('editCampaign').value, 10),
         name: document.getElementById('editName').value.trim(),
         phone: document.getElementById('editPhone').value.trim(),
         email: document.getElementById('editEmail').value.trim(),
@@ -814,7 +827,8 @@ async function saveCandidateDetails() {
         experience_years: document.getElementById('editExp').value.trim(),
         current_ctc: document.getElementById('editCtc').value.trim(),
         expected_ctc: document.getElementById('editExpected').value.trim(),
-        source: document.getElementById('editSource').value.trim()
+        source: document.getElementById('editSource').value.trim(),
+        referred_by_name: document.getElementById('editReferralName').value.trim()
       })
     });
     const d = await r.json();

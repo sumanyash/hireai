@@ -10,10 +10,26 @@ $candidate=db_fetch_one("SELECT c.*,camp.passing_score,camp.el_agent_id,camp.nam
 if(!$candidate){log_s("Not found");exit(1);}
 $questions=db_fetch_all("SELECT * FROM questions WHERE campaign_id=? ORDER BY order_no",[$campaign_id],'i');
 $answers=db_fetch_all("SELECT ia.*,q.question_text,q.parameter,q.parameter_label,q.max_marks,q.ideal_answer_hint FROM interview_answers ia JOIN questions q ON ia.question_id=q.id WHERE ia.candidate_id=? ORDER BY ia.id",[$candidate_id],'i');
+$answer_by_question=[];
+foreach($answers as $a){
+  $qid=(int)$a['question_id'];
+  if(!$qid)continue;
+  $existing=$answer_by_question[$qid]??null;
+  $current_has_text=trim((string)($a['text_answer']??''))!=='';
+  $existing_has_text=trim((string)($existing['text_answer']??''))!=='';
+  if(!$existing||($current_has_text&&!$existing_has_text))$answer_by_question[$qid]=$a;
+}
+function clean_answer_text($answer){
+  return trim((string)($answer['text_answer']??''));
+}
+function has_gradable_answer($answer){
+  return clean_answer_text($answer)!=='';
+}
 $qa='';
 if(!empty($answers)){
   foreach($answers as $a){
-    $qa.="Parameter: {$a['parameter_label']}\nQuestion: {$a['question_text']}\nAnswer: ".($a['text_answer']?:'[Voice only]')."\n";
+    $answer_text=clean_answer_text($a);
+    $qa.="Parameter: {$a['parameter_label']}\nQuestion: {$a['question_text']}\nAnswer: ".($answer_text!==''?$answer_text:'[No gradable response recorded]')."\n";
     if($a['ideal_answer_hint'])$qa.="Hints: {$a['ideal_answer_hint']}\n";
     $qa.="\n";
   }
@@ -22,7 +38,7 @@ if(!empty($answers)){
   $qa=$sess['full_transcript']??'No answers.';
 }
 $params='';foreach($questions as $q)$params.="\n- {$q['parameter_label']} (max: {$q['max_marks']})";
-$prompt="Score this interview for role: {$candidate['job_role']}.\n\nANSWERS:\n$qa\nPARAMETERS:$params\n\nReturn ONLY valid JSON:\n{\"scores\":[{\"parameter\":\"key\",\"parameter_label\":\"Label\",\"score\":N,\"max_marks\":N,\"reasoning\":\"brief\"}],\"total_score\":N,\"max_total\":N,\"pass_fail\":\"pass or fail\",\"summary\":\"2-3 sentences\"}";
+$prompt="Score this interview for role: {$candidate['job_role']}.\n\nANSWERS:\n$qa\nPARAMETERS:$params\n\nImportant scoring rule: questions marked [No gradable response recorded] must receive 0 marks. Do not infer answers for blank responses.\n\nReturn ONLY valid JSON:\n{\"scores\":[{\"parameter\":\"key\",\"parameter_label\":\"Label\",\"score\":N,\"max_marks\":N,\"reasoning\":\"brief\"}],\"total_score\":N,\"max_total\":N,\"pass_fail\":\"pass or fail\",\"summary\":\"2-3 sentences\"}";
 $result=null;
 $okey=defined('OPENAI_API_KEY')?OPENAI_API_KEY:(defined('OPENAI_KEY')?OPENAI_KEY:'');
 if($okey){
@@ -35,25 +51,67 @@ if($okey){
 if(!$result){
   log_s("Fallback scoring");
   $scores=[];$total=$max=0;
-  foreach($questions as $q){$fs=(int)($q['max_marks']*0.6);$scores[]=['parameter'=>$q['parameter'],'parameter_label'=>$q['parameter_label'],'score'=>$fs,'max_marks'=>(int)$q['max_marks'],'reasoning'=>'Auto-scored'];$total+=$fs;$max+=(int)$q['max_marks'];}
+  foreach($questions as $q){
+    $qid=(int)$q['id'];$marks=(int)$q['max_marks'];$max+=$marks;
+    $answer=$answer_by_question[$qid]??null;
+    $reason=has_gradable_answer($answer)?'AI scoring unavailable — manual review required.':'No gradable response recorded.';
+    $scores[]=['parameter'=>$q['parameter'],'parameter_label'=>$q['parameter_label'],'score'=>0,'max_marks'=>$marks,'reasoning'=>$reason];
+  }
   $pct=$max>0?round(($total/$max)*100):0;$pass=(int)($candidate['passing_score']??70);
   $result=['scores'=>$scores,'total_score'=>$total,'max_total'=>$max,'pass_fail'=>$pct>=$pass?'pass':'fail','summary'=>'AI scoring unavailable — manual review recommended.'];
 }
-foreach($result['scores'] as $s){
+$result_scores=[];
+$score_by_parameter=[];
+foreach(($result['scores']??[]) as $s){
+  $score_by_parameter[(string)($s['parameter']??'')]=$s;
+}
+$total_score=0;$max_total=0;$answered_count=0;$required_count=0;$required_answered_count=0;
+foreach($questions as $q){
+  $qid=(int)$q['id'];$parameter=(string)$q['parameter'];$marks=(int)$q['max_marks'];
+  $answer=$answer_by_question[$qid]??null;
+  $has_answer=has_gradable_answer($answer);
+  if(!empty($q['is_required'])){
+    $required_count++;
+    if($has_answer)$required_answered_count++;
+  }
+  if($has_answer)$answered_count++;
+  $raw=$score_by_parameter[$parameter]??[];
+  $score=(int)($raw['score']??0);
+  $reasoning=$raw['reasoning']??'';
+  if(!$has_answer){
+    $score=0;
+    $reasoning='No gradable response recorded.';
+  }
+  $score=max(0,min($score,$marks));
+  $result_scores[]=[
+    'parameter'=>$parameter,
+    'parameter_label'=>$q['parameter_label'],
+    'score'=>$score,
+    'max_marks'=>$marks,
+    'reasoning'=>$reasoning,
+  ];
+  $total_score+=$score;
+  $max_total+=$marks;
+}
+$pct_score=$max_total>0?round(($total_score/$max_total)*100):0;
+$passing=(int)($candidate['passing_score']??70);
+$required_answered=$required_count>0?$required_answered_count>=$required_count:$answered_count>=count($questions);
+$pf=($required_answered&&$pct_score>=$passing)?'pass':'fail';
+$summary=$result['summary']??'';
+if(!$required_answered){
+  $summary=trim($summary."\nIncomplete interview: $required_answered_count of $required_count required questions have gradable responses.");
+}
+foreach($result_scores as $s){
   $ex=db_fetch_one("SELECT id FROM scores WHERE candidate_id=? AND parameter=?",[$candidate_id,$s['parameter']],'is');
   if($ex)db_execute("UPDATE scores SET ai_score=?,max_marks=?,ai_reasoning=? WHERE id=?",[(int)$s['score'],(int)$s['max_marks'],$s['reasoning']??'',$ex['id']],'iisi');
   else db_execute("INSERT INTO scores (candidate_id,campaign_id,parameter,parameter_label,ai_score,max_marks,ai_reasoning) VALUES (?,?,?,?,?,?,?)",[$candidate_id,$campaign_id,$s['parameter'],$s['parameter_label'],(int)$s['score'],(int)$s['max_marks'],$s['reasoning']??''],'iissiis');
 }
-$total_score=(int)($result['total_score']??0);$max_total=(int)($result['max_total']??100);
-$pf=$result['pass_fail']==='pass'?'pass':'fail';$summary=$result['summary']??'';
 $ex2=db_fetch_one("SELECT id FROM interview_results WHERE candidate_id=?",[$candidate_id],'i');
 if($ex2)db_execute("UPDATE interview_results SET total_score=?,max_score=?,pass_fail=?,ai_summary=?,updated_at=NOW() WHERE candidate_id=?",[$total_score,$max_total,$pf,$summary,$candidate_id],'iissi');
 else db_execute("INSERT INTO interview_results (candidate_id,campaign_id,total_score,max_score,pass_fail,ai_summary) VALUES (?,?,?,?,?,?)",[$candidate_id,$campaign_id,$total_score,$max_total,$pf,$summary],'iiiiss');
 $new_status=$pf==='pass'?'shortlisted':'rejected';
 db_execute("UPDATE candidates SET status=? WHERE id=?",[$new_status,$candidate_id],'si');
 log_s("Result saved: $total_score/$max_total $pf status->$new_status");
-$pct_score=$max_total>0?round(($total_score/$max_total)*100):0;
-$passing=(int)($candidate['passing_score']??70);
 $name=$candidate['name']?:'Candidate';$role=$candidate['job_role'];$camp=$candidate['campaign_name'];
 if($pct_score>=80){
   log_s("Score>=80 — triggering EL call");

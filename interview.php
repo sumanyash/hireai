@@ -654,7 +654,7 @@ function loadQuestion(index) {
   timerInt = setInterval(() => {
     timeLeft--;
     updateTimer();
-    if (timeLeft <= 0) { clearInterval(timerInt); logCheat('Time expired'); nextQuestion(); }
+    if (timeLeft <= 0) { clearInterval(timerInt); logCheat('Time expired'); nextQuestion(true); }
   }, 1000);
 }
 
@@ -812,7 +812,15 @@ function stopRecording() {
 }
 
 // ── NEXT QUESTION ────────────────────────────────────────────────────────────
-async function nextQuestion() {
+async function nextQuestion(allowBlank = false) {
+  const q = QUESTIONS[currentQ];
+  const textAnswerBeforeSave = getCurrentAnswerValue();
+  const hasVoiceAnswer = currentMode === 'voice' && audioChunks.length > 0;
+  if (!allowBlank && String(q.is_required ?? '1') !== '0' && !textAnswerBeforeSave && !hasVoiceAnswer) {
+    alert('Please answer this mandatory question before continuing.');
+    return;
+  }
+
   const btn = document.getElementById('next-btn');
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span> Saving…';

@@ -56,7 +56,7 @@ $job_desc  = $campaign['description'] ?? '';
 // Fetch all active campaigns for dropdown
 $all_campaigns = db_fetch_all("SELECT id, name, job_role FROM campaigns WHERE status='active' ORDER BY name ASC", [], '');
 $application_fields = $campaign_id ? db_fetch_all("SELECT * FROM application_fields WHERE campaign_id=? AND is_active=1 ORDER BY order_no,id", [$campaign_id], 'i') : [];
-$is_dynamic_apply = true;
+$is_dynamic_apply = false;
 
 ?>
 <!DOCTYPE html>

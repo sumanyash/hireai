@@ -659,11 +659,25 @@ function loadQuestion(index) {
 }
 
 function parseQuestionOptions(q) {
+  const inlineChoices = () => {
+    const text = q.question_text || '';
+    const idx = String(text).search(/choices\s*:/i);
+    if (idx < 0) return [];
+    const raw = String(text).slice(idx).replace(/^choices\s*:\s*/i, '').trim();
+    const found = [];
+    const re = /(?:^|\s)(?:[A-Z]|\d+)[).]\s*(.*?)(?=\s+(?:[A-Z]|\d+)[).]\s*|$)/g;
+    let m;
+    while ((m = re.exec(raw)) !== null) {
+      const option = (m[1] || '').trim();
+      if (option) found.push(option);
+    }
+    return found;
+  };
   try {
-    if (!q.options_json) return [];
+    if (!q.options_json) return inlineChoices();
     const parsed = typeof q.options_json === 'string' ? JSON.parse(q.options_json) : q.options_json;
-    return Array.isArray(parsed) ? parsed : [];
-  } catch(e) { return []; }
+    return Array.isArray(parsed) && parsed.length ? parsed : inlineChoices();
+  } catch(e) { return inlineChoices(); }
 }
 
 function renderDynamicAnswer(q) {

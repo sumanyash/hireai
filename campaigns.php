@@ -169,11 +169,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'add_question') {
         $question_type = $_POST['question_type'] ?? 'textarea';
         $options_json = options_to_json($_POST['options_text'] ?? '');
+        if (in_array($question_type, ['dropdown','multi_select','rating'], true) && !$options_json) {
+            header("Location: campaigns.php?action=questions&id=$campaign_id&msg=options_required"); exit;
+        }
         $branch_rules_json = normalize_json_text($_POST['branch_rules_json'] ?? '');
         $is_required = isset($_POST['is_required']) ? 1 : 0;
+        $parameter_label = trim($_POST['parameter_label'] ?? '');
+        $parameter = trim($_POST['parameter'] ?? '');
+        if ($parameter === '' || $parameter === 'custom') $parameter = field_key_from_label($parameter_label);
         db_insert(
             "INSERT INTO questions (campaign_id,parameter,parameter_label,weight,max_marks,question_text,ideal_answer_hint,question_type,options_json,branch_rules_json,is_required,order_no) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            [$campaign_id,$_POST['parameter'],$_POST['parameter_label'],(int)$_POST['weight'],(int)$_POST['max_marks'],$_POST['question_text'],$_POST['ideal_answer_hint'],$question_type,$options_json,$branch_rules_json,$is_required,(int)$_POST['order_no']],
+            [$campaign_id,$parameter,$parameter_label,(int)$_POST['weight'],(int)$_POST['max_marks'],$_POST['question_text'],$_POST['ideal_answer_hint'],$question_type,$options_json,$branch_rules_json,$is_required,(int)$_POST['order_no']],
             'issiisssssii'
         );
         audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'question_added', ['type' => $question_type]);
@@ -571,7 +577,10 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
   </div>
 
   <?php if (!empty($_GET['msg']) && $_GET['msg'] !== 'setup_incomplete'): ?>
-    <div class="alert alert-success">✅ <?= htmlspecialchars(str_replace('_',' ',$_GET['msg'])) ?>!</div>
+    <?php $question_errors = ['options_required' => 'Add choices for MCQ/rating questions before saving.']; ?>
+    <div class="alert <?= isset($question_errors[$_GET['msg']]) ? 'alert-error' : 'alert-success' ?>">
+      <?= isset($question_errors[$_GET['msg']]) ? '⚠️ ' . $question_errors[$_GET['msg']] : '✅ ' . htmlspecialchars(str_replace('_',' ',$_GET['msg'])) . '!' ?>
+    </div>
   <?php endif; ?>
 
   <?php if (!empty($_GET['msg']) && $_GET['msg'] === 'setup_incomplete'): ?>
@@ -594,6 +603,16 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
     .summary-stat{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0}
     .summary-stat div{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:10px}
     .summary-stat strong{display:block;font-size:18px;color:#0F172A}
+    .simple-question-form{border:1px solid #E5E7EB;border-radius:16px;overflow:hidden}
+    .simple-question-help{background:#F8FAFC;border-bottom:1px solid #E5E7EB;padding:14px 18px;color:#475569;font-size:13px;line-height:1.5}
+    .simple-question-help strong{color:#0F172A}
+    .helper-text{display:block;color:#64748B;font-size:12px;line-height:1.45;margin-top:6px}
+    .mcq-box{display:none;background:#FFFBEB;border:1px solid #FCD34D;border-radius:12px;padding:14px;margin-bottom:18px}
+    .mcq-box.active{display:block}
+    .mcq-presets{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+    .mcq-presets button{border:1px solid #BFDBFE;background:#EFF6FF;color:#1D4ED8;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800;cursor:pointer}
+    .mcq-presets button:hover{background:#DBEAFE}
+    .advanced-question-block{display:none}
     @media(max-width:980px){.journey-grid{grid-template-columns:1fr}.journey-card{position:static}}
   </style>
   <div class="journey-grid">
@@ -631,34 +650,38 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
   <?php endif; ?>
 
   <!-- Add Question -->
-  <div class="card">
-    <div class="card-header"><h3>Add Question</h3></div>
-    <form method="POST" action="campaigns.php?action=add_question&id=<?= $campaign_id ?>">
+  <div class="card simple-question-form">
+    <div class="card-header"><h3>Add Interview Question</h3></div>
+    <div class="simple-question-help">
+      <strong>Admin simple mode:</strong> choose skill/topic, answer type, write question, add choices only for MCQ/rating, then save.
+    </div>
+    <form method="POST" action="campaigns.php?action=add_question&id=<?= $campaign_id ?>" onsubmit="return validateQuestionForm(this)">
       <?= csrf_input() ?>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="form-group">
-          <label class="form-label">Parameter Key</label>
+          <label class="form-label">Skill / Topic</label>
           <select name="parameter" class="form-control" onchange="setParameterLabel(this)">
-            <option value="english_communication" data-label="English Communication Skills">english_communication</option>
-            <option value="ai_tools_usage" data-label="AI Tools Usage">ai_tools_usage</option>
-            <option value="ai_prompting" data-label="AI Prompting">ai_prompting</option>
-            <option value="ai_projects" data-label="AI Projects Done">ai_projects</option>
-            <option value="machine_learning" data-label="Machine Learning">machine_learning</option>
-            <option value="api_db_integration" data-label="API & DB Integration">api_db_integration</option>
-            <option value="domain_knowledge" data-label="Domain Knowledge">domain_knowledge</option>
-            <option value="confidence" data-label="Confidence Level">confidence</option>
-            <option value="custom" data-label="">custom</option>
+            <option value="english_communication" data-label="English Communication Skills">English Communication</option>
+            <option value="ai_tools_usage" data-label="AI Tools Usage">AI Tools Usage</option>
+            <option value="ai_prompting" data-label="AI Prompting">AI Prompting</option>
+            <option value="ai_projects" data-label="AI Projects Done">AI Projects Done</option>
+            <option value="machine_learning" data-label="Machine Learning">Machine Learning</option>
+            <option value="api_db_integration" data-label="API & DB Integration">API & DB Integration</option>
+            <option value="domain_knowledge" data-label="Domain Knowledge">Domain Knowledge</option>
+            <option value="confidence" data-label="Confidence Level">Confidence Level</option>
+            <option value="custom" data-label="">Custom topic</option>
           </select>
+          <small class="helper-text">Used for score breakup/reporting. Candidate will not see any technical key.</small>
         </div>
         <div class="form-group">
-          <label class="form-label">Display Label *</label>
+          <label class="form-label">Report Label *</label>
           <input type="text" name="parameter_label" class="form-control" placeholder="English Communication Skills" required>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="form-group">
           <label class="form-label">Answer Type</label>
-          <select name="question_type" class="form-control">
+          <select name="question_type" class="form-control" onchange="syncQuestionTypeUI()">
             <option value="textarea">Long Text / Interview Answer</option>
             <option value="text">Short Text</option>
             <option value="number">Numeric</option>
@@ -696,7 +719,8 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
       </div>
       <div class="form-group">
         <label class="form-label">Question Text *</label>
-        <textarea name="question_text" class="form-control" rows="3" placeholder="Write the interview question..." required></textarea>
+        <textarea name="question_text" class="form-control" rows="3" placeholder="Write only the question here. Put MCQ choices in the choices box below." required onblur="autoFillInlineChoices()"></textarea>
+        <small class="helper-text">Example: Which Python library is used for OpenAI API calls?</small>
       </div>
       <div class="form-group">
         <label class="form-label" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
@@ -705,15 +729,20 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
         </label>
         <textarea name="ideal_answer_hint" class="form-control" rows="2" placeholder="Keywords or criteria AI should look for..."></textarea>
       </div>
-      <div class="form-group">
+      <div class="form-group mcq-box" id="mcqBox">
         <label class="form-label" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-          <span>Choices shown to candidate</span>
+          <span>MCQ / Rating Choices *</span>
           <button type="button" class="btn-sm" onclick="fillOptionSuggestion()" style="padding:5px 10px">Guide me</button>
         </label>
-        <textarea name="options_text" class="form-control" rows="3" placeholder="One option per line, e.g.&#10;Yes&#10;No&#10;Maybe"></textarea>
-        <small style="color:#64748B">Use this only for dropdown, multi-select, rating, or checkbox answers. Press Tab or Space after using a suggestion to accept the highlighted text in most browsers.</small>
+        <div class="mcq-presets">
+          <button type="button" onclick="setQuestionOptions('Yes\nNo')">Yes / No</button>
+          <button type="button" onclick="setQuestionOptions('Beginner\nIntermediate\nAdvanced')">Skill Level</button>
+          <button type="button" onclick="setQuestionOptions('1 - Poor\n2 - Fair\n3 - Good\n4 - Very Good\n5 - Excellent')">5-point Rating</button>
+        </div>
+        <textarea name="options_text" class="form-control" rows="4" placeholder="One option per line&#10;Example:&#10;pandas&#10;openai&#10;flask&#10;numpy"></textarea>
+        <small class="helper-text">These choices will be shown as dropdown/checkboxes to the candidate.</small>
       </div>
-      <div class="form-group">
+      <div class="form-group advanced-question-block">
         <details>
           <summary style="cursor:pointer;font-weight:800;color:#334155">Advanced branching rules</summary>
           <label class="form-label" style="margin-top:12px">Branching rules JSON</label>
@@ -961,6 +990,57 @@ function setParameterLabel(select) {
   const input = document.querySelector('input[name="parameter_label"]');
   if (input && label) input.value = label;
 }
+function questionTypeNeedsChoices(type) {
+  return ['dropdown', 'multi_select', 'rating'].includes(type);
+}
+function syncQuestionTypeUI() {
+  const type = document.querySelector('select[name="question_type"]')?.value || 'textarea';
+  const box = document.getElementById('mcqBox');
+  const options = document.querySelector('textarea[name="options_text"]');
+  if (!box || !options) return;
+  const showChoices = questionTypeNeedsChoices(type);
+  box.classList.toggle('active', showChoices);
+  options.required = showChoices;
+  if (!showChoices) options.value = '';
+}
+function setQuestionOptions(value) {
+  const options = document.querySelector('textarea[name="options_text"]');
+  if (!options) return;
+  options.value = value;
+  options.focus();
+}
+function extractInlineChoices(text) {
+  const idx = String(text || '').search(/choices\s*:/i);
+  if (idx < 0) return [];
+  const raw = String(text).slice(idx).replace(/^choices\s*:\s*/i, '').trim();
+  const found = [];
+  const re = /(?:^|\s)(?:[A-Z]|\d+)[).]\s*(.*?)(?=\s+(?:[A-Z]|\d+)[).]\s*|$)/g;
+  let m;
+  while ((m = re.exec(raw)) !== null) {
+    const option = (m[1] || '').trim();
+    if (option) found.push(option);
+  }
+  return found;
+}
+function autoFillInlineChoices() {
+  const type = document.querySelector('select[name="question_type"]')?.value || 'textarea';
+  if (!questionTypeNeedsChoices(type)) return;
+  const q = document.querySelector('textarea[name="question_text"]');
+  const options = document.querySelector('textarea[name="options_text"]');
+  if (!q || !options || options.value.trim()) return;
+  const found = extractInlineChoices(q.value);
+  if (found.length) options.value = found.join('\n');
+}
+function validateQuestionForm(form) {
+  const type = form.querySelector('select[name="question_type"]')?.value || 'textarea';
+  const options = form.querySelector('textarea[name="options_text"]');
+  if (questionTypeNeedsChoices(type) && !options.value.trim()) {
+    alert('Please add MCQ/rating choices. Add one option per line.');
+    options.focus();
+    return false;
+  }
+  return true;
+}
 function presetField(label, key, type, placeholder) {
   const labelEl = document.getElementById('fieldLabel');
   const keyEl = document.getElementById('fieldKey');
@@ -1007,6 +1087,11 @@ function fillOptionSuggestion() {
   options.focus();
   options.select();
 }
+document.addEventListener('DOMContentLoaded', () => {
+  const parameter = document.querySelector('select[name="parameter"]');
+  if (parameter) setParameterLabel(parameter);
+  syncQuestionTypeUI();
+});
 </script>
 <?php include __DIR__ . '/includes/footer.php'; ?>
 </body>

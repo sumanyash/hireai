@@ -1275,6 +1275,7 @@ const APP_FIELDS = <?= json_encode(array_map(function($f) {
     'required' => !empty($f['is_required']),
   ];
 }, $application_fields)) ?>;
+const APP_FIELD_BY_KEY = Object.fromEntries(APP_FIELDS.map(field => [String(field.key || '').toLowerCase(), field]));
 let referralLink = '';
 const REFERRAL_MESSAGE_PREFIX = 'I have completed my HireAI interview. You can apply using this campaign link: ';
 
@@ -1347,9 +1348,85 @@ function dynamicValue(field) {
   return v(id).trim();
 }
 
+function dynamicFieldWrap(field) {
+  return document.querySelector(`[data-app-wrap="${field.id}"]`);
+}
+
+function isDynamicFieldVisible(field) {
+  const wrap = dynamicFieldWrap(field);
+  return !wrap || wrap.style.display !== 'none';
+}
+
+function dynamicValueByKey(key) {
+  const field = APP_FIELD_BY_KEY[String(key || '').toLowerCase()];
+  return field ? dynamicValue(field) : '';
+}
+
+function clearDynamicField(field) {
+  const id = 'appField_' + field.id;
+  const el = document.getElementById(id);
+  if (field.type === 'multi_select' || field.type === 'checkbox') {
+    document.querySelectorAll(`input[name="${id}[]"],input#${id}`).forEach(input => input.checked = false);
+  } else if (el) {
+    if (field.type === 'file') {
+      el.value = '';
+      const name = document.getElementById(id + 'Name');
+      if (name) { name.textContent = ''; name.style.display = 'none'; }
+      el.closest('.file-upload-area')?.classList.remove('has-file');
+    } else {
+      el.value = '';
+    }
+  }
+}
+
+function setDynamicVisible(key, visible) {
+  const field = APP_FIELD_BY_KEY[String(key || '').toLowerCase()];
+  if (!field) return;
+  const wrap = dynamicFieldWrap(field);
+  if (!wrap) return;
+  wrap.style.display = visible ? '' : 'none';
+  if (!visible) clearDynamicField(field);
+}
+
+function applyDynamicFieldLogic() {
+  if (!DYNAMIC_APPLY) return;
+  const city = String(dynamicValueByKey('city') || dynamicValueByKey('current_city')).trim().toLowerCase();
+  const needsRelocation = !!city && city !== 'jaipur';
+  setDynamicVisible('relocate', needsRelocation);
+  setDynamicVisible('relocate_time', needsRelocation && dynamicValueByKey('relocate') === 'Yes');
+  setDynamicVisible('other_country_code', String(dynamicValueByKey('phone_code')).toLowerCase().includes('other'));
+  const college = String(dynamicValueByKey('college')).toLowerCase();
+  setDynamicVisible('college_other', college.includes('other'));
+  const source = String(dynamicValueByKey('source')).toLowerCase();
+  setDynamicVisible('source_other', source.includes('other'));
+  const industry = String(dynamicValueByKey('industry')).toLowerCase();
+  setDynamicVisible('industry_other', industry.includes('other'));
+  const videoOption = String(dynamicValueByKey('video_option')).toLowerCase();
+  setDynamicVisible('video_link', videoOption.includes('link'));
+  setDynamicVisible('video_file', videoOption.includes('upload'));
+}
+
+function dynamicConditionalErrors() {
+  const e = [];
+  const city = String(dynamicValueByKey('city') || dynamicValueByKey('current_city')).trim().toLowerCase();
+  if (city && city !== 'jaipur') {
+    if (!String(dynamicValueByKey('relocate') || '').trim()) e.push('Comfortable to Relocate is required');
+    if (dynamicValueByKey('relocate') === 'Yes' && !String(dynamicValueByKey('relocate_time') || '').trim()) e.push('Relocation Time is required');
+  }
+  if (String(dynamicValueByKey('phone_code')).toLowerCase().includes('other') && !String(dynamicValueByKey('other_country_code') || '').trim()) e.push('Country Code is required');
+  if (String(dynamicValueByKey('college')).toLowerCase().includes('other') && !String(dynamicValueByKey('college_other') || '').trim()) e.push('Specify College / University is required');
+  if (String(dynamicValueByKey('source')).toLowerCase().includes('other') && !String(dynamicValueByKey('source_other') || '').trim()) e.push('Please specify source is required');
+  if (String(dynamicValueByKey('industry')).toLowerCase().includes('other') && !String(dynamicValueByKey('industry_other') || '').trim()) e.push('Specify Industry is required');
+  const videoOption = String(dynamicValueByKey('video_option')).toLowerCase();
+  if (videoOption.includes('link') && !String(dynamicValueByKey('video_link') || '').trim()) e.push('Video Introduction Link is required');
+  if (videoOption.includes('upload') && !String(dynamicValueByKey('video_file') || '').trim()) e.push('Video Introduction File is required');
+  return e;
+}
+
 async function collectDynamicAnswers() {
   const answers = {};
   for (const field of APP_FIELDS) {
+    if (!isDynamicFieldVisible(field)) continue;
     let value = dynamicValue(field);
     let file = null;
     if (field.type === 'file') {
@@ -1381,13 +1458,15 @@ function dynamicByKeys(answers, keys) {
 }
 
 function validateDynamicFields() {
+  applyDynamicFieldLogic();
   const e = [];
   APP_FIELDS.forEach(field => {
+    if (!isDynamicFieldVisible(field)) return;
     const value = dynamicValue(field);
     const empty = Array.isArray(value) ? value.length === 0 : !String(value || '').trim();
     if (field.required && empty) e.push(`${field.label} is required`);
   });
-  return e;
+  return e.concat(dynamicConditionalErrors());
 }
 
 // Campaign selector
@@ -1497,6 +1576,7 @@ const validators = {
   9: () => {
     const e = [];
     APP_FIELDS.forEach(field => {
+      if (!isDynamicFieldVisible(field)) return;
       const value = dynamicValue(field);
       const empty = Array.isArray(value) ? value.length === 0 : !String(value || '').trim();
       if (field.required && empty) e.push(`${field.label} is required`);
@@ -2026,6 +2106,18 @@ function checkFileSize(inputId, maxMB) {
   const fi = document.getElementById(inputId);
   return !(fi.files.length > 0 && fi.files[0].size > maxMB * 1024 * 1024);
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (!DYNAMIC_APPLY) return;
+  APP_FIELDS.forEach(field => {
+    const id = 'appField_' + field.id;
+    document.querySelectorAll(`#${id},input[name="${id}[]"]`).forEach(input => {
+      input.addEventListener('change', applyDynamicFieldLogic);
+      input.addEventListener('input', applyDynamicFieldLogic);
+    });
+  });
+  applyDynamicFieldLogic();
+});
 
 updateProgress();
 </script>

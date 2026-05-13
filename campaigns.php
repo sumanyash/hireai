@@ -869,12 +869,14 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
     .req-pill{background:#DCFCE7;color:#166534;border-radius:999px;padding:2px 8px;font-weight:800}
     .empty-canvas{padding:42px 24px;text-align:center;color:#64748B}
     .empty-canvas i{font-size:34px;color:#A78BFA;margin-bottom:12px}
+    .default-template-cta{padding:18px 20px 16px;border-bottom:1px solid #EEF2F7;background:linear-gradient(135deg,#FAF5FF,#EFF6FF)}
+    .default-template-title{font-size:14px;font-weight:950;color:#111827;margin-bottom:5px;display:flex;align-items:center;gap:8px}
+    .default-template-copy{font-size:12px;color:#475569;line-height:1.5;margin-bottom:12px}
     .quick-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:16px 20px 4px}
     .quick-chip{border:1px solid #E5E7EB;background:#F8FAFC;color:#334155;border-radius:10px;padding:9px 10px;font-size:12px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:8px;text-align:left}
     .quick-chip:hover{border-color:#7C3AED;background:#F5F3FF;color:#6B21A8}
-    .template-actions{padding:14px 20px 0;display:grid;gap:8px}
-    .template-btn{width:100%;border:1px solid #C4B5FD;background:linear-gradient(135deg,#F5F3FF,#EEF2FF);color:#5B21B6;border-radius:12px;padding:11px 12px;font-size:13px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
-    .template-btn:hover{border-color:#7C3AED;background:#7C3AED;color:#fff}
+    .template-btn{width:100%;border:0;background:linear-gradient(135deg,#6D28D9,#2563EB);color:#fff;border-radius:14px;padding:15px 16px;font-size:15px;font-weight:950;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;box-shadow:0 14px 32px rgba(37,99,235,.28)}
+    .template-btn:hover{transform:translateY(-1px);box-shadow:0 18px 38px rgba(109,40,217,.32)}
     .panel-body{padding:18px 20px 20px}
     .panel-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .panel-grid-3{display:grid;grid-template-columns:1fr 110px 130px;gap:12px;align-items:end}
@@ -958,9 +960,18 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
 
     <div class="builder-panel">
       <div class="panel-head">
-        <h3><i class="fa-solid fa-plus" style="color:#10B981"></i> Add Field</h3>
-        <span class="canvas-meta">Quick presets</span>
+        <h3><i class="fa-solid fa-plus" style="color:#10B981"></i> Build Form</h3>
+        <span class="canvas-meta">Default first</span>
       </div>
+      <div class="default-template-cta">
+        <div class="default-template-title"><i class="fa-solid fa-wand-magic-sparkles" style="color:#6D28D9"></i> Step 1: Add Complete Apply Form</div>
+        <div class="default-template-copy">Start with the full original application form. After that, add or remove fields as per this campaign.</div>
+        <form method="POST" action="campaigns.php?action=add_application_template&id=<?= $campaign_id ?>" onsubmit="return confirm('Add the complete default application form to this campaign? Existing matching fields will be skipped.')">
+          <?= csrf_input() ?>
+          <button type="submit" class="template-btn"><i class="fa-solid fa-circle-plus"></i> Add Complete Apply Form</button>
+        </form>
+      </div>
+      <div style="padding:14px 20px 0;font-size:12px;font-weight:900;color:#64748B;text-transform:uppercase;letter-spacing:.5px">Then add custom fields if needed</div>
       <div class="quick-grid">
         <button type="button" class="quick-chip" onclick="presetField('Full Name','name','text','Candidate full name')"><i class="fa-solid fa-user"></i> Name</button>
         <button type="button" class="quick-chip" onclick="presetField('Phone','phone','phone','WhatsApp number')"><i class="fa-brands fa-whatsapp"></i> Phone</button>
@@ -968,12 +979,6 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
         <button type="button" class="quick-chip" onclick="presetField('Upload CV','resume','file','Upload PDF or DOCX CV')"><i class="fa-solid fa-file-arrow-up"></i> CV</button>
         <button type="button" class="quick-chip" onclick="presetField('Photo','photo','file','Upload a recent photo')"><i class="fa-solid fa-image"></i> Photo</button>
         <button type="button" class="quick-chip" onclick="presetField('LinkedIn Profile','linkedin','url','https://linkedin.com/in/...')"><i class="fa-brands fa-linkedin"></i> LinkedIn</button>
-      </div>
-      <div class="template-actions">
-        <form method="POST" action="campaigns.php?action=add_application_template&id=<?= $campaign_id ?>" onsubmit="return confirm('Add the complete legacy application form fields to this campaign? Existing matching keys will be skipped.')">
-          <?= csrf_input() ?>
-          <button type="submit" class="template-btn"><i class="fa-solid fa-wand-magic-sparkles"></i> Add Complete Apply Form</button>
-        </form>
       </div>
       <div class="panel-body">
         <form method="POST" action="campaigns.php?action=add_application_field&id=<?= $campaign_id ?>">

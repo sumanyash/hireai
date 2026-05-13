@@ -23,6 +23,70 @@ function field_key_from_label($label) {
     return $key ?: 'custom_field';
 }
 
+function question_topic_presets($job_role = '') {
+    $role = strtolower((string)$job_role);
+    $base = [
+        ['communication', 'Communication Skills'],
+        ['role_knowledge', 'Role Knowledge'],
+        ['practical_experience', 'Practical Experience'],
+        ['problem_solving', 'Problem Solving'],
+        ['tools_software', 'Tools / Software Knowledge'],
+        ['process_compliance', 'Process & Compliance'],
+        ['customer_handling', 'Customer Handling'],
+        ['confidence', 'Confidence Level'],
+    ];
+    if (str_contains($role, 'network')) {
+        return [
+            ['networking_basics', 'Networking Basics'],
+            ['routing_switching', 'Routing & Switching'],
+            ['firewall_security', 'Firewall & Security'],
+            ['troubleshooting', 'Troubleshooting'],
+            ['linux_windows_admin', 'Linux / Windows Admin'],
+            ['communication', 'Communication Skills'],
+            ['process_compliance', 'Process & Compliance'],
+            ['custom', 'Custom Topic'],
+        ];
+    }
+    if (str_contains($role, 'sales') || str_contains($role, 'business development')) {
+        return [
+            ['sales_pitch', 'Sales Pitch'],
+            ['lead_qualification', 'Lead Qualification'],
+            ['objection_handling', 'Objection Handling'],
+            ['crm_followup', 'CRM & Follow-up'],
+            ['negotiation', 'Negotiation'],
+            ['communication', 'Communication Skills'],
+            ['confidence', 'Confidence Level'],
+            ['custom', 'Custom Topic'],
+        ];
+    }
+    if (str_contains($role, 'support') || str_contains($role, 'customer')) {
+        return [
+            ['customer_handling', 'Customer Handling'],
+            ['issue_diagnosis', 'Issue Diagnosis'],
+            ['communication', 'Communication Skills'],
+            ['ticketing_process', 'Ticketing Process'],
+            ['product_knowledge', 'Product Knowledge'],
+            ['escalation_handling', 'Escalation Handling'],
+            ['confidence', 'Confidence Level'],
+            ['custom', 'Custom Topic'],
+        ];
+    }
+    if (str_contains($role, 'ai') || str_contains($role, 'developer') || str_contains($role, 'software')) {
+        return [
+            ['programming_basics', 'Programming Basics'],
+            ['technical_knowledge', 'Technical Knowledge'],
+            ['api_db_integration', 'API & DB Integration'],
+            ['problem_solving', 'Problem Solving'],
+            ['project_experience', 'Project Experience'],
+            ['communication', 'Communication Skills'],
+            ['confidence', 'Confidence Level'],
+            ['custom', 'Custom Topic'],
+        ];
+    }
+    $base[] = ['custom', 'Custom Topic'];
+    return $base;
+}
+
 function campaign_apply_link($campaign) {
     $token = $campaign['share_token'] ?? '';
     return BASE_URL . '/apply.php?' . ($token ? 'c=' . urlencode($token) : 'campaign_id=' . (int)$campaign['id']);
@@ -542,6 +606,7 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
   <?php $applyLink = campaign_apply_link($campaign); ?>
   <?php $total_weight = $setup_state['weight'] ?? array_sum(array_column($questions, 'weight')); ?>
   <?php $canPreview = !empty($setup_state['ready_to_preview']); ?>
+  <?php $topic_presets = question_topic_presets($campaign['job_role'] ?? ''); ?>
   <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
     <div>
       <h2><?= htmlspecialchars($campaign['name']) ?></h2>
@@ -661,17 +726,11 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
         <div class="form-group">
           <label class="form-label">Skill / Topic</label>
           <select name="parameter" class="form-control" onchange="setParameterLabel(this)">
-            <option value="english_communication" data-label="English Communication Skills">English Communication</option>
-            <option value="ai_tools_usage" data-label="AI Tools Usage">AI Tools Usage</option>
-            <option value="ai_prompting" data-label="AI Prompting">AI Prompting</option>
-            <option value="ai_projects" data-label="AI Projects Done">AI Projects Done</option>
-            <option value="machine_learning" data-label="Machine Learning">Machine Learning</option>
-            <option value="api_db_integration" data-label="API & DB Integration">API & DB Integration</option>
-            <option value="domain_knowledge" data-label="Domain Knowledge">Domain Knowledge</option>
-            <option value="confidence" data-label="Confidence Level">Confidence Level</option>
-            <option value="custom" data-label="">Custom topic</option>
+            <?php foreach ($topic_presets as [$topic_key, $topic_label]): ?>
+            <option value="<?= htmlspecialchars($topic_key) ?>" data-label="<?= htmlspecialchars($topic_label) ?>"><?= htmlspecialchars($topic_label) ?></option>
+            <?php endforeach; ?>
           </select>
-          <small class="helper-text">Used for score breakup/reporting. Candidate will not see any technical key.</small>
+          <small class="helper-text">Suggestions change by campaign role. Choose Custom Topic for anything else.</small>
         </div>
         <div class="form-group">
           <label class="form-label">Report Label *</label>

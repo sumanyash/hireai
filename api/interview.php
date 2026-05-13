@@ -5,6 +5,7 @@ $action=$_GET['action']??'';$method=$_SERVER['REQUEST_METHOD'];
 
 if($action==='get_agents'&&$method==='GET'){
   $user=verify_jwt();if(!$user)json_response(['error'=>'Unauthorized'],401);
+  if(!EL_API_KEY)json_response(['agents'=>[],'warning'=>'ElevenLabs API key is not configured']);
   $ch=curl_init('https://api.elevenlabs.io/v1/convai/agents?page_size=50');
   curl_setopt_array($ch,[CURLOPT_HTTPGET=>true,CURLOPT_HTTPHEADER=>['xi-api-key: '.EL_API_KEY],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>15,CURLOPT_SSL_VERIFYPEER=>false]);
   $resp=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);

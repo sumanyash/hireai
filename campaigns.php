@@ -38,7 +38,7 @@ function campaign_setup_state($campaign, $questions, $application_fields) {
     $has_integration = !empty($campaign['integration_type']) && $campaign['integration_type'] !== 'none' && !empty($campaign['integration_endpoint']);
     $steps = [
         ['label' => 'Campaign details', 'done' => $has_details],
-        ['label' => 'AI voice agent', 'done' => $has_agent],
+        ['label' => 'AI voice agent (optional)', 'done' => true],
         ['label' => 'Apply form', 'done' => $has_apply],
         ['label' => 'Interview questions', 'done' => $has_questions],
         ['label' => 'Scoring weight 100%', 'done' => $has_scoring],
@@ -54,7 +54,7 @@ function campaign_setup_state($campaign, $questions, $application_fields) {
         'weight' => $weight,
         'remaining_weight' => max(0, 100 - $weight),
         'ready_to_preview' => $has_apply,
-        'ready_to_activate' => $has_details && $has_agent && $has_apply && $has_questions && $has_scoring,
+        'ready_to_activate' => $has_details && $has_apply && $has_questions && $has_scoring,
         'integration_pending' => !$has_integration,
     ];
 }
@@ -137,7 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!in_array($integration_type, ['none','crm','google_sheet'], true)) $integration_type = 'none';
         $id = db_insert(
             "INSERT INTO campaigns (org_id,created_by,name,job_role,description,share_token,start_date,end_date,integration_type,integration_endpoint,el_agent_id,passing_score,num_questions,language,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'draft')",
-            [$user['org_id'],$user['user_id'],$_POST['name'],$_POST['job_role'],$_POST['description'],$share_token,$start_date,$end_date,$integration_type,trim($_POST['integration_endpoint'] ?? ''),$_POST['el_agent_id'],(int)$_POST['passing_score'],(int)$_POST['num_questions'],$_POST['language']],
+            [$user['org_id'],$user['user_id'],$_POST['name'],$_POST['job_role'],$_POST['description'],$share_token,$start_date,$end_date,$integration_type,trim($_POST['integration_endpoint'] ?? ''),trim($_POST['el_agent_id'] ?? ''),(int)$_POST['passing_score'],(int)$_POST['num_questions'],$_POST['language']],
             'iisssssssssiis'
         );
         audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $id, 'campaign_created');
@@ -160,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!in_array($integration_type, ['none','crm','google_sheet'], true)) $integration_type = 'none';
         db_execute(
             "UPDATE campaigns SET name=?,job_role=?,description=?,start_date=?,end_date=?,integration_type=?,integration_endpoint=?,el_agent_id=?,passing_score=?,num_questions=?,language=?,share_token=COALESCE(share_token, ?) WHERE id=? AND org_id=?",
-            [$_POST['name'],$_POST['job_role'],$_POST['description'],$start_date,$end_date,$integration_type,trim($_POST['integration_endpoint'] ?? ''),$_POST['el_agent_id'],(int)$_POST['passing_score'],(int)$_POST['num_questions'],$_POST['language'],bin2hex(random_bytes(12)),$campaign_id,$user['org_id']],
+            [$_POST['name'],$_POST['job_role'],$_POST['description'],$start_date,$end_date,$integration_type,trim($_POST['integration_endpoint'] ?? ''),trim($_POST['el_agent_id'] ?? ''),(int)$_POST['passing_score'],(int)$_POST['num_questions'],$_POST['language'],bin2hex(random_bytes(12)),$campaign_id,$user['org_id']],
             'ssssssssiissii'
         );
         audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'campaign_updated');
@@ -428,16 +428,16 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
       </div>
 
       <div class="form-group">
-        <label class="form-label">AI Voice Agent *
+        <label class="form-label">AI Voice Agent
           <span id="agent-loading" style="color:#8892A4;font-size:12px;margin-left:8px">Loading agents...</span>
         </label>
-        <select name="el_agent_id" id="agent-select" class="form-control" required>
-          <option value="">-- Select Agent --</option>
+        <select name="el_agent_id" id="agent-select" class="form-control">
+          <option value="">No AI voice agent for now</option>
           <?php if (!empty($campaign['el_agent_id'])): ?>
             <option value="<?= htmlspecialchars($campaign['el_agent_id']) ?>" selected><?= htmlspecialchars($campaign['el_agent_id']) ?></option>
           <?php endif; ?>
         </select>
-        <small style="color:#8892A4">Choose by voice/language in the pricing portal. Minimum recharge and live balance are managed in Credits.</small>
+        <small style="color:#8892A4">Optional. Select this only when you want outbound AI voice calling for the campaign.</small>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
           <a class="btn-sm" href="credits.php" target="_blank" rel="noopener"><i class="fa-solid fa-coins"></i> Recharge / Balance</a>
           <a class="btn-sm" href="credits.php#pricing" target="_blank" rel="noopener"><i class="fa-solid fa-tags"></i> AI Pricing Portal</a>
@@ -497,8 +497,9 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
           const sel = document.getElementById('agent-select');
           document.getElementById('agent-loading').textContent = '';
           if (d.error) { document.getElementById('agent-loading').textContent = '❌ ' + d.error; return; }
+          if (d.warning) { document.getElementById('agent-loading').textContent = '⚠️ ' + d.warning; return; }
           // Clear and rebuild
-          sel.innerHTML = '<option value="">-- Select Agent --</option>';
+          sel.innerHTML = '<option value="">No AI voice agent for now</option>';
           (d.agents || []).forEach(a => {
               const opt = document.createElement('option');
               opt.value = a.agent_id;
@@ -506,7 +507,7 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
               if (a.agent_id === currentAgentId) opt.selected = true;
               sel.appendChild(opt);
           });
-          document.getElementById('agent-loading').textContent = d.agents.length + ' AI agents loaded';
+          document.getElementById('agent-loading').textContent = (d.agents || []).length + ' AI agents loaded';
       } catch(e) {
           document.getElementById('agent-loading').textContent = '❌ Failed to load agents';
       }
@@ -574,11 +575,11 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
   <?php endif; ?>
 
   <?php if (!empty($_GET['msg']) && $_GET['msg'] === 'setup_incomplete'): ?>
-  <div class="alert alert-error">⚠️ Campaign cannot be activated yet. Complete details, AI agent, apply form, questions, and total scoring weight 100%.</div>
+  <div class="alert alert-error">⚠️ Campaign cannot be activated yet. Complete details, apply form, questions, and total scoring weight 100%.</div>
   <?php endif; ?>
 
   <?php if (!$campaign['el_agent_id'] || $campaign['el_agent_id'] === 'PASTE_YOUR_EL_AGENT_ID'): ?>
-  <div class="alert alert-error">⚠️ AI voice agent not set. <a href="campaigns.php?action=edit&id=<?= $campaign_id ?>">Select an agent →</a></div>
+  <div class="alert alert-info">AI voice agent is optional. Add one only if this campaign should trigger outbound AI calls.</div>
   <?php endif; ?>
 
   <style>

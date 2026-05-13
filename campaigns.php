@@ -249,6 +249,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'question_added', ['type' => $question_type]);
         header("Location: campaigns.php?action=questions&id=$campaign_id&msg=question_added"); exit;
     }
+    if ($action === 'edit_question') {
+        $qid = (int)($_POST['question_id'] ?? 0);
+        $question_type = $_POST['question_type'] ?? 'textarea';
+        $options_json = options_to_json($_POST['options_text'] ?? '');
+        if (in_array($question_type, ['dropdown','multi_select','rating'], true) && !$options_json) {
+            header("Location: campaigns.php?action=questions&id=$campaign_id&edit_qid=$qid&msg=options_required"); exit;
+        }
+        $branch_rules_json = normalize_json_text($_POST['branch_rules_json'] ?? '');
+        $is_required = isset($_POST['is_required']) ? 1 : 0;
+        $parameter_label = trim($_POST['parameter_label'] ?? '');
+        $parameter = trim($_POST['parameter'] ?? '');
+        if ($parameter === '' || $parameter === 'custom') $parameter = field_key_from_label($parameter_label);
+        $campaign_exists = db_fetch_one("SELECT id FROM campaigns WHERE id=? AND org_id=?", [$campaign_id,$user['org_id']], 'ii');
+        if ($campaign_exists && $qid) {
+            db_execute(
+                "UPDATE questions SET parameter=?,parameter_label=?,weight=?,max_marks=?,question_text=?,ideal_answer_hint=?,question_type=?,options_json=?,branch_rules_json=?,is_required=?,order_no=? WHERE id=? AND campaign_id=?",
+                [$parameter,$parameter_label,(int)$_POST['weight'],(int)$_POST['max_marks'],$_POST['question_text'],$_POST['ideal_answer_hint'],$question_type,$options_json,$branch_rules_json,$is_required,(int)$_POST['order_no'],$qid,$campaign_id],
+                'ssiisssssiiii'
+            );
+            audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'question_updated', ['question_id' => $qid, 'type' => $question_type]);
+        }
+        header("Location: campaigns.php?action=questions&id=$campaign_id&msg=question_updated"); exit;
+    }
     if ($action === 'add_application_field') {
         $field_type = $_POST['field_type'] ?? 'text';
         $allowed = ['text','textarea','number','decimal','date','dropdown','multi_select','checkbox','email','phone','url','file'];
@@ -291,6 +314,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'application_template_added', ['added' => $added]);
         header("Location: campaigns.php?action=apply_form&id=$campaign_id&msg=template_added_$added"); exit;
+    }
+    if ($action === 'bulk_delete_application_fields') {
+        $field_ids = array_values(array_filter(array_map('intval', $_POST['field_ids'] ?? [])));
+        $campaign_exists = db_fetch_one("SELECT id FROM campaigns WHERE id=? AND org_id=?", [$campaign_id,$user['org_id']], 'ii');
+        if ($campaign_exists && $field_ids) {
+            foreach ($field_ids as $fid) {
+                db_execute("UPDATE application_fields SET is_active=0 WHERE id=? AND campaign_id=?", [$fid,$campaign_id], 'ii');
+            }
+            audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'application_fields_bulk_deleted', ['field_ids' => $field_ids]);
+        }
+        header("Location: campaigns.php?action=apply_form&id=$campaign_id&msg=fields_deleted_" . count($field_ids)); exit;
     }
     if ($action === 'activate') {
         $camp = db_fetch_one("SELECT * FROM campaigns WHERE id=? AND org_id=?", [$campaign_id,$user['org_id']], 'ii');
@@ -379,6 +413,13 @@ $campaign  = $campaign_id ? db_fetch_one("SELECT ca.*, u.name AS creator_name, u
 $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign_id=? ORDER BY order_no", [$campaign_id], 'i') : [];
 $application_fields = $campaign_id ? db_fetch_all("SELECT * FROM application_fields WHERE campaign_id=? AND is_active=1 ORDER BY order_no,id", [$campaign_id], 'i') : [];
 $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $application_fields) : null;
+$edit_qid = (int)($_GET['edit_qid'] ?? 0);
+$editing_question = $edit_qid ? db_fetch_one("SELECT * FROM questions WHERE id=? AND campaign_id=?", [$edit_qid,$campaign_id], 'ii') : null;
+$editing_options_text = '';
+if ($editing_question && !empty($editing_question['options_json'])) {
+    $decoded_options = json_decode($editing_question['options_json'], true);
+    if (is_array($decoded_options)) $editing_options_text = implode("\n", $decoded_options);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -706,7 +747,10 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
           <td style="font-size:12px;color:#64748B">
             <?= !empty($q['branch_rules_json']) ? 'Branching' : 'Linear' ?>
           </td>
-          <td><a href="campaigns.php?action=delete_question&id=<?= $campaign_id ?>&qid=<?= $q['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" class="btn-danger" style="font-size:12px" onclick="return confirm('Delete?')">🗑</a></td>
+          <td style="display:flex;gap:6px;align-items:center">
+            <a href="campaigns.php?action=questions&id=<?= $campaign_id ?>&edit_qid=<?= $q['id'] ?>" class="btn-sm" style="font-size:12px;padding:6px 9px;text-decoration:none"><i class="fa-solid fa-pen"></i> Edit</a>
+            <a href="campaigns.php?action=delete_question&id=<?= $campaign_id ?>&qid=<?= $q['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" class="btn-danger" style="font-size:12px" onclick="return confirm('Delete?')">🗑</a>
+          </td>
         </tr>
         <?php endforeach; ?>
       </tbody>
@@ -714,71 +758,82 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
   </div>
   <?php endif; ?>
 
-  <!-- Add Question -->
+  <!-- Add/Edit Question -->
   <div class="card simple-question-form">
-    <div class="card-header"><h3>Add Interview Question</h3></div>
+    <div class="card-header">
+      <h3><?= $editing_question ? 'Edit Interview Question' : 'Add Interview Question' ?></h3>
+      <?php if ($editing_question): ?><a href="campaigns.php?action=questions&id=<?= $campaign_id ?>" class="btn-sm" style="text-decoration:none">Cancel edit</a><?php endif; ?>
+    </div>
     <div class="simple-question-help">
       <strong>Admin simple mode:</strong> choose skill/topic, answer type, write question, add choices only for MCQ/rating, then save.
     </div>
-    <form method="POST" action="campaigns.php?action=add_question&id=<?= $campaign_id ?>" onsubmit="return validateQuestionForm(this)">
+    <form method="POST" action="campaigns.php?action=<?= $editing_question ? 'edit_question' : 'add_question' ?>&id=<?= $campaign_id ?>" onsubmit="return validateQuestionForm(this)">
       <?= csrf_input() ?>
+      <?php if ($editing_question): ?><input type="hidden" name="question_id" value="<?= (int)$editing_question['id'] ?>"><?php endif; ?>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="form-group">
           <label class="form-label">Skill / Topic</label>
           <select name="parameter" class="form-control" onchange="setParameterLabel(this)">
+            <?php
+              $preset_keys = array_column($topic_presets, 0);
+              if ($editing_question && !in_array($editing_question['parameter'], $preset_keys, true)):
+            ?>
+            <option value="<?= htmlspecialchars($editing_question['parameter']) ?>" data-label="<?= htmlspecialchars($editing_question['parameter_label']) ?>" selected><?= htmlspecialchars($editing_question['parameter_label']) ?></option>
+            <?php endif; ?>
             <?php foreach ($topic_presets as [$topic_key, $topic_label]): ?>
-            <option value="<?= htmlspecialchars($topic_key) ?>" data-label="<?= htmlspecialchars($topic_label) ?>"><?= htmlspecialchars($topic_label) ?></option>
+            <option value="<?= htmlspecialchars($topic_key) ?>" data-label="<?= htmlspecialchars($topic_label) ?>" <?= $editing_question && $editing_question['parameter'] === $topic_key ? 'selected' : '' ?>><?= htmlspecialchars($topic_label) ?></option>
             <?php endforeach; ?>
           </select>
           <small class="helper-text">Suggestions change by campaign role. Choose Custom Topic for anything else.</small>
         </div>
         <div class="form-group">
           <label class="form-label">Report Label *</label>
-          <input type="text" name="parameter_label" class="form-control" placeholder="English Communication Skills" required>
+          <input type="text" name="parameter_label" class="form-control" placeholder="English Communication Skills" value="<?= htmlspecialchars($editing_question['parameter_label'] ?? '') ?>" required>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="form-group">
           <label class="form-label">Answer Type</label>
+          <?php $selected_qtype = $editing_question['question_type'] ?? 'textarea'; ?>
           <select name="question_type" class="form-control" onchange="syncQuestionTypeUI()">
-            <option value="textarea">Long Text / Interview Answer</option>
-            <option value="text">Short Text</option>
-            <option value="number">Numeric</option>
-            <option value="decimal">Decimal</option>
-            <option value="date">Date</option>
-            <option value="dropdown">MCQ - Single Choice</option>
-            <option value="multi_select">MCQ - Multiple Choice</option>
-            <option value="rating">Rating</option>
-            <option value="file">Upload Section</option>
-            <option value="audio">Record Audio</option>
-            <option value="video">Record Video</option>
-            <option value="hyperlink">Hyperlink</option>
+            <option value="textarea" <?= $selected_qtype === 'textarea' ? 'selected' : '' ?>>Long Text / Interview Answer</option>
+            <option value="text" <?= $selected_qtype === 'text' ? 'selected' : '' ?>>Short Text</option>
+            <option value="number" <?= $selected_qtype === 'number' ? 'selected' : '' ?>>Numeric</option>
+            <option value="decimal" <?= $selected_qtype === 'decimal' ? 'selected' : '' ?>>Decimal</option>
+            <option value="date" <?= $selected_qtype === 'date' ? 'selected' : '' ?>>Date</option>
+            <option value="dropdown" <?= $selected_qtype === 'dropdown' ? 'selected' : '' ?>>MCQ - Single Choice</option>
+            <option value="multi_select" <?= $selected_qtype === 'multi_select' ? 'selected' : '' ?>>MCQ - Multiple Choice</option>
+            <option value="rating" <?= $selected_qtype === 'rating' ? 'selected' : '' ?>>Rating</option>
+            <option value="file" <?= $selected_qtype === 'file' ? 'selected' : '' ?>>Upload Section</option>
+            <option value="audio" <?= $selected_qtype === 'audio' ? 'selected' : '' ?>>Record Audio</option>
+            <option value="video" <?= $selected_qtype === 'video' ? 'selected' : '' ?>>Record Video</option>
+            <option value="hyperlink" <?= $selected_qtype === 'hyperlink' ? 'selected' : '' ?>>Hyperlink</option>
           </select>
         </div>
         <div class="form-group">
           <label class="form-label">Mandatory?</label>
           <label style="display:flex;align-items:center;gap:8px;padding:11px 0;font-size:14px">
-            <input type="checkbox" name="is_required" checked> Candidate must answer this question
+            <input type="checkbox" name="is_required" <?= (!$editing_question || !empty($editing_question['is_required'])) ? 'checked' : '' ?>> Candidate must answer this question
           </label>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
         <div class="form-group">
           <label class="form-label">Weight (%)</label>
-          <input type="number" name="weight" class="form-control" value="15" min="1" max="100" required>
+          <input type="number" name="weight" class="form-control" value="<?= htmlspecialchars($editing_question['weight'] ?? 15) ?>" min="1" max="100" required>
         </div>
         <div class="form-group">
           <label class="form-label">Max Marks</label>
-          <input type="number" name="max_marks" class="form-control" value="15" min="1" required>
+          <input type="number" name="max_marks" class="form-control" value="<?= htmlspecialchars($editing_question['max_marks'] ?? 15) ?>" min="1" required>
         </div>
         <div class="form-group">
           <label class="form-label">Order</label>
-          <input type="number" name="order_no" class="form-control" value="<?= count($questions)+1 ?>">
+          <input type="number" name="order_no" class="form-control" value="<?= htmlspecialchars($editing_question['order_no'] ?? (count($questions)+1)) ?>">
         </div>
       </div>
       <div class="form-group">
         <label class="form-label">Question Text *</label>
-        <textarea name="question_text" class="form-control" rows="3" placeholder="Write only the question here. Put MCQ choices in the choices box below." required onblur="autoFillInlineChoices()"></textarea>
+        <textarea name="question_text" class="form-control" rows="3" placeholder="Write only the question here. Put MCQ choices in the choices box below." required onblur="autoFillInlineChoices()"><?= htmlspecialchars($editing_question['question_text'] ?? '') ?></textarea>
         <small class="helper-text">Example: Which Python library is used for OpenAI API calls?</small>
       </div>
       <div class="form-group">
@@ -786,7 +841,7 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
           <span>Suggested Reply / AI Scoring Criteria</span>
           <button type="button" class="btn-sm" onclick="assistIdealAnswer()" style="padding:5px 10px"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Assist</button>
         </label>
-        <textarea name="ideal_answer_hint" class="form-control" rows="2" placeholder="Keywords or criteria AI should look for..."></textarea>
+        <textarea name="ideal_answer_hint" class="form-control" rows="2" placeholder="Keywords or criteria AI should look for..."><?= htmlspecialchars($editing_question['ideal_answer_hint'] ?? '') ?></textarea>
       </div>
       <div class="form-group mcq-box" id="mcqBox">
         <label class="form-label" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
@@ -798,18 +853,18 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
           <button type="button" onclick="setQuestionOptions('Beginner\nIntermediate\nAdvanced')">Skill Level</button>
           <button type="button" onclick="setQuestionOptions('1 - Poor\n2 - Fair\n3 - Good\n4 - Very Good\n5 - Excellent')">5-point Rating</button>
         </div>
-        <textarea name="options_text" class="form-control" rows="4" placeholder="One option per line&#10;Example:&#10;pandas&#10;openai&#10;flask&#10;numpy"></textarea>
+        <textarea name="options_text" class="form-control" rows="4" placeholder="One option per line&#10;Example:&#10;pandas&#10;openai&#10;flask&#10;numpy"><?= htmlspecialchars($editing_options_text) ?></textarea>
         <small class="helper-text">These choices will be shown as dropdown/checkboxes to the candidate.</small>
       </div>
       <div class="form-group advanced-question-block">
         <details>
           <summary style="cursor:pointer;font-weight:800;color:#334155">Advanced branching rules</summary>
           <label class="form-label" style="margin-top:12px">Branching rules JSON</label>
-          <textarea name="branch_rules_json" class="form-control" rows="4" placeholder='Example: [{"when":"yes","jump_to_order":5},{"when":"no","skip_to_order":8}]'></textarea>
+          <textarea name="branch_rules_json" class="form-control" rows="4" placeholder='Example: [{"when":"yes","jump_to_order":5},{"when":"no","skip_to_order":8}]'><?= htmlspecialchars($editing_question['branch_rules_json'] ?? '') ?></textarea>
           <small style="color:#8892A4">Optional. This is for advanced users only. Leave blank for normal step-by-step flow.</small>
         </details>
       </div>
-      <button type="submit" class="btn-primary">+ Add Question</button>
+      <button type="submit" class="btn-primary"><?= $editing_question ? 'Save Question Changes' : '+ Add Question' ?></button>
     </form>
   </div>
   </div>
@@ -859,8 +914,11 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
     .canvas-head h3,.panel-head h3{font-size:15px;font-weight:900;color:#0F172A;display:flex;align-items:center;gap:8px}
     .canvas-meta{font-size:12px;color:#64748B;font-weight:700}
     .field-list{padding:14px}
-    .field-tile{border:1px solid #E5E7EB;background:#FFFFFF;border-radius:13px;padding:14px 14px;display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:12px;align-items:center;margin-bottom:10px;transition:all .18s}
+    .field-tile{border:1px solid #E5E7EB;background:#FFFFFF;border-radius:13px;padding:14px 14px;display:grid;grid-template-columns:24px 34px minmax(0,1fr) auto;gap:12px;align-items:center;margin-bottom:10px;transition:all .18s}
     .field-tile:hover{border-color:#A78BFA;box-shadow:0 10px 30px rgba(124,58,237,.12);transform:translateY(-1px)}
+    .field-select{width:18px;height:18px;accent-color:#7C3AED}
+    .bulk-field-actions{display:none;align-items:center;justify-content:space-between;gap:10px;margin:0 14px 12px;padding:11px 12px;background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;color:#991B1B;font-size:13px;font-weight:800}
+    .bulk-field-actions.active{display:flex}
     .field-order{width:34px;height:34px;border-radius:10px;background:#F3E8FF;color:#6B21A8;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900}
     .field-name{font-size:14px;font-weight:850;color:#111827;margin-bottom:3px}
     .field-detail{font-size:12px;color:#64748B;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
@@ -885,7 +943,7 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
     .required-toggle{height:44px;display:flex;align-items:center;gap:9px;border:1.5px solid var(--light);border-radius:11px;padding:0 12px;font-size:13px;font-weight:700;color:#334155;background:#fff}
     .builder-submit{width:100%;justify-content:center;padding:12px 18px;margin-top:4px}
     @media(max-width:1100px){.builder-shell{grid-template-columns:1fr}.builder-panel{position:static}.panel-grid-3{grid-template-columns:1fr}.quick-grid{grid-template-columns:1fr 1fr}}
-    @media(max-width:620px){.builder-hero{padding:20px}.builder-title{font-size:22px}.builder-link-card{display:block}.builder-link-card code{display:block;margin-bottom:10px}.field-tile{grid-template-columns:30px minmax(0,1fr)}.field-tile>a{grid-column:1/-1;justify-content:center}.quick-grid,.panel-grid-2{grid-template-columns:1fr}}
+    @media(max-width:620px){.builder-hero{padding:20px}.builder-title{font-size:22px}.builder-link-card{display:block}.builder-link-card code{display:block;margin-bottom:10px}.field-tile{grid-template-columns:24px 30px minmax(0,1fr)}.field-tile>a{grid-column:1/-1;justify-content:center}.quick-grid,.panel-grid-2{grid-template-columns:1fr}}
   </style>
 
   <div class="builder-hero">
@@ -929,12 +987,24 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
     <div class="canvas-card">
       <div class="canvas-head">
         <h3><i class="fa-solid fa-diagram-project" style="color:#7C3AED"></i> Form Flow</h3>
-        <div class="canvas-meta"><?= count($application_fields) ?> fields</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <?php if (!empty($application_fields)): ?>
+          <label class="canvas-meta" style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="selectAllFields" onchange="toggleAllApplyFields(this)"> Select all</label>
+          <?php endif; ?>
+          <div class="canvas-meta"><?= count($application_fields) ?> fields</div>
+        </div>
       </div>
+      <form method="POST" action="campaigns.php?action=bulk_delete_application_fields&id=<?= $campaign_id ?>" onsubmit="return confirmBulkFieldDelete()">
+        <?= csrf_input() ?>
+        <div class="bulk-field-actions" id="bulkFieldActions">
+          <span id="selectedFieldCount">0 fields selected</span>
+          <button type="submit" class="btn-danger" style="font-size:12px;padding:7px 12px"><i class="fa-solid fa-trash-can"></i> Delete Selected</button>
+        </div>
       <div class="field-list">
       <?php if (!empty($application_fields)): ?>
         <?php foreach ($application_fields as $f): $opts = json_decode($f['options_json'] ?? '[]', true) ?: []; ?>
         <div class="field-tile">
+          <input type="checkbox" class="field-select" name="field_ids[]" value="<?= (int)$f['id'] ?>" onchange="updateBulkFieldActions()">
           <div class="field-order"><?= (int)$f['order_no'] ?></div>
           <div>
             <div class="field-name"><?= htmlspecialchars($f['field_label']) ?></div>
@@ -956,6 +1026,7 @@ $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $applicat
         </div>
       <?php endif; ?>
       </div>
+      </form>
     </div>
 
     <div class="builder-panel">
@@ -1048,6 +1119,34 @@ async function copyCampaignLink(link) {
   } catch (e) {
     prompt('Copy campaign apply link', link);
   }
+}
+function selectedApplyFieldCheckboxes() {
+  return Array.from(document.querySelectorAll('.field-select:checked'));
+}
+function updateBulkFieldActions() {
+  const selected = selectedApplyFieldCheckboxes();
+  const bar = document.getElementById('bulkFieldActions');
+  const count = document.getElementById('selectedFieldCount');
+  const all = document.getElementById('selectAllFields');
+  if (bar) bar.classList.toggle('active', selected.length > 0);
+  if (count) count.textContent = selected.length + (selected.length === 1 ? ' field selected' : ' fields selected');
+  if (all) {
+    const boxes = document.querySelectorAll('.field-select');
+    all.checked = boxes.length > 0 && selected.length === boxes.length;
+    all.indeterminate = selected.length > 0 && selected.length < boxes.length;
+  }
+}
+function toggleAllApplyFields(source) {
+  document.querySelectorAll('.field-select').forEach(box => { box.checked = source.checked; });
+  updateBulkFieldActions();
+}
+function confirmBulkFieldDelete() {
+  const selected = selectedApplyFieldCheckboxes();
+  if (!selected.length) {
+    alert('Please select at least one apply form field to delete.');
+    return false;
+  }
+  return confirm('Delete ' + selected.length + ' selected apply form field(s)?');
 }
 function setParameterLabel(select) {
   const label = select?.options?.[select.selectedIndex]?.dataset?.label || '';

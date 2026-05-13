@@ -56,6 +56,21 @@ $job_desc  = $campaign['description'] ?? '';
 // Fetch all active campaigns for dropdown
 $all_campaigns = db_fetch_all("SELECT id, name, job_role FROM campaigns WHERE status='active' ORDER BY name ASC", [], '');
 $application_fields = $campaign_id ? db_fetch_all("SELECT * FROM application_fields WHERE campaign_id=? AND is_active=1 ORDER BY order_no,id", [$campaign_id], 'i') : [];
+$default_apply_keys = [
+    'salutation', 'first_name', 'last_name', 'dob', 'city', 'relocate', 'relocate_time',
+    'phone_code', 'other_country_code', 'phone', 'email', 'college', 'college_other',
+    'source', 'source_other', 'role_applied', 'engagement_type', 'english_level',
+    'years_exp', 'industry', 'industry_other', 'exp_type', 'exp_desc', 'current_salary',
+    'expected_salary', 'tenure', 'joining_date', 'flex_hours', 'laptop', 'internet',
+    'location', 'commute', 'resume', 'photo', 'video_option', 'video_link', 'video_file',
+    'portfolio', 'ai_test_willing', 'declaration_confirmation'
+];
+$custom_application_fields = array_values(array_filter($application_fields, function ($field) use ($default_apply_keys) {
+    $key = strtolower(trim($field['field_key'] ?? ''));
+    return $key !== '' && !in_array($key, $default_apply_keys, true);
+}));
+$has_extra_application_fields = !empty($custom_application_fields);
+$declaration_section = $has_extra_application_fields ? 10 : 9;
 $is_dynamic_apply = false;
 
 ?>
@@ -1147,6 +1162,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(8)">← Back</button><button class="btn btn-primary" onclick="nextSection(8)">Continue →</button></div>
   </div>
 
+  <?php if ($has_extra_application_fields): ?>
   <!-- ═══ SECTION 9: Campaign Questions ═══ -->
   <div class="section" id="section-9">
     <div class="section-header">
@@ -1158,8 +1174,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     </div>
     <div id="val-banner-9" class="val-banner"></div>
     <div class="card">
-      <?php if (!empty($application_fields)): ?>
-        <?php foreach ($application_fields as $field):
+      <?php foreach ($custom_application_fields as $field):
           $fid = (int)$field['id'];
           $fieldId = 'appField_' . $fid;
           $type = $field['field_type'] ?? 'text';
@@ -1197,27 +1212,22 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <?php endif; ?>
           <?php if (!empty($field['help_text'])): ?><p class="field-hint"><?= htmlspecialchars($field['help_text']) ?></p><?php endif; ?>
         </div>
-        <?php endforeach; ?>
-      <?php else: ?>
-        <div class="info-box" style="margin:0">
-          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <div>No additional campaign questions are required.</div>
-        </div>
-      <?php endif; ?>
+      <?php endforeach; ?>
     </div>
     <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(9)">← Back</button><button class="btn btn-primary" onclick="nextSection(9)">Continue →</button></div>
   </div>
+  <?php endif; ?>
 
-  <!-- ═══ SECTION 10: Declaration ═══ -->
-  <div class="section" id="section-10">
+  <!-- ═══ SECTION <?= $declaration_section ?>: Declaration ═══ -->
+  <div class="section" id="section-<?= $declaration_section ?>">
     <div class="section-header">
-      <div class="section-num">10</div>
+      <div class="section-num"><?= $declaration_section ?></div>
       <div>
         <div class="section-title">Declaration</div>
         <div class="section-desc">Please review and confirm your submission.</div>
       </div>
     </div>
-    <div id="val-banner-10" class="val-banner"></div>
+    <div id="val-banner-<?= $declaration_section ?>" class="val-banner"></div>
     <div class="card">
       <label class="opt-label" style="border-color:rgba(0,153,90,.3);background:rgba(0,153,90,.05);padding:16px;align-items:flex-start">
         <input type="checkbox" id="declaration">
@@ -1228,7 +1238,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
         <span style="color:var(--accent);font-size:14px;line-height:1.6;font-weight:400">I consent to voice/video recording, transcription, and AI-assisted summarisation for hiring evaluation and recruiter review.</span>
       </label>
     </div>
-    <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(10)">← Back</button><button class="btn btn-success" onclick="submitForm()">Submit Application ✓</button></div>
+    <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(<?= $declaration_section ?>)">← Back</button><button class="btn btn-success" onclick="submitForm()">Submit Application ✓</button></div>
   </div>
 <?php endif; ?>
 
@@ -1261,7 +1271,9 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
 
 <script>
 const DYNAMIC_APPLY = <?= $is_dynamic_apply ? 'true' : 'false' ?>;
-const TOTAL = DYNAMIC_APPLY ? 2 : 10;
+const HAS_EXTRA_FIELDS = <?= $has_extra_application_fields ? 'true' : 'false' ?>;
+const DECLARATION_SECTION = <?= (int)$declaration_section ?>;
+const TOTAL = DYNAMIC_APPLY ? 2 : DECLARATION_SECTION;
 let currentSection = 1;
 const CAMPAIGN_ID = <?=$campaign_id?>;
 const REF_TOKEN = <?= json_encode($ref_token) ?>;
@@ -1274,7 +1286,7 @@ const APP_FIELDS = <?= json_encode(array_map(function($f) {
     'type' => $f['field_type'],
     'required' => !empty($f['is_required']),
   ];
-}, $application_fields)) ?>;
+}, $custom_application_fields)) ?>;
 const APP_FIELD_BY_KEY = Object.fromEntries(APP_FIELDS.map(field => [String(field.key || '').toLowerCase(), field]));
 let referralLink = '';
 const REFERRAL_MESSAGE_PREFIX = 'I have completed my HireAI interview. You can apply using this campaign link: ';
@@ -1492,6 +1504,13 @@ function updateCampaign(id) {
   }
 }
 
+function validateDeclaration() {
+  const e = [];
+  if (!document.getElementById('declaration').checked) e.push('Please confirm the declaration');
+  if (!document.getElementById('recordingConsent')?.checked) e.push('Please provide consent for voice/video recording and AI summarisation');
+  return e;
+}
+
 // Validators
 const validators = {
   1: () => {
@@ -1574,6 +1593,7 @@ const validators = {
   },
   
   9: () => {
+    if (!HAS_EXTRA_FIELDS) return validateDeclaration();
     const e = [];
     APP_FIELDS.forEach(field => {
       if (!isDynamicFieldVisible(field)) return;
@@ -1583,12 +1603,7 @@ const validators = {
     });
     return e;
   },
-  10: () => {
-    const e = [];
-    if (!document.getElementById('declaration').checked) e.push('Please confirm the declaration');
-    if (!document.getElementById('recordingConsent')?.checked) e.push('Please provide consent for voice/video recording and AI summarisation');
-    return e;
-  }
+  10: () => validateDeclaration()
 };
 
 // Remuneration
@@ -1736,15 +1751,20 @@ async function submitForm() {
   if (DYNAMIC_APPLY) {
     return submitDynamicForm();
   }
-  const dynamicErrs = validators[9]();
-  showBanner('val-banner-9', dynamicErrs);
-  if (dynamicErrs.length) {
-    gotoSection('section-9');
+  if (HAS_EXTRA_FIELDS) {
+    const dynamicErrs = validators[9]();
+    showBanner('val-banner-9', dynamicErrs);
+    if (dynamicErrs.length) {
+      gotoSection('section-9');
+      return;
+    }
+  }
+  const errs = validators[DECLARATION_SECTION]();
+  showBanner('val-banner-' + DECLARATION_SECTION, errs);
+  if (errs.length) {
+    gotoSection('section-' + DECLARATION_SECTION);
     return;
   }
-  const errs = validators[10]();
-  showBanner('val-banner-10', errs);
-  if (errs.length) return;
   
   setSubmitLoading(true, 'Submitting your application...');
   

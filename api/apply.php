@@ -37,6 +37,56 @@ function dynamic_answer_by_keys($answers, $keys) {
     }
     return '';
 }
+function default_apply_field_keys() {
+    return [
+        'salutation', 'first_name', 'last_name', 'dob', 'city', 'relocate', 'relocate_time',
+        'phone_code', 'other_country_code', 'phone', 'email', 'college', 'college_other',
+        'source', 'source_other', 'role_applied', 'engagement_type', 'english_level',
+        'years_exp', 'industry', 'industry_other', 'exp_type', 'exp_desc', 'current_salary',
+        'expected_salary', 'tenure', 'joining_date', 'flex_hours', 'laptop', 'internet',
+        'location', 'commute', 'resume', 'photo', 'video_option', 'video_link', 'video_file',
+        'portfolio', 'ai_test_willing', 'declaration_confirmation'
+    ];
+}
+function default_apply_payload_value($data, $key) {
+    $map = [
+        'phone' => 'phone',
+        'email' => 'email',
+        'salutation' => 'salutation',
+        'first_name' => 'first_name',
+        'last_name' => 'last_name',
+        'dob' => 'dob',
+        'city' => 'city',
+        'relocate' => 'relocate',
+        'relocate_time' => 'relocate_time',
+        'phone_code' => 'phone_code',
+        'college' => 'college',
+        'source' => 'source',
+        'role_applied' => 'role_applied',
+        'engagement_type' => 'engagement_type',
+        'english_level' => 'english_level',
+        'years_exp' => 'years_exp',
+        'industry' => 'industry',
+        'exp_type' => 'exp_type',
+        'exp_desc' => 'exp_desc',
+        'current_salary' => 'current_salary',
+        'expected_salary' => 'expected_salary',
+        'tenure' => 'tenure',
+        'joining_date' => 'joining_date',
+        'flex_hours' => 'flex_hours',
+        'laptop' => 'laptop',
+        'internet' => 'internet',
+        'location' => 'location',
+        'commute' => 'commute',
+        'portfolio' => 'portfolio',
+        'ai_test_willing' => 'ai_test_willing',
+    ];
+    if ($key === 'college_other') return s($data, 'college') === 'Other - specify' || s($data, 'college') === 'Other – specify' ? s($data, 'college') : '';
+    if ($key === 'source_other') return s($data, 'source') === 'Other - specify' || s($data, 'source') === 'Other – specify' ? s($data, 'source') : '';
+    if ($key === 'industry_other') return s($data, 'industry') === 'Other' ? s($data, 'industry') : '';
+    if ($key === 'declaration_confirmation') return 'I confirm that the information provided is true and accurate.';
+    return isset($map[$key]) ? s($data, $map[$key]) : '';
+}
 function sync_candidate_application($campaign, $candidate_id, $payload) {
     $type = $campaign['integration_type'] ?? 'none';
     $endpoint = trim((string)($campaign['integration_endpoint'] ?? ''));
@@ -119,11 +169,17 @@ if ($campaign_id) {
 }
 
 $application_fields = $campaign_id ? db_fetch_all("SELECT id,field_key,field_label,field_type,is_required FROM application_fields WHERE campaign_id=? AND is_active=1 ORDER BY order_no,id", [$campaign_id], 'i') : [];
+$default_apply_keys = default_apply_field_keys();
 $clean_application_answers = [];
 foreach ($application_fields as $field) {
     $fid = (string)$field['id'];
+    $field_key = strtolower(trim((string)($field['field_key'] ?? '')));
+    $is_default_field = in_array($field_key, $default_apply_keys, true);
     $answer = $application_answers[$fid]['value'] ?? $application_answers[(int)$field['id']]['value'] ?? null;
-    if (!empty($field['is_required']) && dynamic_answer_empty($answer)) {
+    if ($is_default_field && dynamic_answer_empty($answer)) {
+        $answer = default_apply_payload_value($data, $field_key);
+    }
+    if (!$is_default_field && !empty($field['is_required']) && dynamic_answer_empty($answer)) {
         ob_end_clean(); echo json_encode(['success'=>false,'error'=>$field['field_label'].' is required']); exit;
     }
     $clean_application_answers[$fid] = [

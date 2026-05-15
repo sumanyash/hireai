@@ -25,31 +25,52 @@ function clean_answer_text($answer){
 function has_gradable_answer($answer){
   return clean_answer_text($answer)!=='';
 }
-$qa='';
-if(!empty($answers)){
-  foreach($answers as $a){
-    $answer_text=clean_answer_text($a);
-    $qa.="Parameter: {$a['parameter_label']}\nQuestion: {$a['question_text']}\nAnswer: ".($answer_text!==''?$answer_text:'[No gradable response recorded]')."\n";
-    if($a['ideal_answer_hint'])$qa.="Hints: {$a['ideal_answer_hint']}\n";
-    $qa.="\n";
-  }
-}else{
-  $sess=db_fetch_one("SELECT full_transcript FROM interview_sessions WHERE candidate_id=? ORDER BY id DESC LIMIT 1",[$candidate_id],'i');
-  $qa=$sess['full_transcript']??'No answers.';
+function score_lookup_key($value){
+  return strtolower(preg_replace('/[^a-z0-9]+/','_',trim((string)$value)));
 }
-$params='';foreach($questions as $q)$params.="\n- {$q['parameter_label']} (max: {$q['max_marks']})";
-$prompt="Score this interview for role: {$candidate['job_role']}.\n\nANSWERS:\n$qa\nPARAMETERS:$params\n\nImportant scoring rule: questions marked [No gradable response recorded] must receive 0 marks. Do not infer answers for blank responses.\n\nReturn ONLY valid JSON:\n{\"scores\":[{\"parameter\":\"key\",\"parameter_label\":\"Label\",\"score\":N,\"max_marks\":N,\"reasoning\":\"brief\"}],\"total_score\":N,\"max_total\":N,\"pass_fail\":\"pass or fail\",\"summary\":\"2-3 sentences\"}";
+function add_score_lookup(&$lookup,$key,$score){
+  $key=score_lookup_key($key);
+  if($key!=='')$lookup[$key]=$score;
+}
+$qa='';
+foreach($questions as $idx=>$q){
+  $answer=$answer_by_question[(int)$q['id']]??null;
+  $answer_text=clean_answer_text($answer);
+  $qa.="Question ID: {$q['id']}\n";
+  $qa.="Parameter key: {$q['parameter']}\n";
+  $qa.="Parameter label: {$q['parameter_label']}\n";
+  $qa.="Max marks: {$q['max_marks']}\n";
+  $qa.="Question: {$q['question_text']}\n";
+  $qa.="Answer: ".($answer_text!==''?$answer_text:'[No gradable response recorded]')."\n";
+  if(!empty($q['ideal_answer_hint']))$qa.="Scoring hints: {$q['ideal_answer_hint']}\n";
+  $qa.="\n";
+}
+$params='';foreach($questions as $q)$params.="\n- key={$q['parameter']} | label={$q['parameter_label']} | question_id={$q['id']} | max={$q['max_marks']}";
+$prompt="Score this interview for role: {$candidate['job_role']}.\n\nANSWERS:\n$qa\nPARAMETERS:$params\n\nImportant scoring rules:\n1. Return exactly one score object for every provided parameter key.\n2. The score object's parameter value must exactly match the provided parameter key, not the label.\n3. Questions marked [No gradable response recorded] must receive 0 marks. Do not infer answers for blank responses.\n4. Score only from the candidate answer and scoring hints.\n\nReturn ONLY valid JSON:\n{\"scores\":[{\"question_id\":123,\"parameter\":\"exact_parameter_key\",\"parameter_label\":\"Label\",\"score\":N,\"max_marks\":N,\"reasoning\":\"brief\"}],\"summary\":\"2-3 sentences\"}";
 $result=null;
+$scoring_available=false;
 $okey=defined('OPENAI_API_KEY')?OPENAI_API_KEY:(defined('OPENAI_KEY')?OPENAI_KEY:'');
 if($okey){
   $ch=curl_init('https://api.openai.com/v1/chat/completions');
-  curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode(['model'=>'gpt-4o-mini','max_tokens'=>1000,'temperature'=>0.2,'messages'=>[['role'=>'user','content'=>$prompt]]]),CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.$okey],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>60,CURLOPT_SSL_VERIFYPEER=>false]);
+  curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode(['model'=>'gpt-4o-mini','max_tokens'=>1800,'temperature'=>0.1,'messages'=>[['role'=>'user','content'=>$prompt]]]),CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.$okey],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>60,CURLOPT_SSL_VERIFYPEER=>false]);
   $resp=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
-  if($code===200){$data=json_decode($resp,true);$content=preg_replace('/```json|```/','',$data['choices'][0]['message']['content']??'');$result=json_decode(trim($content),true);log_s("OpenAI done. Total: ".($result['total_score']??'N/A'));}
-  else log_s("OpenAI error $code");
+  if($code===200){
+    $data=json_decode($resp,true);$content=preg_replace('/```json|```/','',$data['choices'][0]['message']['content']??'');
+    $result=json_decode(trim($content),true);
+    if(is_array($result)&&isset($result['scores'])&&is_array($result['scores'])){
+      $scoring_available=true;
+      log_s("OpenAI done. Scores: ".count($result['scores']));
+    }else{
+      log_s("OpenAI returned invalid JSON: ".substr((string)$content,0,300));
+      $result=null;
+    }
+  }
+  else log_s("OpenAI error $code: ".substr((string)$resp,0,300));
+}else{
+  log_s("OpenAI key missing");
 }
 if(!$result){
-  log_s("Fallback scoring");
+  log_s("Scoring unavailable; marking manual review");
   $scores=[];$total=$max=0;
   foreach($questions as $q){
     $qid=(int)$q['id'];$marks=(int)$q['max_marks'];$max+=$marks;
@@ -57,13 +78,15 @@ if(!$result){
     $reason=has_gradable_answer($answer)?'AI scoring unavailable — manual review required.':'No gradable response recorded.';
     $scores[]=['parameter'=>$q['parameter'],'parameter_label'=>$q['parameter_label'],'score'=>0,'max_marks'=>$marks,'reasoning'=>$reason];
   }
-  $pct=$max>0?round(($total/$max)*100):0;$pass=(int)($candidate['passing_score']??70);
-  $result=['scores'=>$scores,'total_score'=>$total,'max_total'=>$max,'pass_fail'=>$pct>=$pass?'pass':'fail','summary'=>'AI scoring unavailable — manual review recommended.'];
+  $result=['scores'=>$scores,'total_score'=>$total,'max_total'=>$max,'pass_fail'=>'pending','summary'=>'AI scoring unavailable — manual review required.'];
 }
 $result_scores=[];
-$score_by_parameter=[];
+$score_lookup=[];
 foreach(($result['scores']??[]) as $s){
-  $score_by_parameter[(string)($s['parameter']??'')]=$s;
+  add_score_lookup($score_lookup,$s['parameter']??'',$s);
+  add_score_lookup($score_lookup,$s['parameter_label']??'',$s);
+  add_score_lookup($score_lookup,$s['label']??'',$s);
+  add_score_lookup($score_lookup,$s['question_id']??'',$s);
 }
 $total_score=0;$max_total=0;$answered_count=0;$required_count=0;$required_answered_count=0;
 foreach($questions as $q){
@@ -75,9 +98,12 @@ foreach($questions as $q){
     if($has_answer)$required_answered_count++;
   }
   if($has_answer)$answered_count++;
-  $raw=$score_by_parameter[$parameter]??[];
+  $raw=$score_lookup[score_lookup_key($parameter)]??$score_lookup[score_lookup_key($q['parameter_label'])]??$score_lookup[score_lookup_key($qid)]??[];
   $score=(int)($raw['score']??0);
   $reasoning=$raw['reasoning']??'';
+  if($has_answer&&$scoring_available&&!$raw){
+    $reasoning='AI response did not include a matching score for this question.';
+  }
   if(!$has_answer){
     $score=0;
     $reasoning='No gradable response recorded.';
@@ -96,7 +122,7 @@ foreach($questions as $q){
 $pct_score=$max_total>0?round(($total_score/$max_total)*100):0;
 $passing=(int)($candidate['passing_score']??70);
 $required_answered=$required_count>0?$required_answered_count>=$required_count:$answered_count>=count($questions);
-$pf=($required_answered&&$pct_score>=$passing)?'pass':'fail';
+$pf=!$scoring_available?'pending':(($required_answered&&$pct_score>=$passing)?'pass':'fail');
 $summary=$result['summary']??'';
 if(!$required_answered){
   $summary=trim($summary."\nIncomplete interview: $required_answered_count of $required_count required questions have gradable responses.");
@@ -109,10 +135,15 @@ foreach($result_scores as $s){
 $ex2=db_fetch_one("SELECT id FROM interview_results WHERE candidate_id=?",[$candidate_id],'i');
 if($ex2)db_execute("UPDATE interview_results SET total_score=?,max_score=?,pass_fail=?,ai_summary=?,updated_at=NOW() WHERE candidate_id=?",[$total_score,$max_total,$pf,$summary,$candidate_id],'iissi');
 else db_execute("INSERT INTO interview_results (candidate_id,campaign_id,total_score,max_score,pass_fail,ai_summary) VALUES (?,?,?,?,?,?)",[$candidate_id,$campaign_id,$total_score,$max_total,$pf,$summary],'iiiiss');
-$new_status=$pf==='pass'?'shortlisted':'rejected';
+$new_status=$pf==='pending'?'on_hold':($pf==='pass'?'shortlisted':'rejected');
 db_execute("UPDATE candidates SET status=? WHERE id=?",[$new_status,$candidate_id],'si');
 log_s("Result saved: $total_score/$max_total $pf status->$new_status");
 $name=$candidate['name']?:'Candidate';$role=$candidate['job_role'];$camp=$candidate['campaign_name'];
+if($pf==='pending'){
+  log_s("Manual review pending; skipping result WhatsApp.");
+  if(php_sapi_name()!=='cli')echo json_encode(['status'=>'pending','score'=>$total_score,'max'=>$max_total,'pass_fail'=>$pf]);
+  exit;
+}
 if($pct_score>=80){
   log_s("Score>=80 — triggering EL call");
   $agent_id=$candidate['el_agent_id']?:EL_AGENT_ID;

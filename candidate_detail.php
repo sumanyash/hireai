@@ -16,13 +16,17 @@ if (!$c) { header('Location: candidates.php'); exit; }
 $session   = db_fetch_one("SELECT * FROM interview_sessions WHERE candidate_id=? ORDER BY id DESC LIMIT 1", [$id], 'i');
 $result    = db_fetch_one("SELECT * FROM interview_results  WHERE candidate_id=? ORDER BY id DESC LIMIT 1", [$id], 'i');
 $scores    = db_fetch_all("SELECT * FROM scores WHERE candidate_id=? ORDER BY id", [$id], 'i');
+$scoreByParameter = [];
+foreach ($scores as $scoreRow) {
+    $scoreByParameter[(string)($scoreRow['parameter'] ?? '')] = $scoreRow;
+}
 $notes_db  = db_fetch_all(
     "SELECT rn.*, u.name recruiter_name FROM recruiter_notes rn
      JOIN users u ON rn.user_id=u.id WHERE rn.candidate_id=? ORDER BY rn.created_at DESC",
     [$id], 'i'
 );
 $answers   = db_fetch_all(
-    "SELECT ia.*, q.question_text, q.order_no AS question_number
+    "SELECT ia.*, q.question_text, q.order_no AS question_number, q.parameter, q.parameter_label, q.max_marks
      FROM interview_answers ia LEFT JOIN questions q ON ia.question_id=q.id
      WHERE ia.candidate_id=? ORDER BY q.order_no ASC, ia.id ASC",
     [$id], 'i'
@@ -159,6 +163,18 @@ $toast         = $_GET['toast'] ?? '';
 .qa-a{font-size:14px;color:var(--text);line-height:1.7;padding:12px 14px;background:#fff;border-radius:10px;border:1.5px solid var(--light)}
 .qa-meta{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center}
 .qa-tag{font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;background:#EFF6FF;color:#1E40AF;display:inline-flex;align-items:center;gap:4px}
+.qa-head{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
+.qa-head .qa-q{margin-bottom:0;flex:1}
+.qa-score-box{display:flex;align-items:center;gap:6px;background:#fff;border:1.5px solid #E2E8F0;border-radius:11px;padding:7px 9px;flex-shrink:0}
+.qa-score-box input{width:58px;padding:5px 7px;border:1px solid #CBD5E1;border-radius:8px;font-size:13px;font-weight:900;text-align:center;color:var(--text)}
+.qa-score-box span{font-size:12px;font-weight:800;color:var(--gray)}
+.qa-score-reason{font-size:11px;color:var(--gray);line-height:1.45;margin-top:8px;background:#F8FAFC;border-radius:8px;padding:7px 9px}
+.review-media{background:#0F172A;border-radius:16px;padding:14px;margin-bottom:16px;border:1.5px solid #1E293B;position:sticky;top:86px;z-index:5;box-shadow:0 8px 28px rgba(15,23,42,.15)}
+.review-media-head{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#fff;font-size:13px;font-weight:800;margin-bottom:10px}
+.review-media video{width:100%;max-height:280px;border-radius:12px;background:#000}
+.review-media audio{width:100%}
+.qa-save-bar{position:sticky;bottom:12px;z-index:6;background:rgba(255,255,255,.96);backdrop-filter:blur(8px);border:1.5px solid #E2E8F0;border-radius:16px;padding:12px;display:grid;grid-template-columns:1fr auto;gap:10px;box-shadow:0 10px 32px rgba(15,23,42,.12);margin-top:16px}
+@media(max-width:720px){.qa-head{flex-direction:column}.qa-score-box{width:100%;justify-content:space-between}.qa-save-bar{grid-template-columns:1fr}}
 
 /* INLINE AUDIO — no new tab */
 .qa-audio-wrap{margin-top:10px;background:#EFF6FF;border-radius:10px;padding:10px 12px;border:1.5px solid #DBEAFE}
@@ -290,31 +306,20 @@ $toast         = $_GET['toast'] ?? '';
     <!-- Score Bars -->
     <?php if (!empty($scores)): ?>
     <div style="text-align:left;margin-top:8px">
-    <form method="POST">
-    <?= csrf_input() ?>
     <?php foreach ($scores as $s):
       $ps  = round($s['ai_score'] / max(1, $s['max_marks']) * 100);
       $sc2 = $ps >= 70 ? '#10B981' : ($ps >= 50 ? '#F59E0B' : '#EF4444'); ?>
     <div style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;margin-bottom:3px">
         <span style="color:var(--text2)"><?= htmlspecialchars($s['parameter_label'] ?? '') ?></span>
-        <span style="display:flex;align-items:center;gap:4px;color:<?= $sc2 ?>">
-          <input type="number" name="manual_scores[<?= (int)$s['id'] ?>]" value="<?= (int)$s['ai_score'] ?>" min="0" max="<?= (int)$s['max_marks'] ?>"
-            style="width:54px;padding:3px 5px;border:1px solid #CBD5E1;border-radius:7px;font-size:12px;font-weight:800;text-align:center;color:<?= $sc2 ?>">
-          /<?= (int)$s['max_marks'] ?>
-        </span>
+        <span style="color:<?= $sc2 ?>"><?= (int)$s['ai_score'] ?>/<?= (int)$s['max_marks'] ?></span>
       </div>
       <div class="sbar-wrap"><div class="sbar-fill" style="width:0;background:<?= $sc2 ?>" data-w="<?= $ps ?>"></div></div>
-      <?php if (!empty($s['ai_reasoning'])): ?>
-      <div style="font-size:10px;color:var(--gray);line-height:1.4;margin-top:3px"><?= htmlspecialchars($s['ai_reasoning']) ?></div>
-      <?php endif; ?>
     </div>
     <?php endforeach; ?>
-      <input type="text" name="manual_reason" class="form-control" placeholder="Manual review note..." style="font-size:12px;padding:7px 10px;margin-top:8px">
-      <button type="submit" name="save_manual_scores" class="btn-sm" style="margin-top:8px;width:100%;justify-content:center">
-        <i class="fa-solid fa-pen-to-square"></i> Save Manual Marks
-      </button>
-    </form>
+    <button type="button" class="btn-sm" onclick="switchTab('qa', document.querySelector('[data-tab-btn=qa]'))" style="width:100%;justify-content:center;margin-top:8px">
+      <i class="fa-solid fa-pen-to-square"></i> Mark in Q&A
+    </button>
     </div>
     <?php elseif ($breakdown): ?>
     <div style="text-align:left;margin-top:8px">
@@ -452,18 +457,18 @@ $toast         = $_GET['toast'] ?? '';
 
   <!-- TABS -->
   <div class="tabs animate-in">
-    <button class="tab-btn active" onclick="switchTab('recording',this)">
+    <button class="tab-btn active" onclick="switchTab('recording',this)" data-tab-btn="recording">
       <i class="fa-solid fa-video fa-sm"></i> Recording <span class="kb-hint">1</span>
     </button>
-    <button class="tab-btn" onclick="switchTab('qa',this)">
+    <button class="tab-btn" onclick="switchTab('qa',this)" data-tab-btn="qa">
       <i class="fa-solid fa-comments fa-sm"></i> Q&A
       <?php if (count($answers)): ?><span class="tab-badge"><?= count($answers) ?></span><?php endif; ?>
       <span class="kb-hint">2</span>
     </button>
-    <button class="tab-btn" onclick="switchTab('transcript',this)">
+    <button class="tab-btn" onclick="switchTab('transcript',this)" data-tab-btn="transcript">
       <i class="fa-solid fa-scroll fa-sm"></i> Transcript <span class="kb-hint">3</span>
     </button>
-    <button class="tab-btn" onclick="switchTab('notes',this)">
+    <button class="tab-btn" onclick="switchTab('notes',this)" data-tab-btn="notes">
       <i class="fa-solid fa-note-sticky fa-sm"></i> Notes
       <?php if (count($notes_db)): ?><span class="tab-badge tab-badge-orange"><?= count($notes_db) ?></span><?php endif; ?>
       <span class="kb-hint">4</span>
@@ -540,17 +545,48 @@ $toast         = $_GET['toast'] ?? '';
           <?= count($answers) ?> answers
         </span>
       </div>
+      <?php if ($recUrl): ?>
+      <div class="review-media">
+        <div class="review-media-head">
+          <span><i class="fa-solid fa-circle-play"></i> Recording while reviewing answers</span>
+          <a href="<?= htmlspecialchars($recUrl) ?>" download style="color:#BFDBFE;text-decoration:none;font-size:12px"><i class="fa-solid fa-download"></i> Download</a>
+        </div>
+        <?php
+        $qExt = strtolower(pathinfo(strtok($recUrl, '?'), PATHINFO_EXTENSION));
+        if (in_array($qExt, ['mp4','webm','mov','mkv'])): ?>
+          <video controls preload="metadata"><source src="<?= htmlspecialchars($recUrl) ?>"></video>
+        <?php else: ?>
+          <audio controls preload="metadata"><source src="<?= htmlspecialchars($recUrl) ?>"></audio>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
+
+      <?php if (!empty($answers)): ?>
+      <form method="POST">
+      <?= csrf_input() ?>
+      <?php endif; ?>
       <?php if (!empty($answers)): foreach ($answers as $i => $a):
         $qText   = $a['question_text'] ?? 'Question ' . ($i + 1);
         $ansText = $a['text_answer'] ?? '';
         $hasAudio= !empty($a['audio_url']);
         $tt      = (int)($a['time_taken'] ?? 0);
         $cp      = (int)($a['copy_count'] ?? 0);
+        $qaScore = $scoreByParameter[(string)($a['parameter'] ?? '')] ?? null;
+        $qaScoreVal = $qaScore ? (int)$qaScore['ai_score'] : 0;
+        $qaMax = $qaScore ? (int)$qaScore['max_marks'] : (int)($a['max_marks'] ?? 0);
       ?>
       <div class="qa-item">
-        <div class="qa-q">
-          <div class="q-num"><?= $a['question_number'] ?? ($i + 1) ?></div>
-          <?= htmlspecialchars($qText) ?>
+        <div class="qa-head">
+          <div class="qa-q">
+            <div class="q-num"><?= $a['question_number'] ?? ($i + 1) ?></div>
+            <?= htmlspecialchars($qText) ?>
+          </div>
+          <?php if ($qaScore): ?>
+          <div class="qa-score-box">
+            <input type="number" name="manual_scores[<?= (int)$qaScore['id'] ?>]" value="<?= $qaScoreVal ?>" min="0" max="<?= $qaMax ?>">
+            <span>/<?= $qaMax ?></span>
+          </div>
+          <?php endif; ?>
         </div>
         <?php if ($ansText): ?>
         <div class="qa-a"><?= nl2br(htmlspecialchars($ansText)) ?></div>
@@ -591,8 +627,19 @@ $toast         = $_GET['toast'] ?? '';
           </span>
           <?php endif; ?>
         </div>
+        <?php if ($qaScore && !empty($qaScore['ai_reasoning'])): ?>
+        <div class="qa-score-reason"><?= htmlspecialchars($qaScore['ai_reasoning']) ?></div>
+        <?php endif; ?>
       </div>
-      <?php endforeach;
+      <?php endforeach; ?>
+      <div class="qa-save-bar">
+        <input type="text" name="manual_reason" class="form-control" placeholder="Manual review note, e.g. voice answer reviewed with recording">
+        <button type="submit" name="save_manual_scores" class="btn-primary" style="padding:10px 18px;white-space:nowrap">
+          <i class="fa-solid fa-floppy-disk"></i> Save Manual Marks
+        </button>
+      </div>
+      </form>
+      <?php
       elseif (!empty($questions)): foreach ($questions as $i => $q): ?>
       <div class="qa-item">
         <div class="qa-q">

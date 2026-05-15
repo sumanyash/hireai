@@ -1348,6 +1348,44 @@ function checks(name) {
   return [...document.querySelectorAll(`input[name="${name}"]:checked`)].map(e => e.value).join(', ');
 }
 
+function todayYmd() {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+}
+
+function isStrictYmd(value) {
+  const s = String(value || '').trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return false;
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return y >= 1900 && dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+}
+
+function dateError(label, value, opts = {}) {
+  if (!value) return `${label} is required.`;
+  if (!isStrictYmd(value)) return `${label} must be a valid date in YYYY-MM-DD format.`;
+  if (opts.min && value < opts.min) return `${label} cannot be before ${opts.min}.`;
+  if (opts.max && value > opts.max) return `${label} cannot be after ${opts.max}.`;
+  return '';
+}
+
+function isStrictEmail(email) {
+  const s = String(email || '').trim();
+  if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(s)) return false;
+  const [local, domain] = s.split('@');
+  if (!local || !domain || local.includes('..') || domain.includes('..')) return false;
+  return domain.split('.').every(part => part && !part.startsWith('-') && !part.endsWith('-'));
+}
+
+function moneyNumber(value) {
+  const cleaned = String(value || '').replace(/,/g, '').replace(/[^\d.]/g, '');
+  if (!cleaned || cleaned === '.') return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
 function dynamicValue(field) {
   const id = 'appField_' + field.id;
   const el = document.getElementById(id);
@@ -1477,7 +1515,20 @@ function validateDynamicFields() {
     const value = dynamicValue(field);
     const empty = Array.isArray(value) ? value.length === 0 : !String(value || '').trim();
     if (field.required && empty) e.push(`${field.label} is required`);
+    const key = String(field.key || '').toLowerCase();
+    if (!empty && (field.type === 'email' || ['email','email_id','email_address'].includes(key)) && !isStrictEmail(value)) {
+      e.push(`${field.label} must be a valid email address`);
+    }
+    if (!empty && (field.type === 'date' || ['dob','date_of_birth','joining_date','preferred_joining_date'].includes(key))) {
+      const err = dateError(field.label, String(value), key.includes('joining') ? { min: todayYmd() } : { max: todayYmd() });
+      if (err) e.push(err);
+    }
   });
+  const currentSalary = moneyNumber(dynamicValueByKey('current_salary') || dynamicValueByKey('current_ctc'));
+  const expectedSalary = moneyNumber(dynamicValueByKey('expected_salary') || dynamicValueByKey('expected_ctc'));
+  if (expectedSalary !== null && currentSalary !== null && expectedSalary < currentSalary) {
+    e.push('Expected salary / stipend cannot be lower than current salary / stipend.');
+  }
   return e.concat(dynamicConditionalErrors());
 }
 
@@ -1519,13 +1570,13 @@ const validators = {
     if (!v('firstName').trim()) e.push('First name required');
     if (!v('lastName').trim()) e.push('Last name required');
     const dobVal = v('dob');
-    if (!dobVal) { e.push('Date of birth required.'); }
-    else { const _t = new Date(); _t.setHours(0,0,0,0); if (new Date(dobVal) > _t) e.push('Date of birth cannot be in the future.'); }
+    const dobErr = dateError('Date of birth', dobVal, { max: todayYmd() });
+    if (dobErr) e.push(dobErr);
     if (!v('currentCity').trim()) e.push('Current city required');
     
     const pe = validatePhone(); if (pe) e.push(pe);
     
-    if (!v('email').match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) e.push('Valid email required');
+    if (!isStrictEmail(v('email'))) e.push('Valid email required');
     if (!v('college')) e.push('College/University required');
     if (v('college') === 'Other – specify' && !v('collegeOther').trim()) e.push('Specify your college');
     if (!v('source')) e.push('Application source required');
@@ -1557,7 +1608,10 @@ const validators = {
   
   4: () => {
     const e = [];
-    if (!v('expectedSalary').trim()) e.push('Expected salary / stipend is required.');
+    const expected = moneyNumber(v('expectedSalary'));
+    const current = moneyNumber(v('currentSalary'));
+    if (expected === null) e.push('Expected salary / stipend must be a valid number.');
+    if (expected !== null && current !== null && expected < current) e.push('Expected salary / stipend cannot be lower than current salary / stipend.');
     return e;
   },
   
@@ -1565,7 +1619,8 @@ const validators = {
     const e = [];
     const et = v('engagementType');
     if (et !== 'Employment' && !v('tenure')) e.push('Internship / training tenure is required.');
-    if (!v('joiningDate')) e.push('Preferred joining date is required.');
+    const joiningErr = dateError('Preferred joining date', v('joiningDate'), { min: todayYmd() });
+    if (joiningErr) e.push(joiningErr);
     if (!v('flexHours')) e.push('Flexible hours preference is required.');
     return e;
   },
@@ -1971,11 +2026,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('phone').classList.remove('input-invalid');
   });
   
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayYmd();
   const joiningDate = document.getElementById('joiningDate');
   const dob = document.getElementById('dob');
   if (joiningDate) joiningDate.min = today;
-  if (dob) dob.max = today;
+  if (dob) { dob.min = '1900-01-01'; dob.max = today; }
 });
 
 

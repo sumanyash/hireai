@@ -21,7 +21,35 @@ $data = json_decode($raw, true);
 if (!is_array($data)) { ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Invalid JSON']); exit; }
 
 function s($d,$k){ return isset($d[$k]) ? trim((string)$d[$k]) : ''; }
+function apply_fail($error, $extra = []) {
+    ob_end_clean();
+    echo json_encode(array_merge(['success'=>false,'error'=>$error], $extra));
+    exit;
+}
 function norm_phone_apply($phone){ return preg_replace('/[^0-9]/', '', (string)$phone); }
+function strict_email_apply($email) {
+    $email = trim((string)$email);
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) return false;
+    if (!preg_match('/^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i', $email)) return false;
+    [$local, $domain] = explode('@', $email, 2);
+    if ($local === '' || $domain === '' || str_contains($local, '..') || str_contains($domain, '..')) return false;
+    foreach (explode('.', $domain) as $part) {
+        if ($part === '' || str_starts_with($part, '-') || str_ends_with($part, '-')) return false;
+    }
+    return true;
+}
+function strict_date_apply($value) {
+    $value = trim((string)$value);
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) return false;
+    $dt = DateTime::createFromFormat('!Y-m-d', $value);
+    if (!$dt || $dt->format('Y-m-d') !== $value) return false;
+    return (int)$dt->format('Y') >= 1900;
+}
+function money_apply($value) {
+    $cleaned = preg_replace('/[^\d.]/', '', str_replace(',', '', (string)$value));
+    if ($cleaned === '' || $cleaned === '.') return null;
+    return is_numeric($cleaned) ? (float)$cleaned : null;
+}
 function dynamic_answer_empty($value) {
     if (is_array($value)) return count(array_filter($value, fn($v) => trim((string)$v) !== '')) === 0;
     return trim((string)$value) === '';
@@ -145,8 +173,37 @@ if (s($data,'first_name') === '' && s($data,'last_name') === '') {
     }
 }
 if (!s($data,'phone')) {
-    ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Phone field is required for candidate tracking and WhatsApp outreach. Please add a Phone field in this campaign form.']); exit;
+    apply_fail('Phone field is required for candidate tracking and WhatsApp outreach. Please add a Phone field in this campaign form.');
 }
+if ($email === '' || !strict_email_apply($email)) {
+    apply_fail('Valid email is required.');
+}
+$dob = s($data, 'dob');
+if ($dob === '') $dob = dynamic_answer_by_keys($application_answers, ['dob','date_of_birth','birth_date']);
+if (!strict_date_apply($dob) || $dob > date('Y-m-d')) {
+    apply_fail('Date of birth must be a valid date in YYYY-MM-DD format and cannot be in the future.');
+}
+$data['dob'] = $dob;
+$joining_date = s($data, 'joining_date');
+if ($joining_date === '') $joining_date = dynamic_answer_by_keys($application_answers, ['joining_date','preferred_joining_date','available_from']);
+if (!strict_date_apply($joining_date) || $joining_date < date('Y-m-d')) {
+    apply_fail('Preferred joining date must be a valid date in YYYY-MM-DD format and cannot be before today.');
+}
+$data['joining_date'] = $joining_date;
+$current_salary_value = s($data, 'current_salary');
+if ($current_salary_value === '') $current_salary_value = dynamic_answer_by_keys($application_answers, ['current_salary','current_ctc','current_stipend']);
+$expected_salary_value = s($data, 'expected_salary');
+if ($expected_salary_value === '') $expected_salary_value = dynamic_answer_by_keys($application_answers, ['expected_salary','expected_ctc','expected_stipend']);
+$current_salary_num = money_apply($current_salary_value);
+$expected_salary_num = money_apply($expected_salary_value);
+if ($expected_salary_num === null) {
+    apply_fail('Expected salary / stipend must be a valid number.');
+}
+if ($current_salary_num !== null && $expected_salary_num < $current_salary_num) {
+    apply_fail('Expected salary / stipend cannot be lower than current salary / stipend.');
+}
+$data['current_salary'] = $current_salary_value;
+$data['expected_salary'] = $expected_salary_value;
 $referred_by_candidate_id = null;
 if ($ref_token !== '') {
     $referrer = db_fetch_one("SELECT id,campaign_id FROM candidates WHERE unique_token=?", [$ref_token], 's');

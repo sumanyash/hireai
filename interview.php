@@ -170,7 +170,10 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 }
 .dynamic-answer select option{color:#111827}
 .choice-list{display:flex;flex-direction:column;gap:8px}
-.choice-item{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;color:var(--text)}
+.choice-item{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;color:var(--text);cursor:pointer}
+.choice-item:has(input:checked){border-color:var(--blue);background:rgba(37,99,235,.16)}
+.choice-prefix{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;border-radius:999px;background:rgba(37,99,235,.18);color:#93c5fd;font-weight:800;font-size:12px}
+.choice-empty{border:1px dashed var(--border);border-radius:12px;padding:12px;color:var(--muted);background:rgba(255,255,255,.03)}
 .share-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px}
 .share-btn{border:none;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer;color:#fff;display:inline-flex;align-items:center;gap:7px;text-decoration:none}
 .share-wa{background:#16A34A}.share-mail{background:#2563EB}.share-copy{background:#7C3AED}
@@ -637,7 +640,8 @@ function loadQuestion(index) {
   audioChunks = [];
   if (isRecording) stopRecording();
   const type = q.question_type || 'textarea';
-  if (['dropdown','multi_select','number','decimal','date','text','hyperlink','file'].includes(type)) switchTab('text');
+  if (['audio','video'].includes(type)) switchTab('voice');
+  else switchTab('text');
 
   // Next / Submit label
   const isLast = index === QUESTIONS.length - 1;
@@ -659,24 +663,30 @@ function loadQuestion(index) {
 }
 
 function parseQuestionOptions(q) {
+  const normalize = (options) => Array.isArray(options)
+    ? options.map(o => String(o || '').trim()).filter(Boolean)
+    : [];
   const inlineChoices = () => {
     const text = q.question_text || '';
     const idx = String(text).search(/choices\s*:/i);
     if (idx < 0) return [];
     const raw = String(text).slice(idx).replace(/^choices\s*:\s*/i, '').trim();
-    const found = [];
-    const re = /(?:^|\s)(?:[A-Z]|\d+)[).]\s*(.*?)(?=\s+(?:[A-Z]|\d+)[).]\s*|$)/g;
-    let m;
-    while ((m = re.exec(raw)) !== null) {
-      const option = (m[1] || '').trim();
-      if (option) found.push(option);
+    const markers = [...raw.matchAll(/(?:^|\s)([A-Z]|\d+)[).]\s*/g)];
+    if (markers.length) {
+      return markers.map((m, i) => {
+        const start = (m.index || 0) + m[0].length;
+        const end = i + 1 < markers.length ? markers[i + 1].index : raw.length;
+        const option = raw.slice(start, end).trim();
+        return option || '';
+      }).filter(Boolean);
     }
-    return found;
+    return raw.split(/\r?\n|,/).map(o => o.trim()).filter(Boolean);
   };
   try {
     if (!q.options_json) return inlineChoices();
     const parsed = typeof q.options_json === 'string' ? JSON.parse(q.options_json) : q.options_json;
-    return Array.isArray(parsed) && parsed.length ? parsed : inlineChoices();
+    const normalized = normalize(parsed);
+    return normalized.length ? normalized : inlineChoices();
   } catch(e) { return inlineChoices(); }
 }
 
@@ -684,10 +694,21 @@ function renderDynamicAnswer(q) {
   const wrap = document.getElementById('dynamic-answer');
   const type = q.question_type || 'textarea';
   const options = parseQuestionOptions(q);
+  const optionLabel = (i) => String.fromCharCode(65 + i);
+  const displayOption = (option, i) => /^\s*([A-Z]|\d+)[).]\s*/.test(String(option)) ? option : `${optionLabel(i)}) ${option}`;
+  const choiceHtml = (inputType, multi = false) => {
+    if (!options.length) return `<div id="text-answer" class="choice-empty" data-choice-group="1">No choices configured for this question. Please type your answer below.</div><textarea class="text-answer" id="text-answer-fallback" placeholder="Type your answer here..." maxlength="2000"></textarea>`;
+    return `<div id="text-answer" class="choice-list" ${multi ? 'data-multi="1"' : 'data-choice-group="1"'}>${options.map((o, i) => `<label class="choice-item"><input type="${inputType}" name="answer_choice" value="${escapeHtml(o)}"><span class="choice-prefix">${optionLabel(i)}</span><span>${escapeHtml(displayOption(o, i))}</span></label>`).join('')}</div>`;
+  };
   if (type === 'dropdown') {
-    wrap.innerHTML = `<select id="text-answer"><option value="">Select an option...</option>${options.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('')}</select>`;
+    wrap.innerHTML = `<select id="text-answer"><option value="">Select an option...</option>${options.map((o, i) => `<option value="${escapeHtml(o)}">${escapeHtml(displayOption(o, i))}</option>`).join('')}</select>`;
   } else if (type === 'multi_select') {
-    wrap.innerHTML = `<div id="text-answer" class="choice-list" data-multi="1">${options.map((o, i) => `<label class="choice-item"><input type="checkbox" value="${escapeHtml(o)}"> ${escapeHtml(o)}</label>`).join('')}</div>`;
+    wrap.innerHTML = choiceHtml('checkbox', true);
+  } else if (type === 'checkbox') {
+    wrap.innerHTML = choiceHtml('checkbox', true);
+  } else if (type === 'rating') {
+    const ratingOptions = options.length ? options : ['1 - Poor','2 - Fair','3 - Good','4 - Very Good','5 - Excellent'];
+    wrap.innerHTML = `<div id="text-answer" class="choice-list" data-choice-group="1">${ratingOptions.map((o, i) => `<label class="choice-item"><input type="radio" name="answer_choice" value="${escapeHtml(o)}"><span class="choice-prefix">${i + 1}</span><span>${escapeHtml(o)}</span></label>`).join('')}</div>`;
   } else if (type === 'number' || type === 'decimal') {
     wrap.innerHTML = `<input id="text-answer" type="number" ${type === 'decimal' ? 'step="0.01"' : 'step="1"'} placeholder="Enter number">`;
   } else if (type === 'date') {
@@ -698,6 +719,8 @@ function renderDynamicAnswer(q) {
     wrap.innerHTML = `<input id="text-answer" type="text" placeholder="Paste file link or drive URL">`;
   } else if (type === 'text') {
     wrap.innerHTML = `<input id="text-answer" type="text" maxlength="500" placeholder="Type your answer here...">`;
+  } else if (type === 'audio' || type === 'video') {
+    wrap.innerHTML = `<textarea class="text-answer" id="text-answer" placeholder="Optional note for your recorded answer..." maxlength="2000"></textarea>`;
   } else {
     wrap.innerHTML = `<textarea class="text-answer" id="text-answer" placeholder="Type your answer here…" maxlength="2000"></textarea>`;
   }
@@ -712,6 +735,10 @@ function getCurrentAnswerValue() {
   if (!el) return '';
   if (el.dataset && el.dataset.multi) {
     return Array.from(el.querySelectorAll('input:checked')).map(i => i.value).join(', ');
+  }
+  if (el.dataset && el.dataset.choiceGroup) {
+    const checked = el.querySelector('input:checked');
+    return checked ? checked.value : ((document.getElementById('text-answer-fallback') || {}).value || '').trim();
   }
   return (el.value || '').trim();
 }

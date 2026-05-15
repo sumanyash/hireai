@@ -20,6 +20,25 @@ function normalize_phone($phone) {
     return preg_replace('/[^0-9]/', '', (string)$phone);
 }
 
+function valid_candidate_email($email) {
+    $email = trim((string)$email);
+    if ($email === '') return true;
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) return false;
+    if (!preg_match('/^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$/i', $email)) return false;
+    [$local, $domain] = explode('@', $email, 2);
+    if ($local === '' || $domain === '' || str_contains($local, '..') || str_contains($domain, '..')) return false;
+    foreach (explode('.', $domain) as $part) {
+        if ($part === '' || str_starts_with($part, '-') || str_ends_with($part, '-')) return false;
+    }
+    return true;
+}
+
+function candidate_money_value($value) {
+    $cleaned = preg_replace('/[^\d.]/', '', str_replace(',', '', (string)$value));
+    if ($cleaned === '' || $cleaned === '.') return null;
+    return is_numeric($cleaned) ? (float)$cleaned : null;
+}
+
 function candidate_duplicate_exists($campaign_id, $phone, $email) {
     $phone = normalize_phone($phone);
     $email = strtolower(trim((string)$email));
@@ -100,6 +119,13 @@ if ($action === 'add' && $method === 'POST') {
 
     if (!$campaign_id) json_response(['error' => 'Campaign is required'], 400);
     if (!$name)        json_response(['error' => 'Name is required'], 400);
+    if ($phone === '' && $email === '') json_response(['error' => 'Phone or email is required'], 400);
+    if (!valid_candidate_email($email)) json_response(['error' => 'Valid email is required'], 400);
+    $current_num = candidate_money_value($current_ctc);
+    $expected_num = candidate_money_value(trim($input['expected_ctc'] ?? ''));
+    if ($current_num !== null && $expected_num !== null && $expected_num < $current_num) {
+        json_response(['error' => 'Expected CTC cannot be lower than current CTC'], 400);
+    }
 
     // Verify campaign belongs to this org
     $campaign = db_fetch_one("SELECT id FROM campaigns WHERE id=? AND org_id=?", [$campaign_id, $user['org_id']], 'ii');
@@ -151,6 +177,11 @@ if ($action === 'bulk_import' && $method === 'POST') {
         $phone = trim($row['phone'] ?? '');
         $email = trim($row['email'] ?? '');
         if (!$name) { $errors++; continue; }
+        if ($phone === '' && $email === '') { $errors++; continue; }
+        if (!valid_candidate_email($email)) { $errors++; continue; }
+        $current_num = candidate_money_value($row['current_ctc'] ?? '');
+        $expected_num = candidate_money_value($row['expected_ctc'] ?? '');
+        if ($current_num !== null && $expected_num !== null && $expected_num < $current_num) { $errors++; continue; }
 
         $dedupe_key = strtolower($email ?: normalize_phone($phone));
         if ($dedupe_key && isset($seen[$dedupe_key])) { $dupes++; continue; }

@@ -164,13 +164,14 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 .text-answer:focus{border-color:var(--blue);background:rgba(37,99,235,.05)}
 .text-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px}
 .dynamic-answer{display:flex;flex-direction:column;gap:10px}
-.dynamic-answer input,.dynamic-answer select{
+.dynamic-answer > input,.dynamic-answer select{
   width:100%;background:rgba(255,255,255,.03);border:1.5px solid var(--border);
   border-radius:10px;color:var(--text);padding:13px 14px;font-size:14px;outline:none;font-family:inherit;
 }
 .dynamic-answer select option{color:#111827}
 .choice-list{display:flex;flex-direction:column;gap:8px}
 .choice-item{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;color:var(--text);cursor:pointer}
+.choice-item input{width:18px;height:18px;flex:0 0 18px;accent-color:var(--blue)}
 .choice-item:has(input:checked){border-color:var(--blue);background:rgba(37,99,235,.16)}
 .choice-prefix{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;border-radius:999px;background:rgba(37,99,235,.18);color:#93c5fd;font-weight:800;font-size:12px}
 .choice-empty{border:1px dashed var(--border);border-radius:12px;padding:12px;color:var(--muted);background:rgba(255,255,255,.03)}

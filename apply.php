@@ -1909,6 +1909,8 @@ async function submitForm() {
   } catch (err) {
     console.error(err);
     alert('Submission failed. Please try again.\n' + err.message);
+    setSubmitLoading(false);
+    return;
   }
   
   setSubmitLoading(false);

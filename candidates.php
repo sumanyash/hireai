@@ -495,7 +495,7 @@ async function submitAdd() {
         referred_by_name: document.getElementById('addReferralName').value.trim(),
       })
     });
-    const d = await r.json();
+    const d = await readApiJson(r);
     if (d.success) {
       closeAdd();
       showToast('✅ ' + (d.message || 'Candidate added!'), 'success');
@@ -504,7 +504,7 @@ async function submitAdd() {
       showToast('❌ ' + (d.error || 'Failed'), 'error');
     }
   } catch(e) {
-    showToast('Network error. Try again.', 'error');
+    showToast('❌ ' + (e.message || 'Network error. Try again.'), 'error');
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<i class="fa-solid fa-plus fa-sm"></i> Add Candidate';
@@ -537,7 +537,7 @@ async function submitBulk() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'bulk_import', campaign_id: parseInt(camp), rows, csv_text: csvText })
     });
-    const d = await r.json();
+    const d = await readApiJson(r);
     if (d.success) {
       closeAdd();
       showToast(`✅ Added ${d.added} | Dupes skipped: ${d.dupes} | Errors: ${d.errors}`, 'success');
@@ -546,11 +546,24 @@ async function submitBulk() {
       showToast('❌ ' + (d.error || 'Import failed'), 'error');
     }
   } catch(e) {
-    showToast('Network error', 'error');
+    showToast('❌ ' + (e.message || 'Network error'), 'error');
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<i class="fa-solid fa-file-import fa-sm"></i> Import All';
   }
+}
+
+async function readApiJson(response) {
+  const text = await response.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch (e) {
+    const clean = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    throw new Error(clean ? clean.slice(0, 180) : `Server returned HTTP ${response.status}`);
+  }
+  if (!response.ok && !data.error) data.error = `Server returned HTTP ${response.status}`;
+  return data;
 }
 
 // ── WHATSAPP INVITE ───────────────────────────────────────────

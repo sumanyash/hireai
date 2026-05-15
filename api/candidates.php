@@ -39,6 +39,31 @@ function candidate_money_value($value) {
     return is_numeric($cleaned) ? (float)$cleaned : null;
 }
 
+function candidate_experience_value($value) {
+    $cleaned = preg_replace('/[^\d.]/', '', str_replace(',', '', (string)$value));
+    if ($cleaned === '' || $cleaned === '.') return 0.0;
+    return is_numeric($cleaned) ? (float)$cleaned : 0.0;
+}
+
+function safe_candidate_audit($org_id, $user_id, $entity_type, $entity_id, $action, $details = []) {
+    try {
+        audit_log($org_id, $user_id, $entity_type, $entity_id, $action, $details);
+    } catch (Throwable $e) {
+        error_log('[candidate audit] ' . $e->getMessage());
+    }
+}
+
+function safe_candidate_reminder($candidate_id, $campaign_id) {
+    try {
+        db_insert(
+            "INSERT INTO reminder_jobs (candidate_id,campaign_id,channel,scheduled_at) VALUES (?,?,'whatsapp',DATE_ADD(NOW(), INTERVAL 12 HOUR))",
+            [$candidate_id, $campaign_id], 'ii'
+        );
+    } catch (Throwable $e) {
+        error_log('[candidate reminder] ' . $e->getMessage());
+    }
+}
+
 function candidate_duplicate_exists($campaign_id, $phone, $email) {
     $phone = normalize_phone($phone);
     $email = strtolower(trim((string)$email));
@@ -112,7 +137,7 @@ if ($action === 'add' && $method === 'POST') {
     $phone            = trim($input['phone'] ?? '');
     $email            = trim($input['email'] ?? '');
     $city             = trim($input['city'] ?? '');
-    $experience_years = trim($input['experience_years'] ?? '');
+    $experience_years = candidate_experience_value($input['experience_years'] ?? '');
     $current_ctc      = trim($input['current_ctc'] ?? '');
     $source           = trim($input['source'] ?? '');
     $referred_by_name = trim($input['referred_by_name'] ?? '');
@@ -137,19 +162,21 @@ if ($action === 'add' && $method === 'POST') {
     }
 
     $token = bin2hex(random_bytes(16));
-    $id = db_insert(
-        "INSERT INTO candidates (org_id, campaign_id, name, phone, email, city, experience_years, current_ctc, expected_ctc, source, referred_by_name, unique_token, link_expires_at, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR), 'pending', NOW())",
-        [$user['org_id'], $campaign_id, $name, $phone, $email, $city, $experience_years, $current_ctc, trim($input['expected_ctc'] ?? ''), $source, $referred_by_name, $token],
-        'iissssssssss'
-    );
+    try {
+        $id = db_insert(
+            "INSERT INTO candidates (org_id, campaign_id, name, phone, email, city, experience_years, current_ctc, expected_ctc, source, referred_by_name, unique_token, link_expires_at, status, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR), 'pending', NOW())",
+            [$user['org_id'], $campaign_id, $name, $phone, $email, $city, $experience_years, $current_ctc, trim($input['expected_ctc'] ?? ''), $source, $referred_by_name, $token],
+            'iissssdsssss'
+        );
+    } catch (Throwable $e) {
+        error_log('[candidate add] ' . $e->getMessage());
+        json_response(['error' => 'Failed to add candidate. Please check database columns and try again.'], 500);
+    }
 
     if (!$id) json_response(['error' => 'Failed to add candidate. Please try again.'], 500);
-    audit_log($user['org_id'], $user['user_id'] ?? null, 'candidate', $id, 'candidate_added', ['source' => $source, 'campaign_id' => $campaign_id, 'referred_by_name' => $referred_by_name]);
-    db_insert(
-        "INSERT INTO reminder_jobs (candidate_id,campaign_id,channel,scheduled_at) VALUES (?,?,'whatsapp',DATE_ADD(NOW(), INTERVAL 12 HOUR))",
-        [$id, $campaign_id], 'ii'
-    );
+    safe_candidate_audit($user['org_id'], $user['user_id'] ?? null, 'candidate', $id, 'candidate_added', ['source' => $source, 'campaign_id' => $campaign_id, 'referred_by_name' => $referred_by_name]);
+    safe_candidate_reminder($id, $campaign_id);
 
     json_response([
         'success'      => true,
@@ -189,22 +216,25 @@ if ($action === 'bulk_import' && $method === 'POST') {
         if (candidate_duplicate_exists($campaign_id, $phone, $email)) { $dupes++; continue; }
 
         $token = bin2hex(random_bytes(16));
-        $r = db_insert(
-            "INSERT INTO candidates (org_id, campaign_id, name, phone, email, city, experience_years, current_ctc, expected_ctc, source, referred_by_name, unique_token, link_expires_at, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR), 'pending', NOW())",
-            [$user['org_id'], $campaign_id, $name, $phone, $email, $row['city'], $row['experience_years'], $row['current_ctc'], $row['expected_ctc'], $row['source'], $row['referred_by_name'] ?? '', $token],
-            'iissssssssss'
-        );
+        try {
+            $r = db_insert(
+                "INSERT INTO candidates (org_id, campaign_id, name, phone, email, city, experience_years, current_ctc, expected_ctc, source, referred_by_name, unique_token, link_expires_at, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR), 'pending', NOW())",
+                [$user['org_id'], $campaign_id, $name, $phone, $email, $row['city'], candidate_experience_value($row['experience_years'] ?? ''), $row['current_ctc'], $row['expected_ctc'], $row['source'], $row['referred_by_name'] ?? '', $token],
+                'iissssdsssss'
+            );
+        } catch (Throwable $e) {
+            error_log('[candidate bulk_import] ' . $e->getMessage());
+            $errors++;
+            continue;
+        }
         if ($r) {
             $added++;
-            db_insert(
-                "INSERT INTO reminder_jobs (candidate_id,campaign_id,channel,scheduled_at) VALUES (?,?,'whatsapp',DATE_ADD(NOW(), INTERVAL 12 HOUR))",
-                [$r, $campaign_id], 'ii'
-            );
+            safe_candidate_reminder($r, $campaign_id);
         } else {
             $errors++;
         }
     }
-    audit_log($user['org_id'], $user['user_id'] ?? null, 'candidate', null, 'bulk_import', ['campaign_id' => $campaign_id, 'added' => $added, 'dupes' => $dupes, 'errors' => $errors]);
+    safe_candidate_audit($user['org_id'], $user['user_id'] ?? null, 'candidate', null, 'bulk_import', ['campaign_id' => $campaign_id, 'added' => $added, 'dupes' => $dupes, 'errors' => $errors]);
     json_response(['success' => true, 'added' => $added, 'dupes' => $dupes, 'errors' => $errors]);
 }
 
@@ -220,7 +250,7 @@ if ($action === 'update' && $method === 'POST') {
     $phone = trim($input['phone'] ?? '');
     $email = trim($input['email'] ?? '');
     $city = trim($input['city'] ?? '');
-    $experience_years = trim($input['experience_years'] ?? '');
+    $experience_years = candidate_experience_value($input['experience_years'] ?? '');
     $current_ctc = trim($input['current_ctc'] ?? '');
     $expected_ctc = trim($input['expected_ctc'] ?? '');
     $source = trim($input['source'] ?? '');
@@ -235,7 +265,7 @@ if ($action === 'update' && $method === 'POST') {
     db_execute(
         "UPDATE candidates SET campaign_id=?,name=?,phone=?,email=?,city=?,experience_years=?,current_ctc=?,expected_ctc=?,source=?,referred_by_name=?,updated_at=NOW() WHERE id=? AND org_id=?",
         [$campaign_id,$name,$phone,$email,$city,$experience_years,$current_ctc,$expected_ctc,$source,$referred_by_name,$candidate_id,$user['org_id']],
-        'isssssssssii'
+        'issssdssssii'
     );
     audit_log($user['org_id'], $user['user_id'] ?? null, 'candidate', $candidate_id, 'candidate_updated', ['campaign_id' => $campaign_id, 'referred_by_name' => $referred_by_name]);
     json_response(['success' => true, 'message' => 'Candidate updated']);

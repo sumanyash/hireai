@@ -53,6 +53,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         );
         header("Location: candidate_detail.php?id=$id&toast=score_updated"); exit;
     }
+    if (isset($_POST['save_manual_scores'])) {
+        $manual_scores = $_POST['manual_scores'] ?? [];
+        $manual_reason = trim((string)($_POST['manual_reason'] ?? 'Manual recruiter review'));
+        $score_rows = db_fetch_all("SELECT id,max_marks FROM scores WHERE candidate_id=?", [$id], 'i');
+        $known_scores = [];
+        foreach ($score_rows as $row) $known_scores[(int)$row['id']] = (int)$row['max_marks'];
+
+        foreach ($manual_scores as $score_id => $manual_score) {
+            $score_id = (int)$score_id;
+            if (!isset($known_scores[$score_id])) continue;
+            $max_marks = max(0, $known_scores[$score_id]);
+            $score_val = max(0, min((int)$manual_score, $max_marks));
+            db_execute(
+                "UPDATE scores SET ai_score=?, ai_reasoning=? WHERE id=? AND candidate_id=?",
+                [$score_val, 'Manual review: ' . $manual_reason, $score_id, $id], 'isii'
+            );
+        }
+
+        $totals = db_fetch_one(
+            "SELECT COALESCE(SUM(ai_score),0) total_score, COALESCE(SUM(max_marks),0) max_score FROM scores WHERE candidate_id=?",
+            [$id], 'i'
+        ) ?: ['total_score' => 0, 'max_score' => 0];
+        $total_score = (int)$totals['total_score'];
+        $max_score = max(1, (int)$totals['max_score']);
+        $pct_score = round($total_score / $max_score * 100);
+        $pf_new = $pct_score >= (int)($c['passing_score'] ?? 70) ? 'pass' : 'fail';
+        $summary = "Manual score review by {$user['name']}: {$manual_reason}";
+
+        if ($result) {
+            db_execute(
+                "UPDATE interview_results SET total_score=?, max_score=?, pass_fail=?, ai_summary=?, recruiter_override_score=NULL, recruiter_override_reason=NULL, overridden_by=?, updated_at=NOW() WHERE candidate_id=?",
+                [$total_score, $max_score, $pf_new, $summary, $user['user_id'], $id], 'iissii'
+            );
+        } else {
+            db_insert(
+                "INSERT INTO interview_results (candidate_id,campaign_id,total_score,max_score,pass_fail,ai_summary,overridden_by) VALUES (?,?,?,?,?,?,?)",
+                [$id, $c['campaign_id'], $total_score, $max_score, $pf_new, $summary, $user['user_id']], 'iiiissi'
+            );
+        }
+
+        $new_status = $pf_new === 'pass' ? 'shortlisted' : 'rejected';
+        db_execute("UPDATE candidates SET status=?, updated_at=NOW() WHERE id=?", [$new_status, $id], 'si');
+        header("Location: candidate_detail.php?id=$id&toast=manual_scores_saved"); exit;
+    }
 }
 
 $display_score = $result['recruiter_override_score'] ?? $result['total_score'] ?? null;
@@ -163,6 +207,7 @@ $toast         = $_GET['toast'] ?? '';
     'note_added'     => 'Note added successfully',
     'status_updated' => 'Status updated',
     'score_updated'  => 'Score override saved',
+    'manual_scores_saved' => 'Manual score review saved',
     default          => 'Changes saved'
   } ?>
 </div>
@@ -245,17 +290,31 @@ $toast         = $_GET['toast'] ?? '';
     <!-- Score Bars -->
     <?php if (!empty($scores)): ?>
     <div style="text-align:left;margin-top:8px">
+    <form method="POST">
+    <?= csrf_input() ?>
     <?php foreach ($scores as $s):
       $ps  = round($s['ai_score'] / max(1, $s['max_marks']) * 100);
       $sc2 = $ps >= 70 ? '#10B981' : ($ps >= 50 ? '#F59E0B' : '#EF4444'); ?>
     <div style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;margin-bottom:3px">
         <span style="color:var(--text2)"><?= htmlspecialchars($s['parameter_label'] ?? '') ?></span>
-        <span style="color:<?= $sc2 ?>"><?= $s['ai_score'] ?>/<?= $s['max_marks'] ?></span>
+        <span style="display:flex;align-items:center;gap:4px;color:<?= $sc2 ?>">
+          <input type="number" name="manual_scores[<?= (int)$s['id'] ?>]" value="<?= (int)$s['ai_score'] ?>" min="0" max="<?= (int)$s['max_marks'] ?>"
+            style="width:54px;padding:3px 5px;border:1px solid #CBD5E1;border-radius:7px;font-size:12px;font-weight:800;text-align:center;color:<?= $sc2 ?>">
+          /<?= (int)$s['max_marks'] ?>
+        </span>
       </div>
       <div class="sbar-wrap"><div class="sbar-fill" style="width:0;background:<?= $sc2 ?>" data-w="<?= $ps ?>"></div></div>
+      <?php if (!empty($s['ai_reasoning'])): ?>
+      <div style="font-size:10px;color:var(--gray);line-height:1.4;margin-top:3px"><?= htmlspecialchars($s['ai_reasoning']) ?></div>
+      <?php endif; ?>
     </div>
     <?php endforeach; ?>
+      <input type="text" name="manual_reason" class="form-control" placeholder="Manual review note..." style="font-size:12px;padding:7px 10px;margin-top:8px">
+      <button type="submit" name="save_manual_scores" class="btn-sm" style="margin-top:8px;width:100%;justify-content:center">
+        <i class="fa-solid fa-pen-to-square"></i> Save Manual Marks
+      </button>
+    </form>
     </div>
     <?php elseif ($breakdown): ?>
     <div style="text-align:left;margin-top:8px">

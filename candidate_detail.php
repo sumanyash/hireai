@@ -31,6 +31,20 @@ $answers   = db_fetch_all(
      WHERE ia.candidate_id=? ORDER BY q.order_no ASC, ia.id ASC",
     [$id], 'i'
 );
+function answer_has_gradable_response($answer) {
+    if (!$answer) return false;
+    $text = trim((string)($answer['text_answer'] ?? ''));
+    if ($text !== '' && !str_starts_with($text, '[Voice answer recorded but upload failed:')) return true;
+    return trim((string)($answer['audio_url'] ?? '')) !== '';
+}
+$answerByQuestion = [];
+foreach ($answers as $answerRow) {
+    $qid = (int)($answerRow['question_id'] ?? 0);
+    if (!$qid) continue;
+    if (!isset($answerByQuestion[$qid]) || answer_has_gradable_response($answerRow)) {
+        $answerByQuestion[$qid] = $answerRow;
+    }
+}
 $questions = db_fetch_all(
     "SELECT *, order_no AS question_number FROM questions WHERE campaign_id=? ORDER BY order_no ASC",
     [$c['campaign_id']], 'i'
@@ -44,6 +58,20 @@ foreach ($questions as $qRow) {
         $scoreByQuestion[(int)$qRow['id']] = $scoreByParameter[$param];
     }
 }
+$displayScores = $scores;
+foreach ($displayScores as &$displayScoreRow) {
+    foreach ($questions as $qRow) {
+        if ((string)($qRow['parameter'] ?? '') !== (string)($displayScoreRow['parameter'] ?? '')) continue;
+        if (!answer_has_gradable_response($answerByQuestion[(int)$qRow['id']] ?? null)) {
+            $displayScoreRow['ai_score'] = 0;
+            $displayScoreRow['ai_reasoning'] = 'No gradable response recorded.';
+        }
+        break;
+    }
+}
+unset($displayScoreRow);
+$displayTotalScore = array_sum(array_map(fn($row) => (int)($row['ai_score'] ?? 0), $displayScores));
+$displayMaxScore = array_sum(array_map(fn($row) => (int)($row['max_marks'] ?? 0), $displayScores));
 $campaigns = db_fetch_all("SELECT id,name,job_role FROM campaigns WHERE org_id=? ORDER BY name", [$user['org_id']], 'i');
 
 // Handle POST
@@ -123,7 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$display_score = $result['recruiter_override_score'] ?? $result['total_score'] ?? null;
+$display_score = $result['recruiter_override_score'] ?? (!empty($displayScores) ? $displayTotalScore : ($result['total_score'] ?? null));
 $pf            = $result['pass_fail'] ?? null;
 $scoreColor    = $pf === 'pass' ? '#10B981' : ($pf === 'fail' ? '#EF4444' : '#94A3B8');
 $scoreBg       = $pf === 'pass' ? '#ECFDF5' : ($pf === 'fail' ? '#FEF2F2' : '#F8FAFC');
@@ -315,7 +343,7 @@ $toast         = $_GET['toast'] ?? '';
   <!-- SCORE CARD -->
   <div class="card animate-in" style="text-align:center;padding:24px 20px">
     <?php if ($display_score !== null):
-      $maxScore = $result['max_score'] ?? 100; ?>
+      $maxScore = $displayMaxScore ?: ($result['max_score'] ?? 100); ?>
     <div class="score-circle" style="color:<?= $scoreColor ?>;background:<?= $scoreBg ?>">
       <div class="score-big" style="color:<?= $scoreColor ?>"><?= $display_score ?></div>
       <div class="score-sub" style="color:<?= $scoreColor ?>">/ <?= $maxScore ?></div>
@@ -336,9 +364,9 @@ $toast         = $_GET['toast'] ?? '';
     <?php endif; ?>
 
     <!-- Score Bars -->
-    <?php if (!empty($scores)): ?>
+    <?php if (!empty($displayScores)): ?>
     <div style="text-align:left;margin-top:8px">
-    <?php foreach ($scores as $s):
+    <?php foreach ($displayScores as $s):
       $ps  = round($s['ai_score'] / max(1, $s['max_marks']) * 100);
       $sc2 = $ps >= 70 ? '#10B981' : ($ps >= 50 ? '#F59E0B' : '#EF4444'); ?>
     <div style="margin-bottom:10px">
@@ -620,10 +648,13 @@ $toast         = $_GET['toast'] ?? '';
         $qText   = $a['question_text'] ?? 'Question ' . ($i + 1);
         $ansText = $a['text_answer'] ?? '';
         $hasAudio= !empty($a['audio_url']);
+        $isUploadFailureText = str_starts_with(trim((string)$ansText), '[Voice answer recorded but upload failed:');
+        $missingVoiceFile = !$hasAudio && ($a['answer_mode'] ?? '') === 'voice';
+        $hasGradable = answer_has_gradable_response($a);
         $tt      = (int)($a['time_taken'] ?? 0);
         $cp      = (int)($a['copy_count'] ?? 0);
         $qaScore = $scoreByQuestion[(int)($a['question_id'] ?? 0)] ?? $scoreByParameter[(string)($a['parameter'] ?? '')] ?? null;
-        $qaScoreVal = $qaScore ? (int)$qaScore['ai_score'] : 0;
+        $qaScoreVal = $hasGradable && $qaScore ? (int)$qaScore['ai_score'] : 0;
         $qaMax = $qaScore ? (int)$qaScore['max_marks'] : (int)($a['max_marks'] ?? 0);
       ?>
       <div class="qa-item">
@@ -637,11 +668,15 @@ $toast         = $_GET['toast'] ?? '';
             <span>/<?= $qaMax ?></span>
           </div>
         </div>
-        <?php if ($ansText): ?>
+        <?php if ($ansText && !$isUploadFailureText): ?>
         <div class="qa-a"><?= nl2br(htmlspecialchars($ansText)) ?></div>
         <?php elseif ($hasAudio): ?>
         <div class="qa-a" style="background:#F5F3FF;border-color:#DDD6FE;color:var(--purple)">
           <i class="fa-solid fa-microphone fa-xs"></i> Voice response recorded
+        </div>
+        <?php elseif ($missingVoiceFile): ?>
+        <div class="qa-a" style="background:#FFF7ED;border-color:#FED7AA;color:#C2410C">
+          <i class="fa-solid fa-triangle-exclamation fa-xs"></i> Voice mode was used, but no playable audio file was saved for this answer.
         </div>
         <?php else: ?>
         <div class="qa-a" style="color:var(--gray);font-style:italic">No response recorded</div>
@@ -657,6 +692,14 @@ $toast         = $_GET['toast'] ?? '';
             <source src="<?= htmlspecialchars($a['audio_url']) ?>">
             Your browser does not support audio.
           </audio>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:12px">
+            <a href="<?= htmlspecialchars($a['audio_url']) ?>" target="_blank" rel="noopener" style="color:var(--blue);font-weight:700;text-decoration:none">
+              <i class="fa-solid fa-arrow-up-right-from-square fa-xs"></i> Open voice note
+            </a>
+            <a href="<?= htmlspecialchars($a['audio_url']) ?>" download style="color:var(--purple);font-weight:700;text-decoration:none">
+              <i class="fa-solid fa-download fa-xs"></i> Download
+            </a>
+          </div>
         </div>
         <?php endif; ?>
 

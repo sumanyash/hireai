@@ -23,7 +23,10 @@ function clean_answer_text($answer){
   return trim((string)($answer['text_answer']??''));
 }
 function has_gradable_answer($answer){
-  return clean_answer_text($answer)!=='';
+  if(!$answer)return false;
+  $text=clean_answer_text($answer);
+  if($text!=='' && !str_starts_with($text,'[Voice answer recorded but upload failed:'))return true;
+  return trim((string)($answer['audio_url']??''))!=='';
 }
 function score_lookup_key($value){
   return strtolower(preg_replace('/[^a-z0-9]+/','_',trim((string)$value)));

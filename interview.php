@@ -834,7 +834,7 @@ function startRecording() {
   }
   const mt = pickSupportedMime(['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']);
   mediaRecorder = new MediaRecorder(aStream, mt ? { mimeType: mt } : undefined);
-  mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+  mediaRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) audioChunks.push(e.data); };
   mediaRecorder.onstop = () => {
     const blob = new Blob(audioChunks, { type: mt });
     const preview = document.getElementById('audio-preview');
@@ -862,11 +862,30 @@ function stopRecording() {
   document.getElementById('ripple2').style.display = 'none';
 }
 
+function stopRecordingAndWait() {
+  return new Promise(resolve => {
+    if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+      isRecording = false;
+      resolve();
+      return;
+    }
+    const previousOnStop = mediaRecorder.onstop;
+    mediaRecorder.onstop = ev => {
+      if (typeof previousOnStop === 'function') previousOnStop(ev);
+      isRecording = false;
+      resolve();
+    };
+    try { mediaRecorder.requestData(); } catch(e) {}
+    stopRecording();
+    setTimeout(resolve, 1200);
+  });
+}
+
 // ── NEXT QUESTION ────────────────────────────────────────────────────────────
 async function nextQuestion(allowBlank = false) {
   const q = QUESTIONS[currentQ];
   const textAnswerBeforeSave = getCurrentAnswerValue();
-  const hasVoiceAnswer = currentMode === 'voice' && audioChunks.length > 0;
+  const hasVoiceAnswer = currentMode === 'voice' && (audioChunks.length > 0 || isRecording);
   if (!allowBlank && String(q.is_required ?? '1') !== '0' && !textAnswerBeforeSave && !hasVoiceAnswer) {
     alert('Please answer this mandatory question before continuing.');
     return;
@@ -876,8 +895,8 @@ async function nextQuestion(allowBlank = false) {
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span> Saving…';
   clearInterval(timerInt);
-  if (isRecording) stopRecording();
-  await new Promise(r => setTimeout(r, 350));
+  if (isRecording) await stopRecordingAndWait();
+  else await new Promise(r => setTimeout(r, 150));
 
   const textAnswer = getCurrentAnswerValue();
   const answer = {

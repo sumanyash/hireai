@@ -35,6 +35,15 @@ $questions = db_fetch_all(
     "SELECT *, order_no AS question_number FROM questions WHERE campaign_id=? ORDER BY order_no ASC",
     [$c['campaign_id']], 'i'
 );
+$questionById = [];
+foreach ($questions as $qRow) $questionById[(int)$qRow['id']] = $qRow;
+$scoreByQuestion = [];
+foreach ($questions as $qRow) {
+    $param = (string)($qRow['parameter'] ?? '');
+    if ($param !== '' && isset($scoreByParameter[$param])) {
+        $scoreByQuestion[(int)$qRow['id']] = $scoreByParameter[$param];
+    }
+}
 $campaigns = db_fetch_all("SELECT id,name,job_role FROM campaigns WHERE org_id=? ORDER BY name", [$user['org_id']], 'i');
 
 // Handle POST
@@ -60,19 +69,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['save_manual_scores'])) {
         $manual_scores = $_POST['manual_scores'] ?? [];
         $manual_reason = trim((string)($_POST['manual_reason'] ?? 'Manual recruiter review'));
-        $score_rows = db_fetch_all("SELECT id,max_marks FROM scores WHERE candidate_id=?", [$id], 'i');
-        $known_scores = [];
-        foreach ($score_rows as $row) $known_scores[(int)$row['id']] = (int)$row['max_marks'];
+        $existing_scores = db_fetch_all("SELECT * FROM scores WHERE candidate_id=?", [$id], 'i');
+        $existing_by_parameter = [];
+        foreach ($existing_scores as $row) $existing_by_parameter[(string)($row['parameter'] ?? '')] = $row;
 
-        foreach ($manual_scores as $score_id => $manual_score) {
-            $score_id = (int)$score_id;
-            if (!isset($known_scores[$score_id])) continue;
-            $max_marks = max(0, $known_scores[$score_id]);
+        foreach ($manual_scores as $question_id => $manual_score) {
+            $question_id = (int)$question_id;
+            if (!isset($questionById[$question_id])) continue;
+            $question = $questionById[$question_id];
+            $parameter = (string)($question['parameter'] ?? '');
+            if ($parameter === '') continue;
+            $max_marks = max(0, (int)($question['max_marks'] ?? 0));
             $score_val = max(0, min((int)$manual_score, $max_marks));
-            db_execute(
-                "UPDATE scores SET ai_score=?, ai_reasoning=? WHERE id=? AND candidate_id=?",
-                [$score_val, 'Manual review: ' . $manual_reason, $score_id, $id], 'isii'
-            );
+            if (isset($existing_by_parameter[$parameter])) {
+                db_execute(
+                    "UPDATE scores SET ai_score=?, max_marks=?, ai_reasoning=? WHERE id=? AND candidate_id=?",
+                    [$score_val, $max_marks, 'Manual review: ' . $manual_reason, (int)$existing_by_parameter[$parameter]['id'], $id], 'iisii'
+                );
+            } else {
+                db_insert(
+                    "INSERT INTO scores (candidate_id,campaign_id,parameter,parameter_label,ai_score,max_marks,ai_reasoning) VALUES (?,?,?,?,?,?,?)",
+                    [$id, $c['campaign_id'], $parameter, (string)($question['parameter_label'] ?? ''), $score_val, $max_marks, 'Manual review: ' . $manual_reason],
+                    'iissiis'
+                );
+            }
         }
 
         $totals = db_fetch_one(
@@ -203,6 +223,11 @@ $toast         = $_GET['toast'] ?? '';
 .int-flag{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;margin-bottom:7px;border:1px solid}
 .int-clean{background:#ECFDF5;border-color:#A7F3D0}
 .int-warn{background:#FEF2F2;border-color:#FECACA}
+.int-medium{background:#FFFBEB;border-color:#FDE68A}
+.int-high{background:#FEF2F2;border-color:#FECACA}
+.int-critical{background:#FFF1F2;border-color:#FDA4AF}
+.flag-desc{font-size:11px;color:#64748B;line-height:1.35;margin-top:2px}
+.risk-pill{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;border-radius:999px;padding:3px 7px}
 
 /* CONFIRM MODAL */
 .confirm-overlay{display:none;position:fixed;inset:0;background:rgba(8,15,30,.75);backdrop-filter:blur(10px);z-index:3000;align-items:center;justify-content:center;padding:20px}
@@ -414,16 +439,34 @@ $toast         = $_GET['toast'] ?? '';
 
   <!-- INTEGRITY -->
   <?php
-  $flags = [];
-  if (!empty($session['tab_switch_count']) && (int)$session['tab_switch_count'] > 0)
-    $flags[] = ['Tab Switches', (int)$session['tab_switch_count'], 'fa-window-restore', '#F59E0B'];
-  if (!empty($session['copy_count']) && (int)$session['copy_count'] > 0)
-    $flags[] = ['Copy Attempts', (int)$session['copy_count'], 'fa-copy', '#EF4444'];
-  if (!empty($session['face_not_detected_count']) && (int)$session['face_not_detected_count'] > 0)
-    $flags[] = ['Face Not Detected', (int)$session['face_not_detected_count'], 'fa-face-frown', '#DC2626'];
-  if (is_array($cheat))
-    foreach ($cheat as $k => $v) if ($v > 0)
-      $flags[] = [ucwords(str_replace('_', ' ', $k)), $v, 'fa-triangle-exclamation', '#F59E0B'];
+  $flagMap = [];
+  $addFlag = function($key, $label, $count, $severity, $icon, $desc) use (&$flagMap) {
+    $count = (int)$count;
+    if ($count <= 0) return;
+    if (!isset($flagMap[$key])) $flagMap[$key] = ['label'=>$label,'count'=>0,'severity'=>$severity,'icon'=>$icon,'desc'=>$desc];
+    $flagMap[$key]['count'] += $count;
+  };
+  $addFlag('tab_switches', 'Tab / Window Switches', (int)($session['tab_switch_count'] ?? 0) + (int)($cheat['tab_switches'] ?? 0), 'medium', 'fa-window-restore', 'Candidate left or changed the interview window.');
+  $addFlag('copy_paste', 'Copy / Paste Activity', (int)($session['copy_count'] ?? 0) + (int)($cheat['copy_paste'] ?? 0), 'high', 'fa-copy', 'Paste or copy shortcut activity detected during answers.');
+  $addFlag('face_not_visible', 'Face / Lighting Issue', (int)($session['face_not_detected_count'] ?? 0) + (int)($cheat['face_away'] ?? 0), 'medium', 'fa-face-frown', 'Camera visibility or lighting was not reliable.');
+  $addFlag('total_flags', 'Total Integrity Events', (int)($cheat['total_flags'] ?? 0), 'info', 'fa-triangle-exclamation', 'Total raw monitoring events recorded.');
+  foreach ($answers as $ansFlagRow) {
+    $rowFlags = json_decode((string)($ansFlagRow['cheat_flags'] ?? ''), true);
+    if (!is_array($rowFlags)) continue;
+    foreach ($rowFlags as $event) {
+      $msg = strtolower((string)($event['msg'] ?? ''));
+      if (str_contains($msg, 'paste')) $addFlag('paste_events', 'Paste Events', 1, 'high', 'fa-paste', 'Candidate pasted content into an answer field.');
+      elseif (str_contains($msg, 'tab') || str_contains($msg, 'window')) $addFlag('tab_events', 'Navigation Events', 1, 'medium', 'fa-window-restore', 'Candidate navigated away from the interview window.');
+      elseif (str_contains($msg, 'light') || str_contains($msg, 'face')) $addFlag('face_events', 'Camera Visibility Events', 1, 'medium', 'fa-video-slash', 'Camera/face visibility warning during test.');
+    }
+  }
+  $flags = array_values($flagMap);
+  $severityStyle = [
+    'info' => ['#64748B', '#F8FAFC', '#E2E8F0'],
+    'medium' => ['#B45309', '#FFFBEB', '#FDE68A'],
+    'high' => ['#DC2626', '#FEF2F2', '#FECACA'],
+    'critical' => ['#BE123C', '#FFF1F2', '#FDA4AF'],
+  ];
   ?>
   <div class="card animate-in">
     <div class="card-header"><h3><i class="fa-solid fa-shield-halved" style="color:var(--orange)"></i> Integrity</h3></div>
@@ -435,11 +478,17 @@ $toast         = $_GET['toast'] ?? '';
         <div style="font-size:11px;color:#047857">No flags detected</div>
       </div>
     </div>
-    <?php else: foreach ($flags as [$lbl, $cnt, $ico, $clr]): ?>
-    <div class="int-flag int-warn">
-      <i class="fa-solid <?= $ico ?>" style="color:<?= $clr ?>;font-size:16px;width:18px;text-align:center"></i>
-      <div style="flex:1"><div style="font-size:13px;font-weight:700;color:#991B1B"><?= htmlspecialchars($lbl) ?></div></div>
-      <div style="font-size:16px;font-weight:900;color:<?= $clr ?>"><?= $cnt ?>×</div>
+    <?php else: foreach ($flags as $flag):
+      [$clr, $bg, $bd] = $severityStyle[$flag['severity']] ?? $severityStyle['info'];
+    ?>
+    <div class="int-flag" style="background:<?= $bg ?>;border-color:<?= $bd ?>">
+      <i class="fa-solid <?= htmlspecialchars($flag['icon']) ?>" style="color:<?= $clr ?>;font-size:16px;width:18px;text-align:center"></i>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:800;color:<?= $clr ?>"><?= htmlspecialchars($flag['label']) ?></div>
+        <div class="flag-desc"><?= htmlspecialchars($flag['desc']) ?></div>
+      </div>
+      <span class="risk-pill" style="background:#fff;color:<?= $clr ?>;border:1px solid <?= $bd ?>"><?= htmlspecialchars($flag['severity']) ?></span>
+      <div style="font-size:16px;font-weight:900;color:<?= $clr ?>"><?= (int)$flag['count'] ?>×</div>
     </div>
     <?php endforeach; endif; ?>
   </div>
@@ -573,7 +622,7 @@ $toast         = $_GET['toast'] ?? '';
         $hasAudio= !empty($a['audio_url']);
         $tt      = (int)($a['time_taken'] ?? 0);
         $cp      = (int)($a['copy_count'] ?? 0);
-        $qaScore = $scoreByParameter[(string)($a['parameter'] ?? '')] ?? null;
+        $qaScore = $scoreByQuestion[(int)($a['question_id'] ?? 0)] ?? $scoreByParameter[(string)($a['parameter'] ?? '')] ?? null;
         $qaScoreVal = $qaScore ? (int)$qaScore['ai_score'] : 0;
         $qaMax = $qaScore ? (int)$qaScore['max_marks'] : (int)($a['max_marks'] ?? 0);
       ?>
@@ -583,12 +632,10 @@ $toast         = $_GET['toast'] ?? '';
             <div class="q-num"><?= $a['question_number'] ?? ($i + 1) ?></div>
             <?= htmlspecialchars($qText) ?>
           </div>
-          <?php if ($qaScore): ?>
           <div class="qa-score-box">
-            <input type="number" name="manual_scores[<?= (int)$qaScore['id'] ?>]" value="<?= $qaScoreVal ?>" min="0" max="<?= $qaMax ?>">
+            <input type="number" name="manual_scores[<?= (int)($a['question_id'] ?? 0) ?>]" value="<?= $qaScoreVal ?>" min="0" max="<?= $qaMax ?>">
             <span>/<?= $qaMax ?></span>
           </div>
-          <?php endif; ?>
         </div>
         <?php if ($ansText): ?>
         <div class="qa-a"><?= nl2br(htmlspecialchars($ansText)) ?></div>

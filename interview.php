@@ -541,6 +541,14 @@ let isRecording = false, sessionId = null;
 let answers = [], currentMode = 'voice';
 let copyCount = 0, tabSwitchCount = 0, cheatLog = [];
 
+function pickSupportedMime(candidates) {
+  if (!window.MediaRecorder) return '';
+  for (const mime of candidates) {
+    if (MediaRecorder.isTypeSupported(mime)) return mime;
+  }
+  return '';
+}
+
 // ── PERMISSIONS ─────────────────────────────────────────────────────────────
 async function requestPermissions() {
   const btn = document.getElementById('allow-btn');
@@ -555,15 +563,24 @@ async function requestPermissions() {
     return;
   }
   try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+      throw new Error('This browser does not support secure camera/microphone recording. Please use latest Chrome, Edge, or Safari over HTTPS.');
+    }
     mediaStream = await navigator.mediaDevices.getUserMedia({
       video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
       audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
     });
+    const hasCamera = mediaStream.getVideoTracks().some(t => t.readyState === 'live');
+    const hasMic = mediaStream.getAudioTracks().some(t => t.readyState === 'live');
+    if (!hasCamera || !hasMic) throw new Error('Camera and microphone both are required to start the test.');
     document.getElementById('video-el').srcObject = mediaStream;
     document.getElementById('pc-camera').className = 'perm-check ok';
     document.getElementById('pc-mic').className    = 'perm-check ok';
     document.getElementById('rec-badge').style.display = 'flex';
-    startVideoRecording();
+    if (!startVideoRecording()) {
+      mediaStream.getTracks().forEach(t => t.stop());
+      throw new Error('Video recording could not start. Please close other camera apps and try again in Chrome/Edge.');
+    }
     await createSession();
     setTimeout(() => {
       document.getElementById('perm-screen').style.display = 'none';
@@ -594,15 +611,17 @@ async function createSession() {
 function startVideoRecording() {
   try {
     videoChunks = [];
-    const mt = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
-    videoRecorder = new MediaRecorder(mediaStream, {
-      mimeType: mt,
+    const mt = pickSupportedMime(['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4']);
+    const opts = {
       videoBitsPerSecond: 250000,
       audioBitsPerSecond: 64000
-    });
+    };
+    if (mt) opts.mimeType = mt;
+    videoRecorder = new MediaRecorder(mediaStream, opts);
     videoRecorder.ondataavailable = e => { if (e.data.size > 0) videoChunks.push(e.data); };
     videoRecorder.start(5000);
-  } catch(e) { console.warn('Video recording unavailable:', e); }
+    return videoRecorder.state === 'recording';
+  } catch(e) { console.warn('Video recording unavailable:', e); return false; }
 }
 
 // ── QUESTION LOADING ────────────────────────────────────────────────────────
@@ -809,8 +828,12 @@ function startRecording() {
   if (!mediaStream) return;
   audioChunks = [];
   const aStream = new MediaStream(mediaStream.getAudioTracks());
-  const mt = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
-  mediaRecorder = new MediaRecorder(aStream, { mimeType: mt });
+  if (!aStream.getAudioTracks().length) {
+    alert('Microphone track is not available. Please allow microphone permission and restart the test.');
+    return;
+  }
+  const mt = pickSupportedMime(['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']);
+  mediaRecorder = new MediaRecorder(aStream, mt ? { mimeType: mt } : undefined);
   mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
   mediaRecorder.onstop = () => {
     const blob = new Blob(audioChunks, { type: mt });
@@ -873,7 +896,7 @@ async function nextQuestion(allowBlank = false) {
 
   // Upload audio if recorded
   if (audioChunks.length > 0) {
-    const mt   = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+    const mt   = audioChunks[0].type || pickSupportedMime(['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']) || 'audio/webm';
     const blob = new Blob(audioChunks, { type: mt });
     const fd   = new FormData();
     fd.append('audio', blob, 'q' + (currentQ + 1) + '_' + TOKEN + '.webm');
@@ -883,7 +906,11 @@ async function nextQuestion(allowBlank = false) {
       const r = await fetch('api/upload_audio.php', { method: 'POST', body: fd });
       const d = await r.json();
       answer.audio_url = d.url || '';
-    } catch(e) {}
+      if (!answer.audio_url) answer.upload_error = d.error || 'Audio upload failed';
+    } catch(e) { answer.upload_error = e.message || 'Audio upload failed'; }
+  }
+  if (answer.has_voice && !answer.audio_url && !answer.text_answer) {
+    answer.text_answer = '[Voice answer recorded but upload failed: ' + (answer.upload_error || 'unknown error') + ']';
   }
 
   answers.push(answer);
@@ -909,10 +936,15 @@ async function finishInterview() {
   document.getElementById('completion-screen').style.display = 'flex';
   document.getElementById('rec-badge').style.display = 'none';
 
+  let videoUploadPromise = Promise.resolve();
   if (videoRecorder && videoRecorder.state !== 'inactive') {
+    videoUploadPromise = new Promise(resolve => {
+      videoRecorder.onstop = async () => { await uploadVideo(); resolve(); };
+      setTimeout(resolve, 8000);
+    });
     videoRecorder.stop();
-    videoRecorder.onstop = async () => { await uploadVideo(); };
   }
+  await videoUploadPromise;
   if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
   document.getElementById('share-wa').href = 'https://wa.me/?text=' + encodeURIComponent(SHARE_TEXT);
   document.getElementById('share-mail').href = 'mailto:?subject=' + encodeURIComponent('HireAI campaign referral') + '&body=' + encodeURIComponent(SHARE_TEXT);

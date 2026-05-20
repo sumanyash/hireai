@@ -48,29 +48,30 @@ foreach($questions as $idx=>$q){
   if(!empty($q['ideal_answer_hint']))$qa.="Scoring hints: {$q['ideal_answer_hint']}\n";
   $qa.="\n";
 }
-$params='';foreach($questions as $q)$params.="\n- key={$q['parameter']} | label={$q['parameter_label']} | question_id={$q['id']} | max={$q['max_marks']}";
-$prompt="Score this interview for role: {$candidate['job_role']}.\n\nANSWERS:\n$qa\nPARAMETERS:$params\n\nImportant scoring rules:\n1. Return exactly one score object for every provided parameter key.\n2. The score object's parameter value must exactly match the provided parameter key, not the label.\n3. Questions marked [No gradable response recorded] must receive 0 marks. Do not infer answers for blank responses.\n4. Score only from the candidate answer and scoring hints.\n\nReturn ONLY valid JSON:\n{\"scores\":[{\"question_id\":123,\"parameter\":\"exact_parameter_key\",\"parameter_label\":\"Label\",\"score\":N,\"max_marks\":N,\"reasoning\":\"brief\"}],\"summary\":\"2-3 sentences\"}";
+$params='';foreach($questions as $q)$params.="\n- question_id={$q['id']} | key={$q['parameter']} | label={$q['parameter_label']} | max={$q['max_marks']}";
+$prompt="Score this interview for role: {$candidate['job_role']}.\n\nANSWERS:\n$qa\nPARAMETERS:$params\n\nCRITICAL SCORING RULES:\n1. Return EXACTLY one score object per question_id listed above. Total score objects must equal total questions.\n2. Use the exact question_id from the list — this is the primary identifier, not the parameter key.\n3. Multiple questions may share the same parameter key — score each question INDEPENDENTLY based on its own answer.\n4. The score object's parameter value must exactly match the provided key for that question_id.\n5. Questions marked [No gradable response recorded] must receive 0 marks.\n6. Each reasoning must be specific to THAT question's answer, not a generic response.\n7. Score only from the candidate answer and scoring hints.\n\nReturn ONLY valid JSON, no markdown:\n{\"scores\":[{\"question_id\":123,\"parameter\":\"exact_key\",\"parameter_label\":\"Label\",\"score\":N,\"max_marks\":N,\"reasoning\":\"specific to this answer\"}],\"summary\":\"2-3 sentences\"}";
 $result=null;
 $scoring_available=false;
-$okey=defined('OPENAI_API_KEY')?OPENAI_API_KEY:(defined('OPENAI_KEY')?OPENAI_KEY:'');
-if($okey){
-  $ch=curl_init('https://api.openai.com/v1/chat/completions');
-  curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode(['model'=>'gpt-4o-mini','max_tokens'=>1800,'temperature'=>0.1,'messages'=>[['role'=>'user','content'=>$prompt]]]),CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.$okey],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>60,CURLOPT_SSL_VERIFYPEER=>false]);
+$groq_key=defined('GROQ_API_KEY')?GROQ_API_KEY:'';
+if($groq_key){
+  log_s("Using Groq (llama-3.3-70b) for scoring");
+  $ch=curl_init('https://api.groq.com/openai/v1/chat/completions');
+  curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode(['model'=>'llama-3.3-70b-versatile','max_tokens'=>1800,'temperature'=>0.1,'messages'=>[['role'=>'system','content'=>'You are an expert HR interviewer and scoring AI. Always respond with valid JSON only, no markdown, no extra text.'],['role'=>'user','content'=>$prompt]]]),CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.$groq_key],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>60,CURLOPT_SSL_VERIFYPEER=>false]);
   $resp=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
   if($code===200){
     $data=json_decode($resp,true);$content=preg_replace('/```json|```/','',$data['choices'][0]['message']['content']??'');
     $result=json_decode(trim($content),true);
     if(is_array($result)&&isset($result['scores'])&&is_array($result['scores'])){
       $scoring_available=true;
-      log_s("OpenAI done. Scores: ".count($result['scores']));
+      log_s("Groq done. Scores: ".count($result['scores']));
     }else{
-      log_s("OpenAI returned invalid JSON: ".substr((string)$content,0,300));
+      log_s("Groq returned invalid JSON: ".substr((string)$content,0,300));
       $result=null;
     }
   }
-  else log_s("OpenAI error $code: ".substr((string)$resp,0,300));
+  else log_s("Groq error $code: ".substr((string)$resp,0,300));
 }else{
-  log_s("OpenAI key missing");
+  log_s("Groq key missing — check GROQ_API_KEY in .env");
 }
 if(!$result){
   log_s("Scoring unavailable; marking manual review");
@@ -84,8 +85,12 @@ if(!$result){
   $result=['scores'=>$scores,'total_score'=>$total,'max_total'=>$max,'pass_fail'=>'pending','summary'=>'AI scoring unavailable — manual review required.'];
 }
 $result_scores=[];
+// Build lookup by question_id (primary) and parameter (fallback)
 $score_lookup=[];
+$score_lookup_by_qid=[];
 foreach(($result['scores']??[]) as $s){
+  $qid=(int)($s['question_id']??0);
+  if($qid>0)$score_lookup_by_qid[$qid]=$s;
   add_score_lookup($score_lookup,$s['parameter']??'',$s);
   add_score_lookup($score_lookup,$s['parameter_label']??'',$s);
   add_score_lookup($score_lookup,$s['label']??'',$s);
@@ -101,7 +106,8 @@ foreach($questions as $q){
     if($has_answer)$required_answered_count++;
   }
   if($has_answer)$answered_count++;
-  $raw=$score_lookup[score_lookup_key($parameter)]??$score_lookup[score_lookup_key($q['parameter_label'])]??$score_lookup[score_lookup_key($qid)]??[];
+  // Prefer question_id match (handles duplicate parameters correctly)
+  $raw=$score_lookup_by_qid[$qid]??$score_lookup[score_lookup_key($parameter)]??$score_lookup[score_lookup_key($q['parameter_label'])]??$score_lookup[score_lookup_key($qid)]??[];
   $score=(int)($raw['score']??0);
   $reasoning=$raw['reasoning']??'';
   if($has_answer&&$scoring_available&&!$raw){
@@ -131,9 +137,12 @@ if(!$required_answered){
   $summary=trim($summary."\nIncomplete interview: $required_answered_count of $required_count required questions have gradable responses.");
 }
 foreach($result_scores as $s){
-  $ex=db_fetch_one("SELECT id FROM scores WHERE candidate_id=? AND parameter=?",[$candidate_id,$s['parameter']],'is');
-  if($ex)db_execute("UPDATE scores SET ai_score=?,max_marks=?,ai_reasoning=? WHERE id=?",[(int)$s['score'],(int)$s['max_marks'],$s['reasoning']??'',$ex['id']],'iisi');
-  else db_execute("INSERT INTO scores (candidate_id,campaign_id,parameter,parameter_label,ai_score,max_marks,ai_reasoning) VALUES (?,?,?,?,?,?,?)",[$candidate_id,$campaign_id,$s['parameter'],$s['parameter_label'],(int)$s['score'],(int)$s['max_marks'],$s['reasoning']??''],'iissiis');
+  $qid_score=(int)($s['question_id']??0);
+  $ex=$qid_score>0
+    ?db_fetch_one("SELECT id FROM scores WHERE candidate_id=? AND question_id=?",[$candidate_id,$qid_score],'ii')
+    :db_fetch_one("SELECT id FROM scores WHERE candidate_id=? AND parameter=? AND (question_id IS NULL OR question_id=0)",[$candidate_id,$s['parameter']],'is');
+  if($ex)db_execute("UPDATE scores SET ai_score=?,max_marks=?,ai_reasoning=?,question_id=? WHERE id=?",[(int)$s['score'],(int)$s['max_marks'],$s['reasoning']??'',$qid_score,$ex['id']],'iisii');
+  else db_execute("INSERT INTO scores (candidate_id,campaign_id,parameter,parameter_label,ai_score,max_marks,ai_reasoning,question_id) VALUES (?,?,?,?,?,?,?,?)",[$candidate_id,$campaign_id,$s['parameter'],$s['parameter_label'],(int)$s['score'],(int)$s['max_marks'],$s['reasoning']??'',$qid_score],'iissiiis');
 }
 $ex2=db_fetch_one("SELECT id FROM interview_results WHERE candidate_id=?",[$candidate_id],'i');
 if($ex2)db_execute("UPDATE interview_results SET total_score=?,max_score=?,pass_fail=?,ai_summary=?,updated_at=NOW() WHERE candidate_id=?",[$total_score,$max_total,$pf,$summary,$candidate_id],'iissi');

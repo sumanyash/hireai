@@ -52,10 +52,20 @@ $questions = db_fetch_all(
 $questionById = [];
 foreach ($questions as $qRow) $questionById[(int)$qRow['id']] = $qRow;
 $scoreByQuestion = [];
+$scoreByQid = [];
+foreach ($scores as $sRow) {
+    $sqid = (int)($sRow['question_id'] ?? 0);
+    if ($sqid > 0) $scoreByQid[$sqid] = $sRow;
+}
 foreach ($questions as $qRow) {
-    $param = (string)($qRow['parameter'] ?? '');
-    if ($param !== '' && isset($scoreByParameter[$param])) {
-        $scoreByQuestion[(int)$qRow['id']] = $scoreByParameter[$param];
+    $qid = (int)$qRow['id'];
+    if (isset($scoreByQid[$qid])) {
+        $scoreByQuestion[$qid] = $scoreByQid[$qid];
+    } else {
+        $param = (string)($qRow['parameter'] ?? '');
+        if ($param !== '' && isset($scoreByParameter[$param])) {
+            $scoreByQuestion[$qid] = $scoreByParameter[$param];
+        }
     }
 }
 $displayScores = $scores;
@@ -654,7 +664,7 @@ $toast         = $_GET['toast'] ?? '';
         $tt      = (int)($a['time_taken'] ?? 0);
         $cp      = (int)($a['copy_count'] ?? 0);
         $qaScore = $scoreByQuestion[(int)($a['question_id'] ?? 0)] ?? $scoreByParameter[(string)($a['parameter'] ?? '')] ?? null;
-        $qaScoreVal = $hasGradable && $qaScore ? (int)$qaScore['ai_score'] : 0;
+        $qaScoreVal = $qaScore ? (int)$qaScore['ai_score'] : 0;
         $qaMax = $qaScore ? (int)$qaScore['max_marks'] : (int)($a['max_marks'] ?? 0);
       ?>
       <div class="qa-item">

@@ -23,6 +23,14 @@ function field_key_from_label($label) {
     return $key ?: 'custom_field';
 }
 
+function question_label_from_text($question_text, $fallback = 'Interview Question') {
+    $label = trim(preg_replace('/\s+/', ' ', strip_tags((string)$question_text)));
+    $label = preg_replace('/\s*(choices?|options?)\s*:\s*.+$/i', '', $label);
+    $label = trim($label, " \t\n\r\0\x0B?.");
+    if (strlen($label) > 70) $label = substr($label, 0, 67) . '...';
+    return $label !== '' ? $label : $fallback;
+}
+
 function question_topic_presets($job_role = '') {
     $role = strtolower((string)$job_role);
     $base = [
@@ -238,12 +246,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $branch_rules_json = normalize_json_text($_POST['branch_rules_json'] ?? '');
         $is_required = isset($_POST['is_required']) ? 1 : 0;
-        $parameter_label = trim($_POST['parameter_label'] ?? '');
-        $parameter = trim($_POST['parameter'] ?? '');
-        if ($parameter === '' || $parameter === 'custom') $parameter = field_key_from_label($parameter_label);
+        $question_text = trim($_POST['question_text'] ?? '');
+        $parameter_label = question_label_from_text($question_text, 'Question ' . (int)($_POST['order_no'] ?? 0));
+        $parameter = field_key_from_label($parameter_label);
         db_insert(
             "INSERT INTO questions (campaign_id,parameter,parameter_label,weight,max_marks,question_text,ideal_answer_hint,question_type,options_json,branch_rules_json,is_required,order_no) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            [$campaign_id,$parameter,$parameter_label,(int)$_POST['weight'],(int)$_POST['max_marks'],$_POST['question_text'],$_POST['ideal_answer_hint'],$question_type,$options_json,$branch_rules_json,$is_required,(int)$_POST['order_no']],
+            [$campaign_id,$parameter,$parameter_label,(int)$_POST['weight'],(int)$_POST['max_marks'],$question_text,$_POST['ideal_answer_hint'],$question_type,$options_json,$branch_rules_json,$is_required,(int)$_POST['order_no']],
             'issiisssssii'
         );
         audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'question_added', ['type' => $question_type]);
@@ -258,14 +266,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $branch_rules_json = normalize_json_text($_POST['branch_rules_json'] ?? '');
         $is_required = isset($_POST['is_required']) ? 1 : 0;
-        $parameter_label = trim($_POST['parameter_label'] ?? '');
-        $parameter = trim($_POST['parameter'] ?? '');
-        if ($parameter === '' || $parameter === 'custom') $parameter = field_key_from_label($parameter_label);
+        $question_text = trim($_POST['question_text'] ?? '');
+        $parameter_label = question_label_from_text($question_text, 'Question ' . (int)($_POST['order_no'] ?? 0));
+        $parameter = field_key_from_label($parameter_label);
         $campaign_exists = db_fetch_one("SELECT id FROM campaigns WHERE id=? AND org_id=?", [$campaign_id,$user['org_id']], 'ii');
         if ($campaign_exists && $qid) {
             db_execute(
                 "UPDATE questions SET parameter=?,parameter_label=?,weight=?,max_marks=?,question_text=?,ideal_answer_hint=?,question_type=?,options_json=?,branch_rules_json=?,is_required=?,order_no=? WHERE id=? AND campaign_id=?",
-                [$parameter,$parameter_label,(int)$_POST['weight'],(int)$_POST['max_marks'],$_POST['question_text'],$_POST['ideal_answer_hint'],$question_type,$options_json,$branch_rules_json,$is_required,(int)$_POST['order_no'],$qid,$campaign_id],
+                [$parameter,$parameter_label,(int)$_POST['weight'],(int)$_POST['max_marks'],$question_text,$_POST['ideal_answer_hint'],$question_type,$options_json,$branch_rules_json,$is_required,(int)$_POST['order_no'],$qid,$campaign_id],
                 'ssiisssssiiii'
             );
             audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'question_updated', ['question_id' => $qid, 'type' => $question_type]);
@@ -821,12 +829,11 @@ if ($editing_question && !empty($editing_question['options_json'])) {
       </span>
     </div>
     <table class="table">
-      <thead><tr><th>#</th><th>Question Label</th><th>Type</th><th>Weight</th><th>Max Marks</th><th>Question</th><th>Logic</th><th></th></tr></thead>
+      <thead><tr><th>#</th><th>Type</th><th>Weight</th><th>Max Marks</th><th>Question</th><th>Logic</th><th></th></tr></thead>
       <tbody>
         <?php foreach ($questions as $q): ?>
         <tr>
           <td><?= $q['order_no'] ?></td>
-          <td><strong><?= htmlspecialchars($q['parameter_label']) ?></strong></td>
           <td><span class="badge badge-draft"><?= htmlspecialchars(str_replace('_', ' ', $q['question_type'] ?? 'textarea')) ?></span></td>
           <td><strong><?= $q['weight'] ?>%</strong></td>
           <td><?= $q['max_marks'] ?></td>
@@ -857,14 +864,6 @@ if ($editing_question && !empty($editing_question['options_json'])) {
     <form method="POST" action="campaigns.php?action=<?= $editing_question ? 'edit_question' : 'add_question' ?>&id=<?= $campaign_id ?>" onsubmit="return validateQuestionForm(this)">
       <?= csrf_input() ?>
       <?php if ($editing_question): ?><input type="hidden" name="question_id" value="<?= (int)$editing_question['id'] ?>"><?php endif; ?>
-      <input type="hidden" name="parameter" value="<?= htmlspecialchars($editing_question['parameter'] ?? 'custom') ?>">
-      <div style="display:grid;grid-template-columns:1fr;gap:16px">
-        <div class="form-group">
-          <label class="form-label">Question Label *</label>
-          <input type="text" name="parameter_label" class="form-control" placeholder="Linux Command Knowledge" value="<?= htmlspecialchars($editing_question['parameter_label'] ?? '') ?>" required>
-          <small class="helper-text">Used only in reports. AI scoring is based on the actual question and candidate answer.</small>
-        </div>
-      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="form-group">
           <label class="form-label">Answer Type</label>
@@ -1222,11 +1221,6 @@ function confirmBulkFieldDelete() {
   }
   return confirm('Delete ' + selected.length + ' selected apply form field(s)?');
 }
-function setParameterLabel(select) {
-  const label = select?.options?.[select.selectedIndex]?.dataset?.label || '';
-  const input = document.querySelector('input[name="parameter_label"]');
-  if (input && label) input.value = label;
-}
 function questionTypeNeedsChoices(type) {
   return ['dropdown', 'multi_select', 'rating'].includes(type);
 }
@@ -1325,8 +1319,6 @@ function fillOptionSuggestion() {
   options.select();
 }
 document.addEventListener('DOMContentLoaded', () => {
-  const parameter = document.querySelector('select[name="parameter"]');
-  if (parameter) setParameterLabel(parameter);
   syncQuestionTypeUI();
 });
 </script>

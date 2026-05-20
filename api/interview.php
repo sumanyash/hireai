@@ -103,6 +103,7 @@ if($method==='POST'&&($action==='webhook'||$action==='')){
     }
     if(!$session&&!empty($body['session_id']))$session=db_fetch_one("SELECT * FROM interview_sessions WHERE id=?",[(int)$body['session_id']],'i');
     if($session){
+      if($rec==='')$rec=$session['recording_url']??'';
       db_execute("UPDATE interview_sessions SET full_transcript=?,recording_url=?,duration_seconds=?,completed_at=NOW(),status='completed',el_conversation_id=? WHERE id=?",
         [$tr,$rec,$dur,$conv_id,$session['id']],'ssisi');
       db_execute("UPDATE candidates SET status='interview_completed' WHERE id=?",[$session['candidate_id']],'i');

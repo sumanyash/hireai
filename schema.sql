@@ -153,6 +153,7 @@ CREATE TABLE IF NOT EXISTS interview_sessions (
 CREATE TABLE IF NOT EXISTS scores (
     id INT AUTO_INCREMENT PRIMARY KEY,
     candidate_id INT NOT NULL,
+    question_id INT DEFAULT 0,
     campaign_id INT NOT NULL,
     parameter VARCHAR(100),
     parameter_label VARCHAR(200),
@@ -191,6 +192,8 @@ CREATE TABLE IF NOT EXISTS interview_answers (
     cheat_flags JSON,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE scores ADD COLUMN IF NOT EXISTS question_id INT DEFAULT 0 AFTER candidate_id;
 
 -- Add cheat_summary to interview_sessions if not exists
 ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS cheat_summary JSON;

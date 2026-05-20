@@ -124,7 +124,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $manual_reason = trim((string)($_POST['manual_reason'] ?? 'Manual recruiter review'));
         $existing_scores = db_fetch_all("SELECT * FROM scores WHERE candidate_id=?", [$id], 'i');
         $existing_by_parameter = [];
-        foreach ($existing_scores as $row) $existing_by_parameter[(string)($row['parameter'] ?? '')] = $row;
+        $existing_by_qid = [];
+        foreach ($existing_scores as $row) {
+            $existing_by_parameter[(string)($row['parameter'] ?? '')] = $row;
+            $qid = (int)($row['question_id'] ?? 0);
+            if ($qid > 0) $existing_by_qid[$qid] = $row;
+        }
 
         foreach ($manual_scores as $question_id => $manual_score) {
             $question_id = (int)$question_id;
@@ -134,16 +139,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($parameter === '') continue;
             $max_marks = max(0, (int)($question['max_marks'] ?? 0));
             $score_val = max(0, min((int)$manual_score, $max_marks));
-            if (isset($existing_by_parameter[$parameter])) {
+            $existing_score = $existing_by_qid[$question_id] ?? $existing_by_parameter[$parameter] ?? null;
+            if ($existing_score) {
                 db_execute(
-                    "UPDATE scores SET ai_score=?, max_marks=?, ai_reasoning=? WHERE id=? AND candidate_id=?",
-                    [$score_val, $max_marks, 'Manual review: ' . $manual_reason, (int)$existing_by_parameter[$parameter]['id'], $id], 'iisii'
+                    "UPDATE scores SET question_id=?, ai_score=?, max_marks=?, ai_reasoning=? WHERE id=? AND candidate_id=?",
+                    [$question_id, $score_val, $max_marks, 'Manual review: ' . $manual_reason, (int)$existing_score['id'], $id], 'iiisii'
                 );
             } else {
                 db_insert(
-                    "INSERT INTO scores (candidate_id,campaign_id,parameter,parameter_label,ai_score,max_marks,ai_reasoning) VALUES (?,?,?,?,?,?,?)",
-                    [$id, $c['campaign_id'], $parameter, (string)($question['parameter_label'] ?? ''), $score_val, $max_marks, 'Manual review: ' . $manual_reason],
-                    'iissiis'
+                    "INSERT INTO scores (candidate_id,question_id,campaign_id,parameter,parameter_label,ai_score,max_marks,ai_reasoning) VALUES (?,?,?,?,?,?,?,?)",
+                    [$id, $question_id, $c['campaign_id'], $parameter, (string)($question['parameter_label'] ?? ''), $score_val, $max_marks, 'Manual review: ' . $manual_reason],
+                    'iiissiis'
                 );
             }
         }
@@ -181,6 +187,13 @@ $pf            = $result['pass_fail'] ?? null;
 $scoreColor    = $pf === 'pass' ? '#10B981' : ($pf === 'fail' ? '#EF4444' : '#94A3B8');
 $scoreBg       = $pf === 'pass' ? '#ECFDF5' : ($pf === 'fail' ? '#FEF2F2' : '#F8FAFC');
 $recUrl        = $session['recording_url'] ?? $session['video_url'] ?? $session['audio_url'] ?? null;
+if (!$recUrl) {
+    $videoFiles = glob(__DIR__ . '/uploads/video/session_' . (int)$id . '_*.webm') ?: [];
+    if ($videoFiles) {
+        rsort($videoFiles);
+        $recUrl = BASE_URL . '/uploads/video/' . basename($videoFiles[0]);
+    }
+}
 $breakdown     = !empty($result['score_breakdown']) ? json_decode($result['score_breakdown'], true) : null;
 $cheat         = !empty($session['cheat_summary'])  ? json_decode($session['cheat_summary'],  true) : null;
 $interviewLink = defined('INTERVIEW_URL') ? INTERVIEW_URL . '?t=' . htmlspecialchars($c['unique_token'] ?? '') : '';
@@ -382,44 +395,26 @@ $toast         = $_GET['toast'] ?? '';
           ? '<i class="fa-regular fa-clock"></i> REVIEW PENDING'
           : '<i class="fa-solid fa-circle-xmark"></i> FAILED') ?>
     </div>
-    <?php if ($result['recruiter_override_score']): ?>
+    <?php if (!empty($result['recruiter_override_score'])): ?>
     <div style="font-size:11px;color:var(--orange);background:#FFFBEB;padding:4px 12px;border-radius:20px;display:inline-flex;align-items:center;gap:4px;margin-bottom:12px">
       <i class="fa-solid fa-bolt fa-xs"></i> Recruiter Override
     </div>
     <?php endif; ?>
 
-    <!-- Score Bars -->
-    <?php if (!empty($displayScoresGrouped)): ?>
-    <div style="text-align:left;margin-top:8px">
-    <?php foreach ($displayScoresGrouped as $s):
-      $ps  = round($s['ai_score'] / max(1, $s['max_marks']) * 100);
-      $sc2 = $ps >= 70 ? '#10B981' : ($ps >= 50 ? '#F59E0B' : '#EF4444'); ?>
-    <div style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;margin-bottom:3px">
-        <span style="color:var(--text2)"><?= htmlspecialchars($s['parameter_label'] ?? '') ?></span>
-        <span style="color:<?= $sc2 ?>"><?= (int)$s['ai_score'] ?>/<?= (int)$s['max_marks'] ?></span>
+    <div style="margin-top:4px;text-align:center">
+      <div style="font-size:12px;color:var(--gray);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Total Marks</div>
+      <div style="font-size:18px;font-weight:900;color:var(--text);margin-top:2px">
+        <?= (int)$display_score ?> / <?= (int)$maxScore ?>
       </div>
-      <div class="sbar-wrap"><div class="sbar-fill" style="width:0;background:<?= $sc2 ?>" data-w="<?= $ps ?>"></div></div>
+      <?php if (!empty($result['recruiter_override_score'])): ?>
+      <div style="font-size:11px;color:var(--gray);margin-top:4px">Manual override applied</div>
+      <?php else: ?>
+      <div style="font-size:11px;color:var(--gray);margin-top:4px">AI/manual reviewed total</div>
+      <?php endif; ?>
     </div>
-    <?php endforeach; ?>
     <button type="button" class="btn-sm" onclick="switchTab('qa', document.querySelector('[data-tab-btn=qa]'))" style="width:100%;justify-content:center;margin-top:8px">
       <i class="fa-solid fa-pen-to-square"></i> Mark in Q&A
     </button>
-    </div>
-    <?php elseif ($breakdown): ?>
-    <div style="text-align:left;margin-top:8px">
-    <?php foreach ($breakdown as $cat => $val):
-      $pct3 = min(100, max(0, (int)$val)); ?>
-    <div style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;margin-bottom:3px">
-        <span><?= htmlspecialchars($cat) ?></span>
-        <span style="color:var(--blue)"><?= $val ?></span>
-      </div>
-      <div class="sbar-wrap"><div class="sbar-fill" style="width:0;background:var(--blue)" data-w="<?= $pct3 ?>"></div></div>
-    </div>
-    <?php endforeach; ?>
-    </div>
-    <?php endif; ?>
 
     <!-- Override -->
     <?php if ($result): ?>
@@ -431,7 +426,7 @@ $toast         = $_GET['toast'] ?? '';
         <?= csrf_input() ?>
         <input type="number" name="override_score" class="form-control"
           style="width:70px;padding:7px 10px;font-size:13px"
-          placeholder="Score" min="0" max="100" value="<?= $result['recruiter_override_score'] ?? '' ?>">
+          placeholder="Score" min="0" max="<?= (int)$maxScore ?>" value="<?= $result['recruiter_override_score'] ?? '' ?>">
         <input type="text" name="reason" class="form-control"
           placeholder="Reason..." required style="font-size:13px;padding:7px 10px">
         <button type="submit" name="override_score" class="btn-sm" style="white-space:nowrap">Save</button>

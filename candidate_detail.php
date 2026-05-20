@@ -68,10 +68,15 @@ foreach ($questions as $qRow) {
         }
     }
 }
+// Group scores by parameter_label for circle display
 $displayScores = $scores;
 foreach ($displayScores as &$displayScoreRow) {
     foreach ($questions as $qRow) {
-        if ((string)($qRow['parameter'] ?? '') !== (string)($displayScoreRow['parameter'] ?? '')) continue;
+        $sqid = (int)($displayScoreRow['question_id'] ?? 0);
+        $match = $sqid > 0
+            ? $sqid === (int)$qRow['id']
+            : (string)($qRow['parameter'] ?? '') === (string)($displayScoreRow['parameter'] ?? '');
+        if (!$match) continue;
         if (!answer_has_gradable_response($answerByQuestion[(int)$qRow['id']] ?? null)) {
             $displayScoreRow['ai_score'] = 0;
             $displayScoreRow['ai_reasoning'] = 'No gradable response recorded.';
@@ -80,8 +85,18 @@ foreach ($displayScores as &$displayScoreRow) {
     }
 }
 unset($displayScoreRow);
+
+// Aggregate scores by parameter_label for sidebar circle bars
+$paramGroups = [];
+foreach ($displayScores as $s) {
+    $lbl = $s['parameter_label'] ?: $s['parameter'];
+    if (!isset($paramGroups[$lbl])) $paramGroups[$lbl] = ['ai_score'=>0,'max_marks'=>0,'parameter_label'=>$lbl,'parameter'=>$s['parameter']];
+    $paramGroups[$lbl]['ai_score']  += (int)($s['ai_score'] ?? 0);
+    $paramGroups[$lbl]['max_marks'] += (int)($s['max_marks'] ?? 0);
+}
+$displayScoresGrouped = array_values($paramGroups);
 $displayTotalScore = array_sum(array_map(fn($row) => (int)($row['ai_score'] ?? 0), $displayScores));
-$displayMaxScore = array_sum(array_map(fn($row) => (int)($row['max_marks'] ?? 0), $displayScores));
+$displayMaxScore   = array_sum(array_map(fn($row) => (int)($row['max_marks'] ?? 0), $displayScores));
 $campaigns = db_fetch_all("SELECT id,name,job_role FROM campaigns WHERE org_id=? ORDER BY name", [$user['org_id']], 'i');
 
 // Handle POST
@@ -374,9 +389,9 @@ $toast         = $_GET['toast'] ?? '';
     <?php endif; ?>
 
     <!-- Score Bars -->
-    <?php if (!empty($displayScores)): ?>
+    <?php if (!empty($displayScoresGrouped)): ?>
     <div style="text-align:left;margin-top:8px">
-    <?php foreach ($displayScores as $s):
+    <?php foreach ($displayScoresGrouped as $s):
       $ps  = round($s['ai_score'] / max(1, $s['max_marks']) * 100);
       $sc2 = $ps >= 70 ? '#10B981' : ($ps >= 50 ? '#F59E0B' : '#EF4444'); ?>
     <div style="margin-bottom:10px">

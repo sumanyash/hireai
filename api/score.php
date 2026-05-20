@@ -56,7 +56,7 @@ $groq_key=defined('GROQ_API_KEY')?GROQ_API_KEY:'';
 if($groq_key){
   log_s("Using Groq (llama-3.3-70b) for scoring");
   $ch=curl_init('https://api.groq.com/openai/v1/chat/completions');
-  curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode(['model'=>'llama-3.3-70b-versatile','max_tokens'=>1800,'temperature'=>0.1,'messages'=>[['role'=>'system','content'=>'You are an expert HR interviewer and scoring AI. Always respond with valid JSON only, no markdown, no extra text.'],['role'=>'user','content'=>$prompt]]]),CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.$groq_key],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>60,CURLOPT_SSL_VERIFYPEER=>false]);
+  curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode(['model'=>'llama-3.3-70b-versatile','max_tokens'=>4000,'temperature'=>0.1,'messages'=>[['role'=>'system','content'=>'You are an expert HR interviewer and scoring AI. Always respond with valid JSON only, no markdown, no extra text.'],['role'=>'user','content'=>$prompt]]]),CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.$groq_key],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>60,CURLOPT_SSL_VERIFYPEER=>false]);
   $resp=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
   if($code===200){
     $data=json_decode($resp,true);$content=preg_replace('/```json|```/','',$data['choices'][0]['message']['content']??'');

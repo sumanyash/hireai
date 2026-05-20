@@ -4,6 +4,7 @@ require_once __DIR__.'/../includes/db.php';
 require_once __DIR__.'/../includes/functions.php';
 if(php_sapi_name()==='cli'){$candidate_id=(int)($argv[1]??0);$campaign_id=(int)($argv[2]??0);}
 else{header('Content-Type: application/json');$candidate_id=(int)($_GET['candidate_id']??0);$campaign_id=(int)($_GET['campaign_id']??0);}
+$silent_mode=php_sapi_name()==='cli'&&(in_array('--silent',$argv??[],true)||getenv('HIREAI_SCORE_SILENT')==='1');
 if(!$candidate_id||!$campaign_id){log_s("Missing args");exit(1);}
 log_s("Scoring candidate $candidate_id campaign $campaign_id");
 $candidate=db_fetch_one("SELECT c.*,camp.passing_score,camp.el_agent_id,camp.name as campaign_name,camp.job_role FROM candidates c JOIN campaigns camp ON c.campaign_id=camp.id WHERE c.id=? AND c.campaign_id=?",[$candidate_id,$campaign_id],'ii');
@@ -133,6 +134,11 @@ else db_execute("INSERT INTO interview_results (candidate_id,campaign_id,total_s
 $new_status=$pf==='pending'?'on_hold':($pf==='pass'?'shortlisted':'rejected');
 db_execute("UPDATE candidates SET status=? WHERE id=?",[$new_status,$candidate_id],'si');
 log_s("Result saved: $total_score/$max_total $pf status->$new_status");
+if($silent_mode){
+  log_s("Silent mode enabled; skipping result WhatsApp and AI call.");
+  if(php_sapi_name()!=='cli')echo json_encode(['status'=>'done','score'=>$total_score,'max'=>$max_total,'pass_fail'=>$pf,'silent'=>true]);
+  exit;
+}
 $name=$candidate['name']?:'Candidate';$role=$candidate['job_role'];$camp=$candidate['campaign_name'];
 if($pf==='pending'){
   log_s("Manual review pending; skipping result WhatsApp.");

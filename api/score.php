@@ -68,6 +68,10 @@ if($groq_key){
   log_s("Groq key missing — check GROQ_API_KEY in .env");
 }
 if(!$result){
+  if($silent_mode){
+    log_s("Scoring unavailable in silent mode; preserving existing marks/status.");
+    exit(2);
+  }
   log_s("Scoring unavailable; marking manual review");
   $scores=[];$total=$max=0;
   foreach($questions as $q){

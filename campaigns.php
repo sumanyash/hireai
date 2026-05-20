@@ -393,6 +393,38 @@ if ($action === 'delete_campaign' && $campaign_id) {
     header("Location: campaigns.php?msg=deleted"); exit;
 }
 
+// ── BULK DELETE CAMPAIGNS ────────────────────────────────────────────────────
+if ($action === 'bulk_delete_campaigns') {
+    $sent = $_POST['csrf_token'] ?? '';
+    if (!$sent || !hash_equals(csrf_token(), $sent)) {
+        http_response_code(419); exit('Invalid security token.');
+    }
+    $ids = array_map('intval', explode(',', $_POST['campaign_ids'] ?? ''));
+    $ids = array_filter($ids);
+    $deleted = 0;
+    foreach ($ids as $cid) {
+        $camp = db_fetch_one("SELECT id,name FROM campaigns WHERE id=? AND org_id=?", [$cid,$user['org_id']], 'ii');
+        if (!$camp) continue;
+        $candidate_ids = array_map('intval', array_column(db_fetch_all("SELECT id FROM candidates WHERE campaign_id=? AND org_id=?", [$cid,$user['org_id']], 'ii'), 'id'));
+        foreach ($candidate_ids as $candid) {
+            db_execute("DELETE FROM interview_answers WHERE candidate_id=?", [$candid], 'i');
+            db_execute("DELETE FROM interview_sessions WHERE candidate_id=?", [$candid], 'i');
+            db_execute("DELETE FROM interview_results WHERE candidate_id=?", [$candid], 'i');
+            db_execute("DELETE FROM scores WHERE candidate_id=?", [$candid], 'i');
+            db_execute("DELETE FROM outreach_log WHERE candidate_id=?", [$candid], 'i');
+            db_execute("DELETE FROM reminder_jobs WHERE candidate_id=?", [$candid], 'i');
+            db_execute("DELETE FROM recruiter_notes WHERE candidate_id=?", [$candid], 'i');
+        }
+        db_execute("DELETE FROM candidates WHERE campaign_id=? AND org_id=?", [$cid,$user['org_id']], 'ii');
+        db_execute("DELETE FROM application_fields WHERE campaign_id=?", [$cid], 'i');
+        db_execute("DELETE FROM questions WHERE campaign_id=?", [$cid], 'i');
+        audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $cid, 'campaign_deleted', ['name' => $camp['name']]);
+        db_execute("DELETE FROM campaigns WHERE id=? AND org_id=?", [$cid,$user['org_id']], 'ii');
+        $deleted++;
+    }
+    header("Location: campaigns.php?msg=bulk_deleted_$deleted"); exit;
+}
+
 // ─── DATA ────────────────────────────────────────────────────────
 $campaigns = db_fetch_all(
     "SELECT ca.*, u.name AS creator_name,
@@ -448,11 +480,14 @@ if ($editing_question && !empty($editing_question['options_json'])) {
   <?php endif; ?>
   <div class="card campaign-table-wrap">
     <table class="table">
-      <thead><tr><th>Campaign</th><th>Created By</th><th>Job Role</th><th>AI Agent</th><th>Candidates</th><th>Pass Score</th><th>Status</th><th>Actions</th></tr></thead>
+      <thead><tr>
+        <th style="width:36px"><input type="checkbox" id="select-all-camps" title="Select All" style="cursor:pointer;width:16px;height:16px"></th>
+        <th>Campaign</th><th>Created By</th><th>Job Role</th><th>AI Agent</th><th>Candidates</th><th>Pass Score</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>
         <?php foreach ($campaigns as $c): ?>
         <tr>
           <?php $applyLink = campaign_apply_link($c); ?>
+          <td style="text-align:center"><input type="checkbox" class="camp-chk" value="<?= $c['id'] ?>" style="cursor:pointer;width:16px;height:16px"></td>
           <td><strong><?= htmlspecialchars($c['name']) ?></strong><br><small style="color:#8892A4"><?= date('d M Y', strtotime($c['created_at'])) ?></small></td>
           <td><strong><?= htmlspecialchars($c['creator_name'] ?: 'Unknown') ?></strong><br><small style="color:#8892A4">Audit enabled</small></td>
           <td><?= htmlspecialchars($c['job_role']) ?></td>
@@ -487,6 +522,58 @@ if ($editing_question && !empty($editing_question['options_json'])) {
       </tbody>
     </table>
   </div>
+
+  <!-- Bulk Delete Bar -->
+  <div id="bulk-bar" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:12px 24px;border-radius:12px;box-shadow:0 4px 24px #0006;display:none;align-items:center;gap:16px;z-index:999">
+    <span id="bulk-count" style="font-weight:600">0 selected</span>
+    <form id="bulk-delete-form" method="POST" action="campaigns.php?action=bulk_delete_campaigns" style="display:inline">
+      <?= csrf_input() ?>
+      <input type="hidden" name="campaign_ids" id="bulk-ids">
+      <button type="button" onclick="bulkDeleteCampaigns()" style="background:#ef4444;color:#fff;border:none;padding:8px 20px;border-radius:8px;font-weight:600;cursor:pointer">🗑 Delete Selected</button>
+    </form>
+    <button onclick="clearBulkSelection()" style="background:#475569;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer">Cancel</button>
+  </div>
+  <script>
+    const selectAll = document.getElementById('select-all-camps');
+    const bulkBar  = document.getElementById('bulk-bar');
+    const bulkCount = document.getElementById('bulk-count');
+
+    function getChecked() {
+      return [...document.querySelectorAll('.camp-chk:checked')];
+    }
+    function updateBulkBar() {
+      const checked = getChecked();
+      if (checked.length > 0) {
+        bulkBar.style.display = 'flex';
+        bulkCount.textContent = checked.length + ' selected';
+      } else {
+        bulkBar.style.display = 'none';
+      }
+    }
+    selectAll.addEventListener('change', function() {
+      document.querySelectorAll('.camp-chk').forEach(c => c.checked = this.checked);
+      updateBulkBar();
+    });
+    document.querySelectorAll('.camp-chk').forEach(c => {
+      c.addEventListener('change', function() {
+        selectAll.checked = [...document.querySelectorAll('.camp-chk')].every(x => x.checked);
+        updateBulkBar();
+      });
+    });
+    function clearBulkSelection() {
+      document.querySelectorAll('.camp-chk').forEach(c => c.checked = false);
+      selectAll.checked = false;
+      bulkBar.style.display = 'none';
+    }
+    function bulkDeleteCampaigns() {
+      const ids = getChecked().map(c => c.value).join(',');
+      const count = getChecked().length;
+      if (!ids) return;
+      if (!confirm('Delete ' + count + ' campaign(s) and ALL their candidates/interview data? This CANNOT be undone.')) return;
+      document.getElementById('bulk-ids').value = ids;
+      document.getElementById('bulk-delete-form').submit();
+    }
+  </script>
 
 <?php elseif ($action === 'new' || ($action === 'edit' && $campaign)): ?>
   <?php $is_edit = ($action === 'edit'); ?>

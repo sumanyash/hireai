@@ -214,6 +214,7 @@ $active_status = $_GET['status'] ?? 'all';
   <table class="cand-table">
     <thead>
       <tr>
+        <th style="width:36px;text-align:center"><input type="checkbox" id="select-all-cands" title="Select All" style="cursor:pointer;width:16px;height:16px"></th>
         <th>Candidate</th>
         <th>Campaign</th>
         <th>Referral</th>
@@ -226,7 +227,7 @@ $active_status = $_GET['status'] ?? 'all';
     <tbody>
     <?php if (empty($filtered)): ?>
     <tr>
-      <td colspan="7">
+      <td colspan="8">
         <div class="empty-state">
           <div class="empty-icon">👥</div>
           <div style="font-size:16px;font-weight:700;margin-bottom:6px">No candidates found</div>
@@ -244,6 +245,7 @@ $active_status = $_GET['status'] ?? 'all';
       $pf = $c['pass_fail'] ?? null;
     ?>
     <tr>
+      <td style="width:36px;text-align:center;padding:12px 8px"><input type="checkbox" class="cand-chk" value="<?= $c['id'] ?>" style="cursor:pointer;width:16px;height:16px"></td>
       <td>
         <div class="cname-cell">
           <div class="cand-avatar"><?= htmlspecialchars($initials) ?></div>
@@ -423,6 +425,13 @@ Ravi Kumar, , ravi@email.com"></textarea>
   </div>
 </div>
 
+<!-- BULK DELETE BAR -->
+<div id="bulk-bar-cands" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:12px 24px;border-radius:12px;box-shadow:0 4px 24px #0006;align-items:center;gap:16px;z-index:999">
+  <span id="bulk-cands-count" style="font-weight:600">0 selected</span>
+  <button onclick="bulkDeleteCands()" style="background:#ef4444;color:#fff;border:none;padding:8px 20px;border-radius:8px;font-weight:600;cursor:pointer">🗑 Delete Selected</button>
+  <button onclick="clearCandSelection()" style="background:#475569;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer">Cancel</button>
+</div>
+
 <!-- DELETE CONFIRM -->
 <div class="del-overlay" id="delModal">
   <div class="del-box">
@@ -582,6 +591,63 @@ async function sendWA(id, name) {
     } else {
       const providerError = d.provider?.error || d.provider?.response || '';
       showToast('❌ ' + (d.message || d.error || 'Failed to send') + (providerError ? ': ' + String(providerError).slice(0, 120) : ''), 'error');
+    }
+  } catch(e) {
+    showToast('❌ Network error', 'error');
+  }
+}
+
+// ── BULK DELETE ──────────────────────────────────────────────
+const selectAllCands = document.getElementById('select-all-cands');
+const bulkBarCands   = document.getElementById('bulk-bar-cands');
+const bulkCandsCount = document.getElementById('bulk-cands-count');
+
+function getCheckedCands() {
+  return [...document.querySelectorAll('.cand-chk:checked')];
+}
+function updateCandBulkBar() {
+  const checked = getCheckedCands();
+  if (checked.length > 0) {
+    bulkBarCands.style.display = 'flex';
+    bulkCandsCount.textContent = checked.length + ' selected';
+  } else {
+    bulkBarCands.style.display = 'none';
+  }
+}
+if (selectAllCands) {
+  selectAllCands.addEventListener('change', function() {
+    document.querySelectorAll('.cand-chk').forEach(c => c.checked = this.checked);
+    updateCandBulkBar();
+  });
+}
+document.querySelectorAll('.cand-chk').forEach(c => {
+  c.addEventListener('change', function() {
+    if (selectAllCands) selectAllCands.checked = [...document.querySelectorAll('.cand-chk')].every(x => x.checked);
+    updateCandBulkBar();
+  });
+});
+function clearCandSelection() {
+  document.querySelectorAll('.cand-chk').forEach(c => c.checked = false);
+  if (selectAllCands) selectAllCands.checked = false;
+  bulkBarCands.style.display = 'none';
+}
+async function bulkDeleteCands() {
+  const checked = getCheckedCands();
+  if (!checked.length) return;
+  if (!confirm('Delete ' + checked.length + ' candidate(s) and all their interview data? This CANNOT be undone.')) return;
+  const ids = checked.map(c => parseInt(c.value));
+  try {
+    const r = await fetch('/api/candidates.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'bulk_delete', candidate_ids: ids })
+    });
+    const d = await r.json();
+    if (d.success) {
+      showToast('✅ ' + d.deleted + ' candidate(s) deleted', 'success');
+      setTimeout(() => location.reload(), 800);
+    } else {
+      showToast('❌ ' + (d.error || 'Bulk delete failed'), 'error');
     }
   } catch(e) {
     showToast('❌ Network error', 'error');

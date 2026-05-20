@@ -272,6 +272,28 @@ if ($action === 'update' && $method === 'POST') {
 }
 
 // ── DELETE CANDIDATE ──────────────────────────────────────────────────────────
+if ($action === 'bulk_delete' && $method === 'POST') {
+    $ids = array_map('intval', $input['candidate_ids'] ?? []);
+    $ids = array_filter($ids);
+    if (empty($ids)) json_response(['error' => 'No candidate IDs provided'], 400);
+    $deleted = 0;
+    foreach ($ids as $cid) {
+        $c = db_fetch_one("SELECT id FROM candidates WHERE id=? AND org_id=?", [$cid, $user['org_id']], 'ii');
+        if (!$c) continue;
+        db_execute("DELETE FROM interview_answers WHERE candidate_id=?", [$cid], 'i');
+        db_execute("DELETE FROM interview_sessions WHERE candidate_id=?", [$cid], 'i');
+        db_execute("DELETE FROM interview_results WHERE candidate_id=?", [$cid], 'i');
+        db_execute("DELETE FROM scores WHERE candidate_id=?", [$cid], 'i');
+        db_execute("DELETE FROM outreach_log WHERE candidate_id=?", [$cid], 'i');
+        db_execute("DELETE FROM reminder_jobs WHERE candidate_id=?", [$cid], 'i');
+        db_execute("DELETE FROM recruiter_notes WHERE candidate_id=?", [$cid], 'i');
+        db_execute("DELETE FROM candidates WHERE id=? AND org_id=?", [$cid, $user['org_id']], 'ii');
+        audit_log($user['org_id'], $user['user_id'] ?? null, 'candidate', $cid, 'candidate_deleted');
+        $deleted++;
+    }
+    json_response(['success' => true, 'deleted' => $deleted]);
+}
+
 if ($action === 'delete' && $method === 'POST') {
     $candidate_id = (int)($input['candidate_id'] ?? 0);
     if (!$candidate_id) json_response(['error' => 'Candidate ID required'], 400);

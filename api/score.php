@@ -37,7 +37,60 @@ function parse_score_json($content){
   $decoded=json_decode($content,true);
   return is_array($decoded)?$decoded:null;
 }
+function google_service_account_token($json_path){
+  if(!is_readable($json_path))return [null,"Service account JSON not readable: $json_path"];
+  $sa=json_decode(file_get_contents($json_path),true);
+  if(!is_array($sa)||empty($sa['client_email'])||empty($sa['private_key']))return [null,'Invalid service account JSON.'];
+  $now=time();
+  $header=base64url_encode(json_encode(['alg'=>'RS256','typ'=>'JWT']));
+  $claim=base64url_encode(json_encode([
+    'iss'=>$sa['client_email'],
+    'scope'=>'https://www.googleapis.com/auth/cloud-platform',
+    'aud'=>'https://oauth2.googleapis.com/token',
+    'iat'=>$now,
+    'exp'=>$now+3600,
+  ]));
+  $unsigned=$header.'.'.$claim;
+  $signature='';
+  if(!openssl_sign($unsigned,$signature,$sa['private_key'],'sha256WithRSAEncryption'))return [null,'Could not sign service account JWT.'];
+  $jwt=$unsigned.'.'.base64url_encode($signature);
+  $ch=curl_init('https://oauth2.googleapis.com/token');
+  curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>http_build_query(['grant_type'=>'urn:ietf:params:oauth:grant-type:jwt-bearer','assertion'=>$jwt]),CURLOPT_HTTPHEADER=>['Content-Type: application/x-www-form-urlencoded'],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>30,CURLOPT_SSL_VERIFYPEER=>false]);
+  $resp=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
+  $data=json_decode($resp,true);
+  if($code!==200||empty($data['access_token']))return [null,"Google OAuth error $code: ".substr((string)$resp,0,300)];
+  return [$data['access_token'],$sa];
+}
+function base64url_encode($data){
+  return rtrim(strtr(base64_encode($data),'+/','-_'),'=');
+}
+function call_vertex_scoring($prompt,$json_path,$model){
+  [$token,$sa_or_error]=google_service_account_token($json_path);
+  if(!$token)return [null,$sa_or_error];
+  $sa=$sa_or_error;
+  $project=defined('VERTEX_AI_PROJECT')&&VERTEX_AI_PROJECT?VERTEX_AI_PROJECT:($sa['project_id']??'');
+  $location=defined('VERTEX_AI_LOCATION')&&VERTEX_AI_LOCATION?VERTEX_AI_LOCATION:'us-central1';
+  $vertex_model=defined('VERTEX_AI_MODEL')&&VERTEX_AI_MODEL?VERTEX_AI_MODEL:$model;
+  if(!$project)return [null,'Vertex AI project is missing. Set VERTEX_AI_PROJECT or use service account JSON with project_id.'];
+  $url='https://'.$location.'-aiplatform.googleapis.com/v1/projects/'.rawurlencode($project).'/locations/'.rawurlencode($location).'/publishers/google/models/'.rawurlencode($vertex_model).':generateContent';
+  $payload=[
+    'systemInstruction'=>['parts'=>[['text'=>'You are an expert HR interviewer and scoring AI. Always respond with valid JSON only, no markdown, no extra text.']]],
+    'contents'=>[['role'=>'user','parts'=>[['text'=>$prompt]]]],
+    'generationConfig'=>['temperature'=>0.1,'maxOutputTokens'=>4096,'responseMimeType'=>'application/json'],
+  ];
+  $ch=curl_init($url);
+  curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode($payload),CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.$token],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>60,CURLOPT_SSL_VERIFYPEER=>false]);
+  $resp=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
+  if($code!==200)return [null,"Vertex AI error $code: ".substr((string)$resp,0,300)];
+  $data=json_decode($resp,true);
+  $content=$data['candidates'][0]['content']['parts'][0]['text']??'';
+  $result=parse_score_json($content);
+  if(!is_array($result)||!isset($result['scores'])||!is_array($result['scores']))return [null,'Vertex AI returned invalid JSON: '.substr((string)$content,0,300)];
+  return [$result,null];
+}
 function call_gemini_scoring($prompt,$api_key,$model){
+  $credential_path=is_readable($api_key)?$api_key:(defined('GOOGLE_APPLICATION_CREDENTIALS')?GOOGLE_APPLICATION_CREDENTIALS:'');
+  if($credential_path&&is_readable($credential_path))return call_vertex_scoring($prompt,$credential_path,$model);
   $url='https://generativelanguage.googleapis.com/v1beta/models/'.rawurlencode($model).':generateContent?key='.urlencode($api_key);
   $payload=[
     'systemInstruction'=>['parts'=>[['text'=>'You are an expert HR interviewer and scoring AI. Always respond with valid JSON only, no markdown, no extra text.']]],
@@ -68,7 +121,7 @@ foreach($questions as $idx=>$q){
 $prompt="Score this interview for role: {$candidate['job_role']}.\n\nQUESTIONS AND ANSWERS:\n$qa\nCRITICAL SCORING RULES:\n1. Score each Question ID independently from its own question and answer only.\n2. Ignore categories, parameters, or repeated topic names. They must not affect scoring.\n3. Give marks from 0 up to that question's Max marks.\n4. Correct factual short answers can receive high or full marks even if short.\n5. Partially correct answers should receive partial marks.\n6. Wrong, irrelevant, blank, or [No gradable response recorded] answers must receive 0.\n7. Reasoning must be specific to that question and answer.\n8. Return exactly one score object for every Question ID.\n\nReturn ONLY valid JSON, no markdown:\n{\"scores\":[{\"question_id\":123,\"score\":N,\"max_marks\":N,\"reasoning\":\"specific reason\"}],\"summary\":\"2-3 sentences\"}";
 $result=null;
 $scoring_available=false;
-$gemini_key=defined('GEMINI_API_KEY')?GEMINI_API_KEY:'';
+$gemini_key=defined('GEMINI_API_KEY')&&GEMINI_API_KEY?GEMINI_API_KEY:(defined('GOOGLE_APPLICATION_CREDENTIALS')?GOOGLE_APPLICATION_CREDENTIALS:'');
 if($gemini_key){
   $gemini_model=defined('GEMINI_MODEL')&&GEMINI_MODEL?GEMINI_MODEL:'gemini-2.0-flash';
   log_s("Using Gemini ($gemini_model) for scoring");

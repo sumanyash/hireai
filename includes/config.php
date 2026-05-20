@@ -22,6 +22,8 @@ define('JWT_SECRET', envv('JWT_SECRET', 'change-this-secret'));
 define('BASE_URL', rtrim(envv('BASE_URL', 'http://localhost'), '/'));
 define('INTERVIEW_URL', envv('INTERVIEW_URL', BASE_URL . '/interview.php'));
 define('OPENAI_API_KEY', envv('OPENAI_API_KEY', ''));
+define('GEMINI_API_KEY', envv('GEMINI_API_KEY', envv('GOOGLE_API_KEY', '')));
+define('GEMINI_MODEL', envv('GEMINI_MODEL', 'gemini-2.0-flash'));
 define('GROQ_API_KEY', envv('GROQ_API_KEY', ''));
 define('EL_API_KEY', envv('ELEVENLABS_API_KEY', envv('EL_API_KEY', '')));
 define('EL_AGENT_ID', envv('EL_AGENT_ID', ''));

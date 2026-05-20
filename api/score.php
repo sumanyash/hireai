@@ -29,6 +29,31 @@ function has_gradable_answer($answer){
   if($text!=='' && !str_starts_with($text,'[Voice answer recorded but upload failed:'))return true;
   return trim((string)($answer['audio_url']??''))!=='';
 }
+function parse_score_json($content){
+  $content=preg_replace('/```json|```/','',(string)$content);
+  $content=trim($content);
+  $start=strpos($content,'{');$end=strrpos($content,'}');
+  if($start!==false&&$end!==false&&$end>$start)$content=substr($content,$start,$end-$start+1);
+  $decoded=json_decode($content,true);
+  return is_array($decoded)?$decoded:null;
+}
+function call_gemini_scoring($prompt,$api_key,$model){
+  $url='https://generativelanguage.googleapis.com/v1beta/models/'.rawurlencode($model).':generateContent?key='.urlencode($api_key);
+  $payload=[
+    'systemInstruction'=>['parts'=>[['text'=>'You are an expert HR interviewer and scoring AI. Always respond with valid JSON only, no markdown, no extra text.']]],
+    'contents'=>[['role'=>'user','parts'=>[['text'=>$prompt]]]],
+    'generationConfig'=>['temperature'=>0.1,'maxOutputTokens'=>4096,'responseMimeType'=>'application/json'],
+  ];
+  $ch=curl_init($url);
+  curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode($payload),CURLOPT_HTTPHEADER=>['Content-Type: application/json'],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>60,CURLOPT_SSL_VERIFYPEER=>false]);
+  $resp=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
+  if($code!==200)return [null,"Gemini error $code: ".substr((string)$resp,0,300)];
+  $data=json_decode($resp,true);
+  $content=$data['candidates'][0]['content']['parts'][0]['text']??'';
+  $result=parse_score_json($content);
+  if(!is_array($result)||!isset($result['scores'])||!is_array($result['scores']))return [null,'Gemini returned invalid JSON: '.substr((string)$content,0,300)];
+  return [$result,null];
+}
 $qa='';
 foreach($questions as $idx=>$q){
   $answer=$answer_by_question[(int)$q['id']]??null;
@@ -43,18 +68,30 @@ foreach($questions as $idx=>$q){
 $prompt="Score this interview for role: {$candidate['job_role']}.\n\nQUESTIONS AND ANSWERS:\n$qa\nCRITICAL SCORING RULES:\n1. Score each Question ID independently from its own question and answer only.\n2. Ignore categories, parameters, or repeated topic names. They must not affect scoring.\n3. Give marks from 0 up to that question's Max marks.\n4. Correct factual short answers can receive high or full marks even if short.\n5. Partially correct answers should receive partial marks.\n6. Wrong, irrelevant, blank, or [No gradable response recorded] answers must receive 0.\n7. Reasoning must be specific to that question and answer.\n8. Return exactly one score object for every Question ID.\n\nReturn ONLY valid JSON, no markdown:\n{\"scores\":[{\"question_id\":123,\"score\":N,\"max_marks\":N,\"reasoning\":\"specific reason\"}],\"summary\":\"2-3 sentences\"}";
 $result=null;
 $scoring_available=false;
+$gemini_key=defined('GEMINI_API_KEY')?GEMINI_API_KEY:'';
+if($gemini_key){
+  $gemini_model=defined('GEMINI_MODEL')&&GEMINI_MODEL?GEMINI_MODEL:'gemini-2.0-flash';
+  log_s("Using Gemini ($gemini_model) for scoring");
+  [$gemini_result,$gemini_error]=call_gemini_scoring($prompt,$gemini_key,$gemini_model);
+  if($gemini_result){
+    $result=$gemini_result;
+    $scoring_available=true;
+    log_s("Gemini done. Scores: ".count($result['scores']));
+  }else{
+    log_s($gemini_error);
+  }
+}else{
+  log_s("Gemini key missing — check GEMINI_API_KEY in .env");
+}
 $groq_key=defined('GROQ_API_KEY')?GROQ_API_KEY:'';
-if($groq_key){
+if(!$result&&$groq_key){
   log_s("Using Groq (llama-3.3-70b) for scoring");
   $ch=curl_init('https://api.groq.com/openai/v1/chat/completions');
   curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode(['model'=>'llama-3.3-70b-versatile','max_tokens'=>4000,'temperature'=>0.1,'messages'=>[['role'=>'system','content'=>'You are an expert HR interviewer and scoring AI. Always respond with valid JSON only, no markdown, no extra text.'],['role'=>'user','content'=>$prompt]]]),CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.$groq_key],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>60,CURLOPT_SSL_VERIFYPEER=>false]);
   $resp=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
   if($code===200){
-    $data=json_decode($resp,true);$content=preg_replace('/```json|```/','',$data['choices'][0]['message']['content']??'');
-    $content=trim($content);
-    $start=strpos($content,'{');$end=strrpos($content,'}');
-    if($start!==false&&$end!==false&&$end>$start)$content=substr($content,$start,$end-$start+1);
-    $result=json_decode($content,true);
+    $data=json_decode($resp,true);$content=$data['choices'][0]['message']['content']??'';
+    $result=parse_score_json($content);
     if(is_array($result)&&isset($result['scores'])&&is_array($result['scores'])){
       $scoring_available=true;
       log_s("Groq done. Scores: ".count($result['scores']));

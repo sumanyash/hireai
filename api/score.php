@@ -28,28 +28,18 @@ function has_gradable_answer($answer){
   if($text!=='' && !str_starts_with($text,'[Voice answer recorded but upload failed:'))return true;
   return trim((string)($answer['audio_url']??''))!=='';
 }
-function score_lookup_key($value){
-  return strtolower(preg_replace('/[^a-z0-9]+/','_',trim((string)$value)));
-}
-function add_score_lookup(&$lookup,$key,$score){
-  $key=score_lookup_key($key);
-  if($key!=='')$lookup[$key]=$score;
-}
 $qa='';
 foreach($questions as $idx=>$q){
   $answer=$answer_by_question[(int)$q['id']]??null;
   $answer_text=clean_answer_text($answer);
   $qa.="Question ID: {$q['id']}\n";
-  $qa.="Parameter key: {$q['parameter']}\n";
-  $qa.="Parameter label: {$q['parameter_label']}\n";
   $qa.="Max marks: {$q['max_marks']}\n";
   $qa.="Question: {$q['question_text']}\n";
   $qa.="Answer: ".($answer_text!==''?$answer_text:'[No gradable response recorded]')."\n";
   if(!empty($q['ideal_answer_hint']))$qa.="Scoring hints: {$q['ideal_answer_hint']}\n";
   $qa.="\n";
 }
-$params='';foreach($questions as $q)$params.="\n- question_id={$q['id']} | key={$q['parameter']} | label={$q['parameter_label']} | max={$q['max_marks']}";
-$prompt="Score this interview for role: {$candidate['job_role']}.\n\nANSWERS:\n$qa\nPARAMETERS:$params\n\nCRITICAL SCORING RULES:\n1. Return EXACTLY one score object per question_id listed above. Total score objects must equal total questions.\n2. Use the exact question_id from the list — this is the primary identifier, not the parameter key.\n3. Multiple questions may share the same parameter key — score each question INDEPENDENTLY based on its own answer.\n4. The score object's parameter value must exactly match the provided key for that question_id.\n5. Questions marked [No gradable response recorded] must receive 0 marks.\n6. Each reasoning must be specific to THAT question's answer, not a generic response.\n7. Score only from the candidate answer and scoring hints.\n\nReturn ONLY valid JSON, no markdown:\n{\"scores\":[{\"question_id\":123,\"parameter\":\"exact_key\",\"parameter_label\":\"Label\",\"score\":N,\"max_marks\":N,\"reasoning\":\"specific to this answer\"}],\"summary\":\"2-3 sentences\"}";
+$prompt="Score this interview for role: {$candidate['job_role']}.\n\nQUESTIONS AND ANSWERS:\n$qa\nCRITICAL SCORING RULES:\n1. Score each Question ID independently from its own question and answer only.\n2. Ignore categories, parameters, or repeated topic names. They must not affect scoring.\n3. Give marks from 0 up to that question's Max marks.\n4. Correct factual short answers can receive high or full marks even if short.\n5. Partially correct answers should receive partial marks.\n6. Wrong, irrelevant, blank, or [No gradable response recorded] answers must receive 0.\n7. Reasoning must be specific to that question and answer.\n8. Return exactly one score object for every Question ID.\n\nReturn ONLY valid JSON, no markdown:\n{\"scores\":[{\"question_id\":123,\"score\":N,\"max_marks\":N,\"reasoning\":\"specific reason\"}],\"summary\":\"2-3 sentences\"}";
 $result=null;
 $scoring_available=false;
 $groq_key=defined('GROQ_API_KEY')?GROQ_API_KEY:'';
@@ -60,7 +50,10 @@ if($groq_key){
   $resp=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
   if($code===200){
     $data=json_decode($resp,true);$content=preg_replace('/```json|```/','',$data['choices'][0]['message']['content']??'');
-    $result=json_decode(trim($content),true);
+    $content=trim($content);
+    $start=strpos($content,'{');$end=strrpos($content,'}');
+    if($start!==false&&$end!==false&&$end>$start)$content=substr($content,$start,$end-$start+1);
+    $result=json_decode($content,true);
     if(is_array($result)&&isset($result['scores'])&&is_array($result['scores'])){
       $scoring_available=true;
       log_s("Groq done. Scores: ".count($result['scores']));
@@ -80,21 +73,15 @@ if(!$result){
     $qid=(int)$q['id'];$marks=(int)$q['max_marks'];$max+=$marks;
     $answer=$answer_by_question[$qid]??null;
     $reason=has_gradable_answer($answer)?'AI scoring unavailable — manual review required.':'No gradable response recorded.';
-    $scores[]=['parameter'=>$q['parameter'],'parameter_label'=>$q['parameter_label'],'score'=>0,'max_marks'=>$marks,'reasoning'=>$reason];
+    $scores[]=['question_id'=>$qid,'score'=>0,'max_marks'=>$marks,'reasoning'=>$reason];
   }
   $result=['scores'=>$scores,'total_score'=>$total,'max_total'=>$max,'pass_fail'=>'pending','summary'=>'AI scoring unavailable — manual review required.'];
 }
 $result_scores=[];
-// Build lookup by question_id (primary) and parameter (fallback)
-$score_lookup=[];
 $score_lookup_by_qid=[];
 foreach(($result['scores']??[]) as $s){
   $qid=(int)($s['question_id']??0);
   if($qid>0)$score_lookup_by_qid[$qid]=$s;
-  add_score_lookup($score_lookup,$s['parameter']??'',$s);
-  add_score_lookup($score_lookup,$s['parameter_label']??'',$s);
-  add_score_lookup($score_lookup,$s['label']??'',$s);
-  add_score_lookup($score_lookup,$s['question_id']??'',$s);
 }
 $total_score=0;$max_total=0;$answered_count=0;$required_count=0;$required_answered_count=0;
 foreach($questions as $q){
@@ -106,8 +93,7 @@ foreach($questions as $q){
     if($has_answer)$required_answered_count++;
   }
   if($has_answer)$answered_count++;
-  // Prefer question_id match (handles duplicate parameters correctly)
-  $raw=$score_lookup_by_qid[$qid]??$score_lookup[score_lookup_key($parameter)]??$score_lookup[score_lookup_key($q['parameter_label'])]??$score_lookup[score_lookup_key($qid)]??[];
+  $raw=$score_lookup_by_qid[$qid]??[];
   $score=(int)($raw['score']??0);
   $reasoning=$raw['reasoning']??'';
   if($has_answer&&$scoring_available&&!$raw){
@@ -119,6 +105,7 @@ foreach($questions as $q){
   }
   $score=max(0,min($score,$marks));
   $result_scores[]=[
+    'question_id'=>$qid,
     'parameter'=>$parameter,
     'parameter_label'=>$q['parameter_label'],
     'score'=>$score,
@@ -136,13 +123,9 @@ $summary=$result['summary']??'';
 if(!$required_answered){
   $summary=trim($summary."\nIncomplete interview: $required_answered_count of $required_count required questions have gradable responses.");
 }
+db_execute("DELETE FROM scores WHERE candidate_id=?",[$candidate_id],'i');
 foreach($result_scores as $s){
-  $qid_score=(int)($s['question_id']??0);
-  $ex=$qid_score>0
-    ?db_fetch_one("SELECT id FROM scores WHERE candidate_id=? AND question_id=?",[$candidate_id,$qid_score],'ii')
-    :db_fetch_one("SELECT id FROM scores WHERE candidate_id=? AND parameter=? AND (question_id IS NULL OR question_id=0)",[$candidate_id,$s['parameter']],'is');
-  if($ex)db_execute("UPDATE scores SET ai_score=?,max_marks=?,ai_reasoning=?,question_id=? WHERE id=?",[(int)$s['score'],(int)$s['max_marks'],$s['reasoning']??'',$qid_score,$ex['id']],'iisii');
-  else db_execute("INSERT INTO scores (candidate_id,campaign_id,parameter,parameter_label,ai_score,max_marks,ai_reasoning,question_id) VALUES (?,?,?,?,?,?,?,?)",[$candidate_id,$campaign_id,$s['parameter'],$s['parameter_label'],(int)$s['score'],(int)$s['max_marks'],$s['reasoning']??'',$qid_score],'iissiiis');
+  db_execute("INSERT INTO scores (candidate_id,question_id,campaign_id,parameter,parameter_label,ai_score,max_marks,ai_reasoning) VALUES (?,?,?,?,?,?,?,?)",[$candidate_id,(int)$s['question_id'],$campaign_id,$s['parameter'],$s['parameter_label'],(int)$s['score'],(int)$s['max_marks'],$s['reasoning']??''],'iiissiis');
 }
 $ex2=db_fetch_one("SELECT id FROM interview_results WHERE candidate_id=?",[$candidate_id],'i');
 if($ex2)db_execute("UPDATE interview_results SET total_score=?,max_score=?,pass_fail=?,ai_summary=?,updated_at=NOW() WHERE candidate_id=?",[$total_score,$max_total,$pf,$summary,$candidate_id],'iissi');

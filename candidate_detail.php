@@ -61,40 +61,27 @@ foreach ($questions as $qRow) {
     $qid = (int)$qRow['id'];
     if (isset($scoreByQid[$qid])) {
         $scoreByQuestion[$qid] = $scoreByQid[$qid];
-    } else {
-        $param = (string)($qRow['parameter'] ?? '');
-        if ($param !== '' && isset($scoreByParameter[$param])) {
-            $scoreByQuestion[$qid] = $scoreByParameter[$param];
-        }
     }
 }
-// Group scores by parameter_label for circle display
-$displayScores = $scores;
-foreach ($displayScores as &$displayScoreRow) {
-    foreach ($questions as $qRow) {
-        $sqid = (int)($displayScoreRow['question_id'] ?? 0);
-        $match = $sqid > 0
-            ? $sqid === (int)$qRow['id']
-            : (string)($qRow['parameter'] ?? '') === (string)($displayScoreRow['parameter'] ?? '');
-        if (!$match) continue;
-        if (!answer_has_gradable_response($answerByQuestion[(int)$qRow['id']] ?? null)) {
-            $displayScoreRow['ai_score'] = 0;
-            $displayScoreRow['ai_reasoning'] = 'No gradable response recorded.';
-        }
-        break;
+$displayScores = [];
+foreach ($questions as $qRow) {
+    $qid = (int)$qRow['id'];
+    $scoreRow = $scoreByQuestion[$qid] ?? null;
+    $aiScore = $scoreRow ? (int)($scoreRow['ai_score'] ?? 0) : 0;
+    $reasoning = $scoreRow['ai_reasoning'] ?? '';
+    if (!answer_has_gradable_response($answerByQuestion[$qid] ?? null)) {
+        $aiScore = 0;
+        $reasoning = 'No gradable response recorded.';
     }
+    $displayScores[] = [
+        'question_id' => $qid,
+        'parameter' => (string)($qRow['parameter'] ?? ''),
+        'parameter_label' => (string)($qRow['parameter_label'] ?? ''),
+        'ai_score' => $aiScore,
+        'max_marks' => (int)($qRow['max_marks'] ?? 0),
+        'ai_reasoning' => $reasoning,
+    ];
 }
-unset($displayScoreRow);
-
-// Aggregate scores by parameter_label for sidebar circle bars
-$paramGroups = [];
-foreach ($displayScores as $s) {
-    $lbl = $s['parameter_label'] ?: $s['parameter'];
-    if (!isset($paramGroups[$lbl])) $paramGroups[$lbl] = ['ai_score'=>0,'max_marks'=>0,'parameter_label'=>$lbl,'parameter'=>$s['parameter']];
-    $paramGroups[$lbl]['ai_score']  += (int)($s['ai_score'] ?? 0);
-    $paramGroups[$lbl]['max_marks'] += (int)($s['max_marks'] ?? 0);
-}
-$displayScoresGrouped = array_values($paramGroups);
 $displayTotalScore = array_sum(array_map(fn($row) => (int)($row['ai_score'] ?? 0), $displayScores));
 $displayMaxScore   = array_sum(array_map(fn($row) => (int)($row['max_marks'] ?? 0), $displayScores));
 $campaigns = db_fetch_all("SELECT id,name,job_role FROM campaigns WHERE org_id=? ORDER BY name", [$user['org_id']], 'i');

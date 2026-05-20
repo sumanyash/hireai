@@ -821,12 +821,12 @@ if ($editing_question && !empty($editing_question['options_json'])) {
       </span>
     </div>
     <table class="table">
-      <thead><tr><th>#</th><th>Parameter</th><th>Type</th><th>Weight</th><th>Max Marks</th><th>Question</th><th>Logic</th><th></th></tr></thead>
+      <thead><tr><th>#</th><th>Question Label</th><th>Type</th><th>Weight</th><th>Max Marks</th><th>Question</th><th>Logic</th><th></th></tr></thead>
       <tbody>
         <?php foreach ($questions as $q): ?>
         <tr>
           <td><?= $q['order_no'] ?></td>
-          <td><strong><?= htmlspecialchars($q['parameter_label']) ?></strong><br><small style="color:#8892A4"><?= htmlspecialchars($q['parameter']) ?></small></td>
+          <td><strong><?= htmlspecialchars($q['parameter_label']) ?></strong></td>
           <td><span class="badge badge-draft"><?= htmlspecialchars(str_replace('_', ' ', $q['question_type'] ?? 'textarea')) ?></span></td>
           <td><strong><?= $q['weight'] ?>%</strong></td>
           <td><?= $q['max_marks'] ?></td>
@@ -852,30 +852,17 @@ if ($editing_question && !empty($editing_question['options_json'])) {
       <?php if ($editing_question): ?><a href="campaigns.php?action=questions&id=<?= $campaign_id ?>" class="btn-sm" style="text-decoration:none">Cancel edit</a><?php endif; ?>
     </div>
     <div class="simple-question-help">
-      <strong>Admin simple mode:</strong> choose skill/topic, answer type, write question, add choices only for MCQ/rating, then save.
+      <strong>Simple mode:</strong> write the question, choose answer type, set marks, and add choices only for MCQ/rating. AI scores from the question and candidate answer.
     </div>
     <form method="POST" action="campaigns.php?action=<?= $editing_question ? 'edit_question' : 'add_question' ?>&id=<?= $campaign_id ?>" onsubmit="return validateQuestionForm(this)">
       <?= csrf_input() ?>
       <?php if ($editing_question): ?><input type="hidden" name="question_id" value="<?= (int)$editing_question['id'] ?>"><?php endif; ?>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <input type="hidden" name="parameter" value="<?= htmlspecialchars($editing_question['parameter'] ?? 'custom') ?>">
+      <div style="display:grid;grid-template-columns:1fr;gap:16px">
         <div class="form-group">
-          <label class="form-label">Skill / Topic</label>
-          <select name="parameter" class="form-control" onchange="setParameterLabel(this)">
-            <?php
-              $preset_keys = array_column($topic_presets, 0);
-              if ($editing_question && !in_array($editing_question['parameter'], $preset_keys, true)):
-            ?>
-            <option value="<?= htmlspecialchars($editing_question['parameter']) ?>" data-label="<?= htmlspecialchars($editing_question['parameter_label']) ?>" selected><?= htmlspecialchars($editing_question['parameter_label']) ?></option>
-            <?php endif; ?>
-            <?php foreach ($topic_presets as [$topic_key, $topic_label]): ?>
-            <option value="<?= htmlspecialchars($topic_key) ?>" data-label="<?= htmlspecialchars($topic_label) ?>" <?= $editing_question && $editing_question['parameter'] === $topic_key ? 'selected' : '' ?>><?= htmlspecialchars($topic_label) ?></option>
-            <?php endforeach; ?>
-          </select>
-          <small class="helper-text">Suggestions change by campaign role. Choose Custom Topic for anything else.</small>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Report Label *</label>
-          <input type="text" name="parameter_label" class="form-control" placeholder="English Communication Skills" value="<?= htmlspecialchars($editing_question['parameter_label'] ?? '') ?>" required>
+          <label class="form-label">Question Label *</label>
+          <input type="text" name="parameter_label" class="form-control" placeholder="Linux Command Knowledge" value="<?= htmlspecialchars($editing_question['parameter_label'] ?? '') ?>" required>
+          <small class="helper-text">Used only in reports. AI scoring is based on the actual question and candidate answer.</small>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">

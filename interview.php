@@ -566,20 +566,34 @@ async function requestPermissions() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
       throw new Error('This browser does not support secure camera/microphone recording. Please use latest Chrome, Edge, or Safari over HTTPS.');
     }
-    mediaStream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-      audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
-    });
+    // Try video+audio first, fallback to audio-only (mic is mandatory, camera is optional)
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
+      });
+    } catch(videoErr) {
+      console.warn('Camera not available, falling back to audio-only:', videoErr.message);
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: false,
+          audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
+        });
+      } catch(audioErr) {
+        throw new Error('Microphone is required to start the test. Please allow microphone permission.');
+      }
+    }
     const hasCamera = mediaStream.getVideoTracks().some(t => t.readyState === 'live');
     const hasMic = mediaStream.getAudioTracks().some(t => t.readyState === 'live');
-    if (!hasCamera || !hasMic) throw new Error('Camera and microphone both are required to start the test.');
-    document.getElementById('video-el').srcObject = mediaStream;
-    document.getElementById('pc-camera').className = 'perm-check ok';
+    if (!hasMic) throw new Error('Microphone is required. Please allow microphone permission and try again.');
+    document.getElementById('video-el').srcObject = hasCamera ? mediaStream : null;
+    document.getElementById('pc-camera').className = hasCamera ? 'perm-check ok' : 'perm-check warn';
     document.getElementById('pc-mic').className    = 'perm-check ok';
     document.getElementById('rec-badge').style.display = 'flex';
-    if (!startVideoRecording()) {
-      mediaStream.getTracks().forEach(t => t.stop());
-      throw new Error('Video recording could not start. Please close other camera apps and try again in Chrome/Edge.');
+    if (hasCamera) {
+      if (!startVideoRecording()) {
+        console.warn('Video recording could not start, continuing with audio only.');
+      }
     }
     await createSession();
     setTimeout(() => {

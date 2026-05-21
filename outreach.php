@@ -56,6 +56,14 @@ $preview_msg  = "🎯 *Interview Invitation — $preview_camp*\n\nHi $preview_na
 .send-btn:hover{background:#DBEAFE}
 .send-btn:disabled{opacity:.5;cursor:not-allowed}
 .bulk-out-bar{display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:12px 20px;border-radius:14px;box-shadow:0 4px 32px rgba(0,0,0,.45);align-items:center;gap:12px;z-index:999;white-space:nowrap}
+.wa-composer{margin-top:16px;border-top:1px solid #F1F5F9;padding-top:14px}
+.wa-field{margin-top:10px}
+.wa-field label{display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);margin-bottom:5px}
+.wa-field input,.wa-field textarea,.wa-field select{width:100%;box-sizing:border-box;border:1.5px solid #E2E8F0;border-radius:10px;padding:9px 11px;font-size:12px;background:#F8FAFC;color:var(--text)}
+.wa-field textarea{min-height:76px;resize:vertical}
+.wa-help{font-size:10px;color:var(--gray);line-height:1.4;margin-top:4px}
+.wa-dynamic{display:none}
+.wa-dynamic.active{display:block}
 </style>
 </head>
 <body>
@@ -169,6 +177,116 @@ $preview_msg  = "🎯 *Interview Invitation — $preview_camp*\n\nHi $preview_na
       <div class="wa-bubble"><?= htmlspecialchars($preview_msg) ?></div>
       <div style="font-size:11px;color:var(--gray);margin-top:10px">✓ Interview link is personalised per candidate</div>
       <?php if ($sel_camp && $camp): ?>
+      <div class="wa-composer">
+        <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:8px">CloudDialer WhatsApp Sender</div>
+        <div style="font-size:11px;color:var(--gray);line-height:1.5;margin-bottom:10px">Select candidates from the table, choose message type, then send through wa.clouddialer.in.</div>
+        <div class="wa-field">
+          <label>Message Type</label>
+          <select id="waType" onchange="renderWaComposer()">
+            <option value="text">Text</option>
+            <option value="image">Image</option>
+            <option value="video">Video</option>
+            <option value="audio">Audio / Voice Note</option>
+            <option value="document">Document</option>
+            <option value="location">Location</option>
+            <option value="contact">Contact Card</option>
+            <option value="buttons">Buttons</option>
+            <option value="list">List</option>
+            <option value="template">Template</option>
+            <option value="album">Album</option>
+            <option value="sequence">Bulk Text Sequence</option>
+          </select>
+        </div>
+
+        <div class="wa-dynamic active" data-wa-panel="text buttons list">
+          <div class="wa-field">
+            <label>Message / Body</label>
+            <textarea id="waText" placeholder="Write message body..."></textarea>
+          </div>
+        </div>
+
+        <div class="wa-dynamic" data-wa-panel="image video audio document">
+          <div class="wa-field">
+            <label>Public Media URL</label>
+            <input id="waUrl" placeholder="https://example.com/file.pdf">
+          </div>
+          <div class="wa-field" data-wa-panel-extra="image video document album">
+            <label>Caption</label>
+            <textarea id="waCaption" placeholder="Optional caption"></textarea>
+          </div>
+        </div>
+
+        <div class="wa-dynamic" data-wa-panel="document">
+          <div class="wa-field">
+            <label>File Name</label>
+            <input id="waFileName" placeholder="Document.pdf">
+          </div>
+          <div class="wa-field">
+            <label>Mimetype</label>
+            <input id="waMime" placeholder="application/pdf">
+          </div>
+        </div>
+
+        <div class="wa-dynamic" data-wa-panel="audio">
+          <div class="wa-field">
+            <label>Mimetype</label>
+            <input id="waAudioMime" placeholder="audio/mpeg">
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;font-weight:700;color:var(--text2)">
+            <input id="waPtt" type="checkbox" style="width:auto"> Send as voice note
+          </label>
+        </div>
+
+        <div class="wa-dynamic" data-wa-panel="image video">
+          <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;font-weight:700;color:var(--text2)">
+            <input id="waViewOnce" type="checkbox" style="width:auto"> View once
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;font-weight:700;color:var(--text2)">
+            <input id="waGif" type="checkbox" style="width:auto"> Video GIF playback
+          </label>
+        </div>
+
+        <div class="wa-dynamic" data-wa-panel="location">
+          <div class="wa-field"><label>Latitude</label><input id="waLat" placeholder="28.6139"></div>
+          <div class="wa-field"><label>Longitude</label><input id="waLng" placeholder="77.209"></div>
+          <div class="wa-field"><label>Place Name</label><input id="waPlaceName" placeholder="India Gate"></div>
+          <div class="wa-field"><label>Address</label><textarea id="waAddress" placeholder="Full address"></textarea></div>
+        </div>
+
+        <div class="wa-dynamic" data-wa-panel="contact">
+          <div class="wa-field"><label>Contact Name</label><input id="waContactName" placeholder="Yash Suman"></div>
+          <div class="wa-field"><label>Contact Phone</label><input id="waContactPhone" placeholder="919876543210"></div>
+        </div>
+
+        <div class="wa-dynamic" data-wa-panel="buttons">
+          <div class="wa-field"><label>Buttons</label><textarea id="waButtons" placeholder="Yes&#10;No&#10;Maybe"></textarea><div class="wa-help">Max 3 buttons, one title per line.</div></div>
+          <div class="wa-field"><label>Footer</label><input id="waFooter" placeholder="Powered by HireAI"></div>
+        </div>
+
+        <div class="wa-dynamic" data-wa-panel="list">
+          <div class="wa-field"><label>Header</label><input id="waHeader" placeholder="Menu"></div>
+          <div class="wa-field"><label>Button Text</label><input id="waListButton" placeholder="Open List"></div>
+          <div class="wa-field"><label>Section Title</label><input id="waSection" placeholder="Options"></div>
+          <div class="wa-field"><label>Rows</label><textarea id="waRows" placeholder="Option 1|Description 1&#10;Option 2|Description 2"></textarea><div class="wa-help">One row per line. Use Title|Description.</div></div>
+        </div>
+
+        <div class="wa-dynamic" data-wa-panel="template">
+          <div class="wa-field"><label>Template Name</label><input id="waTemplate" placeholder="your_template_name"></div>
+          <div class="wa-field"><label>Language Code</label><input id="waLanguage" placeholder="en"></div>
+        </div>
+
+        <div class="wa-dynamic" data-wa-panel="album">
+          <div class="wa-field"><label>Album Items</label><textarea id="waAlbum" placeholder="image|https://example.com/1.jpg&#10;video|https://example.com/2.mp4"></textarea><div class="wa-help">One item per line. Use image|url or video|url.</div></div>
+          <div class="wa-field"><label>Caption</label><textarea id="waAlbumCaption" placeholder="Album caption"></textarea></div>
+        </div>
+
+        <div class="wa-dynamic" data-wa-panel="sequence">
+          <div class="wa-field"><label>Messages</label><textarea id="waSequence" placeholder="Message 1&#10;Message 2&#10;Message 3"></textarea><div class="wa-help">One text message per line, sent sequentially to each selected number.</div></div>
+          <div class="wa-field"><label>Delay MS</label><input id="waDelay" placeholder="500"></div>
+        </div>
+
+        <button onclick="sendCustomWhatsApp()" class="btn-primary" style="width:100%;justify-content:center;margin-top:12px;font-size:13px;padding:10px 14px">Send Custom WhatsApp</button>
+      </div>
       <hr style="margin:16px 0;border:none;border-top:1px solid #F1F5F9">
       <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px">AI Phone Calls</div>
       <div style="font-size:12px;color:var(--gray);margin-bottom:10px">Trigger outbound AI calls to all pending candidates.</div>
@@ -189,6 +307,75 @@ function showToast(msg, type) {
   t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 4000);
+}
+
+function waVal(id) {
+  const el = document.getElementById(id);
+  return el ? el.value.trim() : '';
+}
+
+function renderWaComposer() {
+  const type = waVal('waType') || 'text';
+  document.querySelectorAll('.wa-dynamic').forEach(panel => {
+    const allowed = (panel.dataset.waPanel || '').split(/\s+/);
+    panel.classList.toggle('active', allowed.includes(type));
+  });
+  document.querySelectorAll('[data-wa-panel-extra]').forEach(el => {
+    const allowed = (el.dataset.waPanelExtra || '').split(/\s+/);
+    el.style.display = allowed.includes(type) ? '' : 'none';
+  });
+  const gif = document.getElementById('waGif');
+  if (gif) gif.parentElement.style.display = type === 'video' ? 'flex' : 'none';
+}
+
+async function sendCustomWhatsApp() {
+  const ids = getCheckedIds();
+  if (!ids.length) { showToast('Select candidates from table first', 'info'); return; }
+  const type = waVal('waType') || 'text';
+  const data = {
+    text: waVal('waText'),
+    url: waVal('waUrl'),
+    caption: type === 'album' ? waVal('waAlbumCaption') : waVal('waCaption'),
+    fileName: waVal('waFileName'),
+    mimetype: type === 'audio' ? waVal('waAudioMime') : waVal('waMime'),
+    ptt: !!document.getElementById('waPtt')?.checked,
+    viewOnce: !!document.getElementById('waViewOnce')?.checked,
+    gifPlayback: !!document.getElementById('waGif')?.checked,
+    latitude: waVal('waLat'),
+    longitude: waVal('waLng'),
+    name: type === 'contact' ? waVal('waContactName') : waVal('waPlaceName'),
+    address: waVal('waAddress'),
+    phone: waVal('waContactPhone'),
+    buttons: waVal('waButtons'),
+    footer: waVal('waFooter'),
+    header: waVal('waHeader'),
+    button: waVal('waListButton'),
+    section: waVal('waSection'),
+    rows: waVal('waRows'),
+    template: waVal('waTemplate'),
+    language: waVal('waLanguage') || 'en',
+    album: waVal('waAlbum'),
+    sequence: waVal('waSequence'),
+    delay: waVal('waDelay') || '500',
+  };
+  if (!confirm(`Send ${type} WhatsApp message to ${ids.length} selected candidate(s)?`)) return;
+  showToast(`⏳ Sending ${type} message…`, 'info');
+  try {
+    const r = await fetch('/api/outreach.php?action=custom_whatsapp_send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidate_ids: ids, type, data })
+    });
+    const d = await r.json();
+    if (r.ok) {
+      showToast(`✅ Sent: ${d.sent} | Failed: ${d.failed}`, d.failed ? 'info' : 'success');
+      setTimeout(() => location.reload(), 1200);
+    } else {
+      showToast('❌ ' + (d.error || 'Failed to send'), 'error');
+    }
+  } catch(e) {
+    showToast('❌ Network error', 'error');
+  }
 }
 
 async function sendSingle(id, name, btn) {
@@ -267,6 +454,7 @@ async function startAllCalls() {
     showToast(d.message || d.error || 'Done', 'success');
   } catch(e) { showToast('❌ Network error', 'error'); }
 }
+renderWaComposer();
 </script>
 
 <?php include __DIR__ . '/includes/footer.php'; ?>

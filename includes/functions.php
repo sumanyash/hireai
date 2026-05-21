@@ -164,6 +164,10 @@ function deduct_credit($org_id, $channel = 'whatsapp', $credits = 1, $candidate_
 }
 
 function send_whatsapp($phone, $message, $context = []) {
+    return send_whatsapp_content($phone, ['text' => $message], $context);
+}
+
+function send_whatsapp_content($phone, $content, $context = [], $endpoint = null) {
     if (CREDIT_ENFORCEMENT && !empty($context['org_id'])) {
         $wallet = ensure_credit_wallet((int)$context['org_id']);
         $needed = max(1, (int)($context['credits'] ?? 1));
@@ -188,8 +192,14 @@ function send_whatsapp($phone, $message, $context = []) {
     }
     $phone = preg_replace('/[^0-9]/', '', $phone);
     if (strlen($phone) == 10) $phone = '91' . $phone;
-    $payload = json_encode(['instanceId'=>WA_INSTANCE_ID,'accessToken'=>WA_TOKEN,'to'=>$phone,'content'=>['text'=>$message]]);
-    $ch = curl_init(WA_API_URL);
+    $payload_data = ['instanceId'=>WA_INSTANCE_ID,'accessToken'=>WA_TOKEN,'to'=>$phone];
+    if (!empty($context['bulk_payload'])) {
+        $payload_data = array_merge($payload_data, $content);
+    } else {
+        $payload_data['content'] = $content;
+    }
+    $payload = json_encode($payload_data);
+    $ch = curl_init($endpoint ?: WA_API_URL);
     curl_setopt_array($ch, [
         CURLOPT_POST => true, CURLOPT_POSTFIELDS => $payload,
         CURLOPT_HTTPHEADER => ['Content-Type: application/json','Authorization: Bearer '.WA_TOKEN],

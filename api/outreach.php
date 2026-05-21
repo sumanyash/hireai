@@ -5,6 +5,12 @@ header('Content-Type: application/json');
 
 $action = $_GET['action'] ?? '';
 
+function wa_bulk_endpoint() {
+    $url = rtrim(WA_API_URL, '/');
+    if (str_ends_with($url, '/messages')) return preg_replace('~/messages$~', '/sendBulk', $url);
+    return rtrim(dirname($url), '/') . '/sendBulk';
+}
+
 if ($action === 'whatsapp_status') {
     $user = verify_jwt();
     if (!$user) { json_response(['error' => 'Unauthorized'], 401); }
@@ -29,6 +35,140 @@ if ($action === 'send_test') {
     ]);
     $ok = ($result['code'] >= 200 && $result['code'] < 300);
     json_response(['success' => $ok, 'provider' => $result], $ok ? 200 : 502);
+}
+
+if ($action === 'custom_whatsapp_send') {
+    $user = verify_jwt();
+    if (!$user) { json_response(['error' => 'Unauthorized'], 401); }
+
+    $input = json_decode(file_get_contents('php://input'), true) ?? [];
+    $ids = array_values(array_filter(array_map('intval', $input['candidate_ids'] ?? [])));
+    $type = trim((string)($input['type'] ?? 'text'));
+    $data = is_array($input['data'] ?? null) ? $input['data'] : [];
+    if (empty($ids)) json_response(['error' => 'No candidates selected'], 400);
+
+    $content = null;
+    $bulk_payload = false;
+    $endpoint = null;
+    $text = trim((string)($data['text'] ?? ''));
+    $url = trim((string)($data['url'] ?? ''));
+    $caption = trim((string)($data['caption'] ?? ''));
+    $mime = trim((string)($data['mimetype'] ?? ''));
+
+    if ($type === 'text') {
+        if ($text === '') json_response(['error' => 'Message text required'], 400);
+        $content = ['text' => $text];
+    } elseif ($type === 'image') {
+        if ($url === '') json_response(['error' => 'Image URL required'], 400);
+        $content = ['image' => ['url' => $url]];
+        if ($caption !== '') $content['caption'] = $caption;
+        if (!empty($data['viewOnce'])) $content['viewOnce'] = true;
+    } elseif ($type === 'video') {
+        if ($url === '') json_response(['error' => 'Video URL required'], 400);
+        $content = ['video' => ['url' => $url]];
+        if ($caption !== '') $content['caption'] = $caption;
+        if (!empty($data['viewOnce'])) $content['viewOnce'] = true;
+        if (!empty($data['gifPlayback'])) $content['gifPlayback'] = true;
+    } elseif ($type === 'audio') {
+        if ($url === '') json_response(['error' => 'Audio URL required'], 400);
+        $content = ['audio' => ['url' => $url], 'mimetype' => $mime ?: 'audio/mpeg', 'ptt' => !empty($data['ptt'])];
+    } elseif ($type === 'document') {
+        if ($url === '') json_response(['error' => 'Document URL required'], 400);
+        $content = [
+            'document' => ['url' => $url],
+            'fileName' => trim((string)($data['fileName'] ?? 'Document')),
+            'mimetype' => $mime ?: 'application/pdf',
+        ];
+        if ($caption !== '') $content['caption'] = $caption;
+    } elseif ($type === 'location') {
+        $lat = trim((string)($data['latitude'] ?? ''));
+        $lng = trim((string)($data['longitude'] ?? ''));
+        if ($lat === '' || $lng === '') json_response(['error' => 'Latitude and longitude required'], 400);
+        $content = ['location' => [
+            'degreesLatitude' => (float)$lat,
+            'degreesLongitude' => (float)$lng,
+            'name' => trim((string)($data['name'] ?? '')),
+            'address' => trim((string)($data['address'] ?? '')),
+        ]];
+    } elseif ($type === 'contact') {
+        $contact_name = trim((string)($data['name'] ?? ''));
+        $contact_phone = preg_replace('/[^0-9]/', '', (string)($data['phone'] ?? ''));
+        if ($contact_name === '' || $contact_phone === '') json_response(['error' => 'Contact name and phone required'], 400);
+        if (strlen($contact_phone) === 10) $contact_phone = '91' . $contact_phone;
+        $content = ['contact' => ['name' => $contact_name, 'phone' => $contact_phone]];
+    } elseif ($type === 'buttons') {
+        if ($text === '') json_response(['error' => 'Button body text required'], 400);
+        $buttons = [];
+        foreach (array_slice(array_filter(array_map('trim', explode("\n", (string)($data['buttons'] ?? '')))), 0, 3) as $i => $title) {
+            $buttons[] = ['type' => 'reply', 'reply' => ['id' => 'btn' . ($i + 1), 'title' => $title]];
+        }
+        if (empty($buttons)) json_response(['error' => 'Add at least one button title'], 400);
+        $content = ['interactive' => [
+            'type' => 'button',
+            'body' => ['text' => $text],
+            'footer' => ['text' => trim((string)($data['footer'] ?? 'HireAI'))],
+            'action' => ['buttons' => $buttons],
+        ]];
+    } elseif ($type === 'list') {
+        if ($text === '') json_response(['error' => 'List body text required'], 400);
+        $rows = [];
+        foreach (array_slice(array_filter(array_map('trim', explode("\n", (string)($data['rows'] ?? '')))), 0, 10) as $i => $line) {
+            [$title, $desc] = array_pad(array_map('trim', explode('|', $line, 2)), 2, '');
+            $rows[] = ['id' => 'row' . ($i + 1), 'title' => $title, 'description' => $desc];
+        }
+        if (empty($rows)) json_response(['error' => 'Add at least one list row'], 400);
+        $content = ['interactive' => [
+            'type' => 'list',
+            'header' => ['type' => 'text', 'text' => trim((string)($data['header'] ?? 'Menu'))],
+            'body' => ['text' => $text],
+            'footer' => ['text' => trim((string)($data['footer'] ?? 'HireAI'))],
+            'action' => ['button' => trim((string)($data['button'] ?? 'Open List')), 'sections' => [['title' => trim((string)($data['section'] ?? 'Options')), 'rows' => $rows]]],
+        ]];
+    } elseif ($type === 'template') {
+        $template = trim((string)($data['template'] ?? ''));
+        if ($template === '') json_response(['error' => 'Template name required'], 400);
+        $content = ['template' => ['name' => $template, 'language' => ['code' => trim((string)($data['language'] ?? 'en'))], 'components' => []]];
+    } elseif ($type === 'album') {
+        $items = [];
+        foreach (array_filter(array_map('trim', explode("\n", (string)($data['album'] ?? '')))) as $line) {
+            [$media_type, $media_url] = array_pad(array_map('trim', explode('|', $line, 2)), 2, '');
+            if (in_array($media_type, ['image', 'video'], true) && $media_url !== '') $items[] = ['type' => $media_type, 'url' => $media_url];
+        }
+        if (empty($items)) json_response(['error' => 'Album needs lines like image|https://...'], 400);
+        $bulk_payload = true;
+        $endpoint = wa_bulk_endpoint();
+        $content = ['album' => $items];
+        if ($caption !== '') $content['caption'] = $caption;
+    } elseif ($type === 'sequence') {
+        $messages = [];
+        foreach (array_filter(array_map('trim', explode("\n", (string)($data['sequence'] ?? '')))) as $line) {
+            $messages[] = ['type' => 'text', 'text' => $line];
+        }
+        if (empty($messages)) json_response(['error' => 'Sequence needs one text message per line'], 400);
+        $bulk_payload = true;
+        $endpoint = wa_bulk_endpoint();
+        $content = ['data' => $messages, 'delay' => max(0, (int)($data['delay'] ?? 500))];
+    } else {
+        json_response(['error' => 'Unsupported WhatsApp message type'], 400);
+    }
+
+    $sent = $failed = 0;
+    foreach ($ids as $id) {
+        $c = db_fetch_one("SELECT c.*, camp.name as campaign_name, camp.job_role FROM candidates c JOIN campaigns camp ON c.campaign_id=camp.id WHERE c.id=? AND c.org_id=?", [$id, $user['org_id']], 'ii');
+        if (!$c || empty($c['phone'])) { $failed++; continue; }
+        $result = send_whatsapp_content($c['phone'], $content, [
+            'org_id' => $user['org_id'],
+            'candidate_id' => $id,
+            'campaign_id' => $c['campaign_id'],
+            'reason' => 'custom_' . $type,
+            'bulk_payload' => $bulk_payload,
+        ], $endpoint);
+        $ok = ($result['code'] >= 200 && $result['code'] < 300);
+        $ok ? $sent++ : $failed++;
+        db_execute("INSERT INTO outreach_log (candidate_id,campaign_id,channel,status) VALUES (?,?,'whatsapp',?)", [$id, $c['campaign_id'], $ok ? 'sent' : 'failed'], 'iis');
+        usleep(400000);
+    }
+    json_response(['success' => $failed === 0, 'sent' => $sent, 'failed' => $failed]);
 }
 
 if ($action === 'send_single') {

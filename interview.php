@@ -216,17 +216,37 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
   flex:1;display:flex;align-items:center;justify-content:center;padding:24px;overflow-y:auto;
 }
 .perm-card{
-  background:var(--surface);border:1px solid var(--border);border-radius:20px;
-  padding:32px 28px;max-width:480px;width:100%;text-align:center;
-  box-shadow:0 24px 80px rgba(0,0,0,.4);
+  background:
+    radial-gradient(circle at top left,rgba(37,99,235,.18),transparent 32%),
+    linear-gradient(180deg,rgba(30,41,59,.98),rgba(15,23,42,.98));
+  border:1px solid rgba(96,165,250,.22);border-radius:24px;
+  padding:34px 30px;max-width:560px;width:100%;text-align:center;
+  box-shadow:0 28px 90px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.05);
 }
-.perm-icon{font-size:56px;margin-bottom:16px;line-height:1}
-.perm-title{font-size:22px;font-weight:800;letter-spacing:-.3px;margin-bottom:8px}
-.perm-desc{font-size:13px;color:var(--muted2);line-height:1.7;margin-bottom:20px}
-.perm-checks{display:flex;flex-direction:column;gap:8px;margin-bottom:20px;text-align:left}
+.perm-icon{
+  width:74px;height:74px;margin:0 auto 16px;border-radius:22px;
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,rgba(37,99,235,.24),rgba(124,58,237,.18));
+  border:1px solid rgba(147,197,253,.22);font-size:34px;line-height:1;
+  box-shadow:0 14px 34px rgba(37,99,235,.16)
+}
+.perm-kicker{
+  display:inline-flex;align-items:center;gap:8px;margin-bottom:10px;
+  padding:6px 10px;border-radius:999px;background:rgba(245,158,11,.12);
+  border:1px solid rgba(245,158,11,.24);color:#FCD34D;font-size:11px;
+  font-weight:800;letter-spacing:.08em;text-transform:uppercase
+}
+.perm-title{font-size:26px;font-weight:900;letter-spacing:-.4px;margin-bottom:8px}
+.perm-desc{font-size:14px;color:var(--muted2);line-height:1.7;margin:0 auto 18px;max-width:430px}
+.perm-must{
+  background:rgba(239,68,68,.1);border:1px solid rgba(248,113,113,.26);
+  color:#FECACA;border-radius:12px;padding:11px 13px;font-size:12px;
+  line-height:1.5;margin-bottom:14px;text-align:left
+}
+.perm-checks{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;text-align:left}
 .perm-check{
   display:flex;align-items:center;gap:12px;padding:12px 14px;
-  background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;
+  background:rgba(255,255,255,.045);border:1px solid rgba(148,163,184,.18);border-radius:12px;
   transition:all .3s;
 }
 .perm-check.ok{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.25)}
@@ -236,13 +256,14 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 .perm-check-sub{font-size:11px;color:var(--muted2);margin-top:1px}
 .perm-error{color:#F87171;font-size:12px;min-height:18px;margin:8px 0;font-weight:600}
 .mobile-permission-note{display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);color:#FCD34D;border-radius:10px;padding:12px 14px;font-size:12px;line-height:1.5;margin-bottom:14px;text-align:left}
-.consent-row{display:flex;gap:10px;text-align:left;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--muted2);line-height:1.5;margin:12px 0}
+.consent-row{display:flex;gap:10px;text-align:left;background:rgba(255,255,255,.045);border:1px solid rgba(148,163,184,.18);border-radius:12px;padding:13px 14px;font-size:12px;color:var(--muted2);line-height:1.5;margin:12px 0}
 .btn-allow{
-  width:100%;padding:14px;background:linear-gradient(135deg,var(--blue),#1D4ED8);
+  width:100%;padding:15px;background:linear-gradient(135deg,#2563EB,#7C3AED);
   color:#fff;border:none;border-radius:11px;font-size:15px;font-weight:700;
   cursor:pointer;transition:all .2s;box-shadow:0 4px 20px rgba(37,99,235,.35);
 }
 .btn-allow:hover{transform:translateY(-1px)}
+@media(max-width:620px){.perm-card{padding:24px 18px}.perm-checks{grid-template-columns:1fr}.perm-title{font-size:22px}}
 .btn-allow:disabled{background:var(--surface2);box-shadow:none;cursor:not-allowed;transform:none}
 .instructions-box{
   background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;
@@ -331,12 +352,14 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
   <div class="perm-screen">
     <div class="perm-card">
       <div class="perm-icon">🎙️</div>
+      <div class="perm-kicker">Mandatory AI Test</div>
       <div style="display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:4px">
         <svg width="20" height="20" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="6" fill="url(#ng)"/><text x="16" y="22" font-family='Arial Black' font-size="14" font-weight="900" fill="white" text-anchor="middle">A</text><defs><linearGradient id="ng" x1="0" y1="0" x2="32" y2="32"><stop offset="0%" stop-color="#6B21A8"/><stop offset="100%" stop-color="#2563EB"/></linearGradient></defs></svg>
         <span style="font-size:13px;color:#9CA3AF">Powered by <strong style="color:#A78BFA">Avyukta Intellicall</strong></span>
       </div>
       <div class="perm-title">Before We Begin</div>
-      <div class="perm-desc">This AI interview requires your <strong>camera and microphone</strong>. Please grant access to continue.</div>
+      <div class="perm-desc">You selected the AI test in your application. Complete this interview to finish the hiring step.</div>
+      <div class="perm-must"><strong>Camera and microphone permission is compulsory.</strong> The test will not start until both permissions and recording consent are allowed.</div>
       <div class="mobile-permission-note">On mobile, your browser will show a camera and microphone permission popup. Tap Allow to continue the test.</div>
 
       <div class="perm-checks">
@@ -362,7 +385,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
       </label>
       <div class="perm-error" id="perm-error"></div>
       <button class="btn-allow" id="allow-btn" onclick="requestPermissions()">
-        Allow Access &amp; Start Interview →
+        Allow Camera &amp; Mic - Start Test →
       </button>
 
       <div class="instructions-box">
@@ -563,7 +586,7 @@ async function requestPermissions() {
   if (!document.getElementById('recording-consent').checked) {
     err.textContent = 'Please provide recording consent before starting.';
     btn.disabled = false;
-    btn.textContent = 'Allow Access & Start Interview →';
+    btn.textContent = 'Allow Camera & Mic - Start Test →';
     return;
   }
   try {
@@ -600,7 +623,7 @@ async function requestPermissions() {
     document.getElementById('pc-camera').className = 'perm-check err';
     document.getElementById('pc-mic').className    = 'perm-check err';
     btn.disabled = false;
-    btn.textContent = 'Try Again';
+    btn.textContent = 'Try Again - Allow Camera & Mic';
   }
 }
 

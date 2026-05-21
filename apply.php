@@ -505,6 +505,32 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
 
 .thankyou h2{font-size:28px;font-weight:600;font-style:italic;margin-bottom:10px}
 .thankyou p{color:var(--muted);max-width:420px;margin:0 auto 22px}
+.ai-required-panel{
+  display:none;
+  max-width:520px;
+  margin:0 auto 20px;
+  padding:16px 18px;
+  border:1px solid rgba(255,149,0,.34);
+  background:linear-gradient(135deg,rgba(255,149,0,.12),rgba(37,99,235,.08));
+  border-radius:14px;
+  color:var(--text);
+  text-align:left;
+  box-shadow:0 12px 36px rgba(15,23,42,.08)
+}
+.ai-required-panel.active{display:block}
+.ai-required-kicker{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  color:var(--gold);
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  margin-bottom:8px
+}
+.ai-required-panel strong{color:var(--text)}
+.ai-required-panel span{display:block;color:var(--muted);font-size:13px;line-height:1.6}
 
 .ai-link{
   display:inline-flex;
@@ -522,6 +548,13 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
 }
 
 .ai-link:hover{background:rgba(255,149,0,.18)}
+.ai-link.mandatory{
+  background:linear-gradient(135deg,#F59E0B,#2563EB);
+  border:0;
+  color:#fff;
+  box-shadow:0 16px 36px rgba(37,99,235,.24);
+  padding:13px 28px
+}
 
 #jdContent p{margin-bottom:10px}
 #jdContent ul{padding-left:18px;margin:6px 0 10px}
@@ -1247,8 +1280,16 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     <div class="checkmark">
       <svg width="34" height="34" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
     </div>
-    <h2>Application Submitted! 🎉</h2>
-    <p>Thank you for applying to <?=htmlspecialchars($org_name)?>. Our team will review your application and contact you shortly.</p>
+    <h2 id="thankyouTitle">Application Submitted! 🎉</h2>
+    <p id="thankyouMessage">Thank you for applying to <?=htmlspecialchars($org_name)?>. Our team will review your application and contact you shortly.</p>
+    <div class="ai-required-panel" id="aiRequiredPanel">
+      <div class="ai-required-kicker">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        Mandatory Next Step
+      </div>
+      <strong>AI interview test is required because you selected “Yes”.</strong>
+      <span>Please start the test now to complete your application. Camera, microphone, and recording consent will be required on the next screen.</span>
+    </div>
     <a href="#" id="aiInterviewLink" class="ai-link" style="display:none">
       <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
       Begin AI Interview Test
@@ -1290,6 +1331,50 @@ const APP_FIELDS = <?= json_encode(array_map(function($f) {
 const APP_FIELD_BY_KEY = Object.fromEntries(APP_FIELDS.map(field => [String(field.key || '').toLowerCase(), field]));
 let referralLink = '';
 const REFERRAL_MESSAGE_PREFIX = 'I have completed my HireAI interview. You can apply using this campaign link: ';
+let mandatoryInterviewUrl = '';
+
+function isYesValue(value) {
+  return ['yes', 'y', '1', 'true', 'agree', 'agreed', 'willing'].includes(String(value || '').trim().toLowerCase());
+}
+
+function applySubmitSuccessState(response) {
+  const link = document.getElementById('aiInterviewLink');
+  const title = document.getElementById('thankyouTitle');
+  const message = document.getElementById('thankyouMessage');
+  const requiredPanel = document.getElementById('aiRequiredPanel');
+  const referralBox = document.getElementById('referralBox');
+  const aiRequired = !!(response.ai_test_required && response.interview_token);
+  mandatoryInterviewUrl = aiRequired ? INTERVIEW_URL_PUBLIC + '?t=' + encodeURIComponent(response.interview_token) : '';
+
+  link.style.display = 'none';
+  link.classList.remove('mandatory');
+  requiredPanel.classList.remove('active');
+  referralBox.style.display = 'none';
+
+  if (aiRequired) {
+    title.textContent = 'Application Submitted - AI Test Required';
+    message.textContent = 'Your application is saved. Please complete the AI interview now to finish this step.';
+    requiredPanel.classList.add('active');
+    link.href = mandatoryInterviewUrl;
+    link.classList.add('mandatory');
+    link.innerHTML = '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Start Mandatory AI Interview';
+    link.style.display = 'inline-flex';
+    setTimeout(() => {
+      if (mandatoryInterviewUrl && document.getElementById('thankyou').classList.contains('active')) {
+        window.location.href = mandatoryInterviewUrl;
+      }
+    }, 7000);
+    return;
+  }
+
+  title.textContent = 'Application Submitted!';
+  message.textContent = 'Thank you for applying to ' + <?= json_encode($org_name) ?> + '. Our team will review your application and contact you shortly.';
+  if (response.referral_link) {
+    referralLink = response.referral_link;
+    document.getElementById('refWhatsapp').href = 'https://wa.me/?text=' + encodeURIComponent(REFERRAL_MESSAGE_PREFIX + referralLink + '&medium=whatsapp');
+    referralBox.style.display = 'block';
+  }
+}
 
 function gotoSection(id) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -1499,10 +1584,12 @@ async function collectDynamicAnswers() {
 }
 
 function dynamicByKeys(answers, keys) {
-  keys = keys.map(k => k.toLowerCase());
+  const slug = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+  keys = keys.map(slug);
   for (const ans of Object.values(answers)) {
-    const key = String(ans.key || '').toLowerCase();
-    if (keys.includes(key)) return Array.isArray(ans.value) ? ans.value.join(', ') : String(ans.value || '').trim();
+    const key = slug(ans.key);
+    const label = slug(ans.label);
+    if (keys.includes(key) || keys.includes(label)) return Array.isArray(ans.value) ? ans.value.join(', ') : String(ans.value || '').trim();
   }
   return '';
 }
@@ -1895,16 +1982,7 @@ async function submitForm() {
     
     const d = await res.json();
     if (!d.success) throw new Error(d.error || 'Submit failed');
-    if (d.interview_token) {
-      const link = document.getElementById('aiInterviewLink');
-      link.href = INTERVIEW_URL_PUBLIC + '?t=' + encodeURIComponent(d.interview_token);
-      link.style.display = 'inline-flex';
-    }
-    if (d.referral_link) {
-      referralLink = d.referral_link;
-      document.getElementById('refWhatsapp').href = 'https://wa.me/?text=' + encodeURIComponent(REFERRAL_MESSAGE_PREFIX + referralLink + '&medium=whatsapp');
-      document.getElementById('referralBox').style.display = 'block';
-    }
+    applySubmitSuccessState(d);
     
   } catch (err) {
     console.error(err);
@@ -1959,6 +2037,7 @@ async function submitDynamicForm() {
       current_salary: dynamicByKeys(answers, ['current_salary','current_ctc']),
       expected_salary: dynamicByKeys(answers, ['expected_salary','expected_ctc']),
       portfolio: dynamicByKeys(answers, ['portfolio','linkedin','linkedin_profile','github','website']),
+      ai_test_willing: dynamicByKeys(answers, ['ai_test_willing','willing_to_take_ai_test','willing_to_take_the_ai_test','ai_test']),
       application_answers: answers,
       recording_consent: !!document.getElementById('recordingConsent')?.checked,
       ref_token: REF_TOKEN,
@@ -1973,16 +2052,7 @@ async function submitDynamicForm() {
     });
     const d = await res.json();
     if (!d.success) throw new Error(d.error || 'Submit failed');
-    if (d.interview_token) {
-      const link = document.getElementById('aiInterviewLink');
-      link.href = INTERVIEW_URL_PUBLIC + '?t=' + encodeURIComponent(d.interview_token);
-      link.style.display = 'inline-flex';
-    }
-    if (d.referral_link) {
-      referralLink = d.referral_link;
-      document.getElementById('refWhatsapp').href = 'https://wa.me/?text=' + encodeURIComponent(REFERRAL_MESSAGE_PREFIX + referralLink + '&medium=whatsapp');
-      document.getElementById('referralBox').style.display = 'block';
-    }
+    applySubmitSuccessState(d);
   } catch (err) {
     console.error(err);
     alert('Submission failed. Please try again.\n' + err.message);

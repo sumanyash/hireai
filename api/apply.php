@@ -50,15 +50,23 @@ function money_apply($value) {
     if ($cleaned === '' || $cleaned === '.') return null;
     return is_numeric($cleaned) ? (float)$cleaned : null;
 }
+function apply_answer_key_slug($value) {
+    return preg_replace('/[^a-z0-9]+/', '_', strtolower(trim((string)$value)));
+}
+function yesish_apply($value) {
+    $value = strtolower(trim((string)$value));
+    return in_array($value, ['yes', 'y', '1', 'true', 'agree', 'agreed', 'willing'], true);
+}
 function dynamic_answer_empty($value) {
     if (is_array($value)) return count(array_filter($value, fn($v) => trim((string)$v) !== '')) === 0;
     return trim((string)$value) === '';
 }
 function dynamic_answer_by_keys($answers, $keys) {
-    $keys = array_map('strtolower', $keys);
+    $keys = array_map('apply_answer_key_slug', $keys);
     foreach ($answers as $answer) {
-        $key = strtolower((string)($answer['key'] ?? ''));
-        if (in_array($key, $keys, true)) {
+        $key = apply_answer_key_slug($answer['key'] ?? '');
+        $label = apply_answer_key_slug($answer['label'] ?? '');
+        if (in_array($key, $keys, true) || in_array($label, $keys, true)) {
             $value = $answer['value'] ?? '';
             return is_array($value) ? trim(implode(', ', $value)) : trim((string)$value);
         }
@@ -160,6 +168,18 @@ $email       = s($data,'email');
 $ref_token   = s($data,'ref_token');
 $ref_medium  = s($data,'ref_medium') ?: 'candidate_share';
 $application_answers = is_array($data['application_answers'] ?? null) ? $data['application_answers'] : [];
+$ai_test_willing_value = s($data, 'ai_test_willing');
+if ($ai_test_willing_value === '') {
+    $ai_test_willing_value = dynamic_answer_by_keys($application_answers, [
+        'ai_test_willing',
+        'willing_to_take_ai_test',
+        'willing_to_take_the_ai_test',
+        'ai_test',
+        'willing_to_take_the_ai_test?',
+    ]);
+}
+$data['ai_test_willing'] = $ai_test_willing_value;
+$ai_test_required = yesish_apply($ai_test_willing_value);
 if ($email === '') $email = dynamic_answer_by_keys($application_answers, ['email','email_id','email_address']);
 if (s($data,'phone') === '') {
     $data['phone'] = dynamic_answer_by_keys($application_answers, ['phone','mobile','mobile_number','phone_number','whatsapp','whatsapp_number']);
@@ -338,7 +358,7 @@ try {
         s($data,'exp_type'), s($data,'exp_desc'), s($data,'current_salary'), s($data,'expected_salary'),
         s($data,'tenure'), $jd, s($data,'flex_hours'), s($data,'laptop'), s($data,'internet'),
         s($data,'commute'), s($data,'tech_skills'), s($data,'soft_skills'),
-        $resume_path, $video_path, s($data,'portfolio'), s($data,'ai_test_willing'), json_encode($clean_application_answers), $referred_by_candidate_id, $ref_medium, date('Y-m-d H:i:s', time() + 86400),
+        $resume_path, $video_path, s($data,'portfolio'), $ai_test_willing_value, json_encode($clean_application_answers), $referred_by_candidate_id, $ref_medium, date('Y-m-d H:i:s', time() + 86400),
     ];
 
     $placeholders = implode(',', array_fill(0, count($cols), '?'));
@@ -372,7 +392,7 @@ try {
 
     // ── AUTO WHATSAPP + outreach_sent ─────────────────────────
     $wa_sent = false;
-    if ($cid && s($data,'phone')) {
+    if ($ai_test_required && $cid && s($data,'phone')) {
         try {
             $interview_link = INTERVIEW_URL . '?t=' . $tok;
             $camp_name = $campaign['name'] ?? 'our company';
@@ -430,7 +450,8 @@ try {
         'candidate_id'    => $cid,
         'wa_sent'         => $wa_sent,
         'sync_status'     => $sync_status,
-        'interview_token' => $tok,
+        'ai_test_required'=> $ai_test_required,
+        'interview_token' => $ai_test_required ? $tok : null,
         'campaign_id'     => $campaign_id,
         'referral_link'   => BASE_URL . '/apply.php?campaign_id=' . (int)$campaign_id . '&ref=' . urlencode($tok),
     ]);

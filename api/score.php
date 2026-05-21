@@ -4,7 +4,6 @@ require_once __DIR__.'/../includes/db.php';
 require_once __DIR__.'/../includes/functions.php';
 if(php_sapi_name()==='cli'){$candidate_id=(int)($argv[1]??0);$campaign_id=(int)($argv[2]??0);}
 else{header('Content-Type: application/json');$candidate_id=(int)($_GET['candidate_id']??0);$campaign_id=(int)($_GET['campaign_id']??0);}
-$silent_mode=php_sapi_name()==='cli'&&(in_array('--silent',$argv??[],true)||getenv('HIREAI_SCORE_SILENT')==='1');
 if(!$candidate_id||!$campaign_id){log_s("Missing args");exit(1);}
 log_s("Scoring candidate $candidate_id campaign $campaign_id");
 $candidate=db_fetch_one("SELECT c.*,camp.passing_score,camp.el_agent_id,camp.name as campaign_name,camp.job_role FROM candidates c JOIN campaigns camp ON c.campaign_id=camp.id WHERE c.id=? AND c.campaign_id=?",[$candidate_id,$campaign_id],'ii');
@@ -29,6 +28,7 @@ function has_gradable_answer($answer){
   if($text!=='' && !str_starts_with($text,'[Voice answer recorded but upload failed:'))return true;
   return trim((string)($answer['audio_url']??''))!=='';
 }
+<<<<<<< HEAD
 function parse_score_json($content){
   $content=preg_replace('/```json|```/','',(string)$content);
   $content=trim($content);
@@ -107,6 +107,8 @@ function call_gemini_scoring($prompt,$api_key,$model){
   if(!is_array($result)||!isset($result['scores'])||!is_array($result['scores']))return [null,'Gemini returned invalid JSON: '.substr((string)$content,0,300)];
   return [$result,null];
 }
+=======
+>>>>>>> 06a3605 (Update latest HireAI call and scoring fixes)
 $qa='';
 foreach($questions as $idx=>$q){
   $answer=$answer_by_question[(int)$q['id']]??null;
@@ -121,47 +123,45 @@ foreach($questions as $idx=>$q){
 $prompt="Score this interview for role: {$candidate['job_role']}.\n\nQUESTIONS AND ANSWERS:\n$qa\nCRITICAL SCORING RULES:\n1. Score each Question ID independently from its own question and answer only.\n2. Ignore categories, parameters, or repeated topic names. They must not affect scoring.\n3. Give marks from 0 up to that question's Max marks.\n4. Correct factual short answers can receive high or full marks even if short.\n5. Partially correct answers should receive partial marks.\n6. Wrong, irrelevant, blank, or [No gradable response recorded] answers must receive 0.\n7. Reasoning must be specific to that question and answer.\n8. Return exactly one score object for every Question ID.\n\nReturn ONLY valid JSON, no markdown:\n{\"scores\":[{\"question_id\":123,\"score\":N,\"max_marks\":N,\"reasoning\":\"specific reason\"}],\"summary\":\"2-3 sentences\"}";
 $result=null;
 $scoring_available=false;
-$gemini_key=defined('GEMINI_API_KEY')&&GEMINI_API_KEY?GEMINI_API_KEY:(defined('GOOGLE_APPLICATION_CREDENTIALS')?GOOGLE_APPLICATION_CREDENTIALS:'');
-if($gemini_key){
-  $gemini_model=defined('GEMINI_MODEL')&&GEMINI_MODEL?GEMINI_MODEL:'gemini-2.0-flash';
-  log_s("Using Gemini ($gemini_model) for scoring");
-  [$gemini_result,$gemini_error]=call_gemini_scoring($prompt,$gemini_key,$gemini_model);
-  if($gemini_result){
-    $result=$gemini_result;
-    $scoring_available=true;
-    log_s("Gemini done. Scores: ".count($result['scores']));
-  }else{
-    log_s($gemini_error);
-  }
-}else{
-  log_s("Gemini key missing — check GEMINI_API_KEY in .env");
-}
 $groq_key=defined('GROQ_API_KEY')?GROQ_API_KEY:'';
-if(!$result&&$groq_key){
-  log_s("Using Groq (llama-3.3-70b) for scoring");
-  $ch=curl_init('https://api.groq.com/openai/v1/chat/completions');
-  curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode(['model'=>'llama-3.3-70b-versatile','max_tokens'=>4000,'temperature'=>0.1,'messages'=>[['role'=>'system','content'=>'You are an expert HR interviewer and scoring AI. Always respond with valid JSON only, no markdown, no extra text.'],['role'=>'user','content'=>$prompt]]]),CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.$groq_key],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>60,CURLOPT_SSL_VERIFYPEER=>false]);
-  $resp=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
-  if($code===200){
-    $data=json_decode($resp,true);$content=$data['choices'][0]['message']['content']??'';
-    $result=parse_score_json($content);
-    if(is_array($result)&&isset($result['scores'])&&is_array($result['scores'])){
-      $scoring_available=true;
-      log_s("Groq done. Scores: ".count($result['scores']));
-    }else{
-      log_s("Groq returned invalid JSON: ".substr((string)$content,0,300));
-      $result=null;
+// Model priority: primary first, fallback second
+$groq_models=['llama-3.3-70b-versatile','llama-3.1-8b-instant'];
+if($groq_key){
+  foreach($groq_models as $model_idx=>$model){
+    if($scoring_available)break;
+    $max_attempts=($model_idx===0)?3:2;
+    for($attempt=1;$attempt<=$max_attempts;$attempt++){
+      log_s("Scoring attempt $attempt/$max_attempts using $model");
+      $ch=curl_init('https://api.groq.com/openai/v1/chat/completions');
+      curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode(['model'=>$model,'max_tokens'=>4000,'temperature'=>0.1,'messages'=>[['role'=>'system','content'=>'You are an expert HR interviewer and scoring AI. Always respond with valid JSON only, no markdown, no extra text.'],['role'=>'user','content'=>$prompt]]]),CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.$groq_key],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>60,CURLOPT_SSL_VERIFYPEER=>false]);
+      $resp=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
+      if($code===200){
+        $data=json_decode($resp,true);$content=preg_replace('/```json|```/','',$data['choices'][0]['message']['content']??'');
+        $content=trim($content);
+        $start=strpos($content,'{');$end=strrpos($content,'}');
+        if($start!==false&&$end!==false&&$end>$start)$content=substr($content,$start,$end-$start+1);
+        $result=json_decode($content,true);
+        if(is_array($result)&&isset($result['scores'])&&is_array($result['scores'])){
+          $scoring_available=true;
+          log_s("Scoring done ($model, attempt $attempt). Scores: ".count($result['scores']));
+          break;
+        }else{
+          log_s("Invalid JSON from $model attempt $attempt: ".substr((string)$content,0,200));
+          $result=null;
+        }
+      }else{
+        log_s("HTTP $code from $model attempt $attempt: ".substr((string)$resp,0,200));
+        // Rate limit: wait before retry
+        if($code===429&&$attempt<$max_attempts)sleep(min($attempt*3,10));
+      }
+      if(!$scoring_available&&$attempt<$max_attempts)sleep($attempt);
     }
+    if(!$scoring_available&&$model_idx===0)log_s("Primary model failed — trying fallback model");
   }
-  else log_s("Groq error $code: ".substr((string)$resp,0,300));
 }else{
   log_s("Groq key missing — check GROQ_API_KEY in .env");
 }
 if(!$result){
-  if($silent_mode){
-    log_s("Scoring unavailable in silent mode; preserving existing marks/status.");
-    exit(2);
-  }
   log_s("Scoring unavailable; marking manual review");
   $scores=[];$total=$max=0;
   foreach($questions as $q){
@@ -228,11 +228,6 @@ else db_execute("INSERT INTO interview_results (candidate_id,campaign_id,total_s
 $new_status=$pf==='pending'?'on_hold':($pf==='pass'?'shortlisted':'rejected');
 db_execute("UPDATE candidates SET status=? WHERE id=?",[$new_status,$candidate_id],'si');
 log_s("Result saved: $total_score/$max_total $pf status->$new_status");
-if($silent_mode){
-  log_s("Silent mode enabled; skipping result WhatsApp and AI call.");
-  if(php_sapi_name()!=='cli')echo json_encode(['status'=>'done','score'=>$total_score,'max'=>$max_total,'pass_fail'=>$pf,'silent'=>true]);
-  exit;
-}
 $name=$candidate['name']?:'Candidate';$role=$candidate['job_role'];$camp=$candidate['campaign_name'];
 if($pf==='pending'){
   log_s("Manual review pending; skipping result WhatsApp.");

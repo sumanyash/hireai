@@ -207,6 +207,10 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 .q-nav-dot.done{background:rgba(16,185,129,.2);color:var(--green);border:1px solid rgba(16,185,129,.3)}
 .q-nav-dot.active{background:var(--blue);color:#fff}
 
+/* ══ NETWORK TOAST ═══════════════════════════════════════════════════════════ */
+.net-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e3a5f;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;pointer-events:none;transition:opacity .4s;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+.net-warn{background:#92400E}
+
 /* ══ PERMISSION SCREEN ════════════════════════════════════════════════════════ */
 .perm-screen{
   flex:1;display:flex;align-items:center;justify-content:center;padding:24px;overflow-y:auto;
@@ -537,7 +541,7 @@ const CIRC    = 2 * Math.PI * 22; // SVG arc length ≈ 138.2
 let currentQ = 0, timerInt = null, timeLeft = TIMER_S;
 let mediaRecorder = null, audioChunks = [], mediaStream = null;
 let videoRecorder = null, videoChunks = [];
-let isRecording = false, sessionId = null;
+let isRecording = false, sessionId = null, interviewStartTime = Date.now();
 let answers = [], currentMode = 'voice';
 let copyCount = 0, tabSwitchCount = 0, cheatLog = [];
 
@@ -613,8 +617,8 @@ function startVideoRecording() {
     videoChunks = [];
     const mt = pickSupportedMime(['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4']);
     const opts = {
-      videoBitsPerSecond: 250000,
-      audioBitsPerSecond: 64000
+      videoBitsPerSecond: 128000,
+      audioBitsPerSecond: 48000
     };
     if (mt) opts.mimeType = mt;
     videoRecorder = new MediaRecorder(mediaStream, opts);
@@ -939,14 +943,34 @@ async function nextQuestion(allowBlank = false) {
   loadQuestion(resolveNextQuestionIndex(textAnswer));
 }
 
+function showNetToast(msg, type) {
+  const existing = document.querySelectorAll('.net-toast');
+  existing.forEach(t => t.remove());
+  const t = document.createElement('div');
+  t.className = 'net-toast' + (type === 'warn' ? ' net-warn' : '');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 400); }, 3500);
+}
+
 async function saveAnswer(answer) {
-  try {
-    await fetch('api/interview.php?action=save_answer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: TOKEN, session_id: sessionId, answer, cheat_log: cheatLog }),
-    });
-  } catch(e) {}
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const r = await fetch('api/interview.php?action=save_answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: TOKEN, session_id: sessionId, answer, cheat_log: cheatLog }),
+      });
+      if (r.ok) return;
+      throw new Error('HTTP ' + r.status);
+    } catch(e) {
+      if (attempt === 3) {
+        showNetToast('Answer saved locally — will retry on reconnect.', 'warn');
+      } else {
+        await new Promise(res => setTimeout(res, 1000 * attempt));
+      }
+    }
+  }
 }
 
 // ── FINISH ───────────────────────────────────────────────────────────────────
@@ -955,11 +979,14 @@ async function finishInterview() {
   document.getElementById('completion-screen').style.display = 'flex';
   document.getElementById('rec-badge').style.display = 'none';
 
+  const interviewEndTime = Date.now();
+  const durationSeconds  = Math.round((interviewEndTime - interviewStartTime) / 1000);
+
   let videoUploadPromise = Promise.resolve();
   if (videoRecorder && videoRecorder.state !== 'inactive') {
     videoUploadPromise = new Promise(resolve => {
       videoRecorder.onstop = async () => { await uploadVideo(); resolve(); };
-      setTimeout(resolve, 8000);
+      setTimeout(resolve, 45000); // 45s — enough for large recordings on slow connections
     });
     videoRecorder.stop();
   }
@@ -974,6 +1001,7 @@ async function finishInterview() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         token: TOKEN, session_id: sessionId, answers,
+        duration_seconds: durationSeconds,
         cheat_summary: {
           tab_switches : tabSwitchCount,
           face_away    : 0,
@@ -997,8 +1025,8 @@ async function copyReferral() {
 async function uploadVideo() {
   if (!videoChunks.length) return;
   const blob = new Blob(videoChunks, { type: 'video/webm' });
-  if (blob.size > 95 * 1024 * 1024) {
-    console.warn('Interview recording skipped because it is too large:', blob.size);
+  if (blob.size > 98 * 1024 * 1024) {
+    console.warn('Interview recording too large to upload (' + Math.round(blob.size/1024/1024) + 'MB), skipped.');
     return;
   }
   const fd = new FormData();
@@ -1056,6 +1084,7 @@ function startFaceDetection() {
   const video  = document.getElementById('video-el');
   const canvas = document.getElementById('face-canvas');
   const ctx    = canvas.getContext('2d');
+  let lastFaceLogQ = -1, lastFaceLogTime = 0;
   setInterval(() => {
     if (!video.videoWidth) return;
     canvas.width  = video.videoWidth;
@@ -1071,7 +1100,13 @@ function startFaceDetection() {
     const avg = brightness / (imgData.data.length / 40);
     const fs  = document.getElementById('face-status');
     if (avg < 18) {
-      logCheat('Low light / face not visible');
+      // Log at most once per 30s per question to avoid flooding the cheat log
+      const now = Date.now();
+      if (currentQ !== lastFaceLogQ || now - lastFaceLogTime > 30000) {
+        logCheat('Low light / face not visible');
+        lastFaceLogQ = currentQ;
+        lastFaceLogTime = now;
+      }
       if (fs) fs.textContent = '⚠️ Too dark — adjust lighting';
     } else {
       if (fs) fs.textContent = '✅ Face detected';

@@ -1,3 +1,7 @@
 uploads/
 *.phpORG
 .env
+
+/includes/*.json
+*.bak3
+.env

@@ -49,6 +49,11 @@ $questions = db_fetch_all(
     "SELECT *, order_no AS question_number FROM questions WHERE campaign_id=? ORDER BY order_no ASC",
     [$c['campaign_id']], 'i'
 );
+$ai_calls = db_fetch_all(
+    "SELECT * FROM ai_call_results WHERE candidate_id=? ORDER BY received_at DESC LIMIT 5",
+    [$id], 'i'
+);
+$ai_call = $ai_calls[0] ?? null;
 $questionById = [];
 foreach ($questions as $qRow) $questionById[(int)$qRow['id']] = $qRow;
 $scoreByQuestion = [];
@@ -61,6 +66,11 @@ foreach ($questions as $qRow) {
     $qid = (int)$qRow['id'];
     if (isset($scoreByQid[$qid])) {
         $scoreByQuestion[$qid] = $scoreByQid[$qid];
+    } else {
+        $param = (string)($qRow['parameter'] ?? '');
+        if ($param !== '' && isset($scoreByParameter[$param])) {
+            $scoreByQuestion[$qid] = $scoreByParameter[$param];
+        }
     }
 }
 $displayScores = [];
@@ -169,7 +179,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$display_score = $result['recruiter_override_score'] ?? (!empty($displayScores) ? $displayTotalScore : ($result['total_score'] ?? null));
+$display_score = !is_null($result['recruiter_override_score'] ?? null)
+    ? (int)$result['recruiter_override_score']
+    : ($result ? (int)$result['total_score'] : ($displayTotalScore > 0 ? $displayTotalScore : null));
+$display_max   = $result ? (int)($result['max_score'] ?? 100) : ($displayMaxScore ?: 100);
+$pct           = ($display_score !== null && $display_max > 0) ? min(100, round($display_score / $display_max * 100)) : 0;
+$ringCirc      = round(2 * M_PI * 46, 2);
+$ringOffset    = round($ringCirc * (1 - $pct / 100), 2);
+$avatarColors  = ['135deg,#6366F1,#8B5CF6','135deg,#3B82F6,#6366F1','135deg,#0EA5E9,#3B82F6','135deg,#10B981,#059669','135deg,#F59E0B,#EF4444'];
+$avatarGrad    = $avatarColors[ord(strtolower($c['name'][0] ?? 'a')) % count($avatarColors)];
+$nameParts     = array_filter(explode(' ', trim($c['name'])));
+$initials      = strtoupper(substr($c['name'], 0, 1));
+if (count($nameParts) > 1) $initials .= strtoupper(substr(end($nameParts), 0, 1));
 $pf            = $result['pass_fail'] ?? null;
 $scoreColor    = $pf === 'pass' ? '#10B981' : ($pf === 'fail' ? '#EF4444' : '#94A3B8');
 $scoreBg       = $pf === 'pass' ? '#ECFDF5' : ($pf === 'fail' ? '#FEF2F2' : '#F8FAFC');
@@ -201,8 +222,9 @@ $toast         = $_GET['toast'] ?? '';
 @keyframes toastOut{to{opacity:0;transform:translateY(20px) scale(.95)}}
 
 /* LAYOUT */
-.detail-grid{display:grid;grid-template-columns:310px 1fr;gap:20px;align-items:start}
-@media(max-width:1024px){.detail-grid{grid-template-columns:1fr}}
+.detail-grid{display:grid;grid-template-columns:310px 1fr;gap:20px;align-items:start;grid-auto-rows:min-content}
+.detail-grid>div:last-child{position:sticky;top:86px;max-height:calc(100vh - 106px);overflow-y:auto;padding-right:2px}
+@media(max-width:1024px){.detail-grid{grid-template-columns:1fr}.detail-grid>div:last-child{position:static;max-height:none;overflow-y:visible}}
 
 /* INFO */
 .info-row{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid #F1F5F9}
@@ -210,10 +232,13 @@ $toast         = $_GET['toast'] ?? '';
 .info-key{font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;width:90px;flex-shrink:0;padding-top:2px}
 .info-val{font-size:14px;font-weight:500;color:var(--text);word-break:break-all}
 
-/* SCORE */
-.score-circle{width:124px;height:124px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0 auto 16px;border:6px solid currentColor;position:relative}
-.score-big{font-size:36px;font-weight:900;line-height:1;letter-spacing:-1px}
-.score-sub{font-size:10px;font-weight:700;opacity:.6;letter-spacing:.8px;text-transform:uppercase}
+/* SCORE RING */
+.ring-wrap{position:relative;width:120px;height:120px;margin:0 auto 14px}
+.ring-track{fill:none;stroke:#F1F5F9;stroke-width:8}
+.ring-fill{fill:none;stroke-width:8;stroke-linecap:round;transform-origin:center;transform:rotate(-90deg);transition:stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1)}
+.ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+.ring-score{font-size:30px;font-weight:900;letter-spacing:-1.5px;line-height:1}
+.ring-max{font-size:11px;font-weight:700;color:var(--gray);letter-spacing:.3px;opacity:.7}
 
 /* SCORE BARS */
 .sbar-wrap{background:#E2E8F0;border-radius:99px;height:7px;overflow:hidden;margin-top:4px}
@@ -264,8 +289,29 @@ $toast         = $_GET['toast'] ?? '';
 .no-media{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:rgba(255,255,255,.3);padding:40px;text-align:center}
 .no-media i{font-size:36px}
 
-/* ACTION BAR */
-.action-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;padding:14px 18px;background:#fff;border-radius:16px;box-shadow:var(--card-shadow);border:1px solid rgba(0,0,0,.04);align-items:center}
+/* HERO CARD */
+.hero-card{background:#fff;border-radius:18px;box-shadow:var(--card-shadow);border:1px solid rgba(0,0,0,.04);margin-bottom:20px;overflow:hidden}
+.hero-accent{height:4px;background:linear-gradient(90deg,#6366F1,#3B82F6,#10B981)}
+.hero-body{display:flex;align-items:center;gap:16px;padding:18px 22px;flex-wrap:wrap}
+.hero-left{display:flex;align-items:center;gap:14px;flex:1;min-width:0}
+.hero-avatar{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:#fff;flex-shrink:0;letter-spacing:-1px;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.hero-name{font-size:20px;font-weight:800;color:var(--text);letter-spacing:-.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px}
+.hero-meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:4px}
+.hero-meta span{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--gray);font-weight:500}
+.hero-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.ha-btn{display:inline-flex;align-items:center;gap:5px;padding:8px 13px;border-radius:10px;font-size:12px;font-weight:700;border:none;cursor:pointer;text-decoration:none;transition:all .15s;white-space:nowrap;line-height:1}
+.ha-btn-primary{background:linear-gradient(135deg,#2563EB,#3B82F6);color:#fff}
+.ha-btn-primary:hover{background:linear-gradient(135deg,#1D4ED8,#2563EB);box-shadow:0 4px 12px rgba(37,99,235,.3)}
+.ha-btn-green{background:linear-gradient(135deg,#059669,#10B981);color:#fff}
+.ha-btn-green:hover{box-shadow:0 4px 12px rgba(5,150,105,.3)}
+.ha-btn-indigo{background:linear-gradient(135deg,#4F46E5,#6366F1);color:#fff}
+.ha-btn-indigo:hover{box-shadow:0 4px 12px rgba(79,70,229,.3)}
+.ha-btn-ghost{background:transparent;color:var(--gray2);border:1.5px solid #E2E8F0;padding:8px 11px}
+.ha-btn-ghost:hover{background:#F8FAFC;color:var(--text)}
+.ha-btn-danger{background:transparent;color:#EF4444;border:1.5px solid #FECACA;padding:8px 11px}
+.ha-btn-danger:hover{background:#FEF2F2}
+.ha-sep{width:1px;height:26px;background:#E2E8F0}
+@media(max-width:800px){.hero-body{padding:14px 16px;gap:12px}.hero-right{width:100%;justify-content:flex-start}}
 
 /* NOTES */
 .note-item{padding:12px 14px;background:#F8FAFC;border-radius:10px;margin-bottom:8px;border-left:3px solid var(--blue)}
@@ -273,14 +319,37 @@ $toast         = $_GET['toast'] ?? '';
 .note-meta{font-size:11px;color:var(--gray);margin-top:5px;display:flex;gap:12px}
 
 /* INTEGRITY */
-.int-flag{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;margin-bottom:7px;border:1px solid}
-.int-clean{background:#ECFDF5;border-color:#A7F3D0}
-.int-warn{background:#FEF2F2;border-color:#FECACA}
-.int-medium{background:#FFFBEB;border-color:#FDE68A}
-.int-high{background:#FEF2F2;border-color:#FECACA}
-.int-critical{background:#FFF1F2;border-color:#FDA4AF}
-.flag-desc{font-size:11px;color:#64748B;line-height:1.35;margin-top:2px}
-.risk-pill{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;border-radius:999px;padding:3px 7px}
+.int-stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:12px 0 14px}
+.int-stat{background:#F8FAFC;border:1.5px solid #E2E8F0;border-radius:11px;padding:9px 6px;text-align:center;transition:border-color .2s}
+.int-stat-val{font-size:20px;font-weight:900;line-height:1;margin-bottom:3px}
+.int-stat-label{font-size:9.5px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.4px}
+.int-flag-v2{display:flex;align-items:flex-start;gap:9px;padding:10px 11px;border-radius:11px;margin-bottom:7px;border-left:3px solid;border-top:1px solid transparent;border-right:1px solid transparent;border-bottom:1px solid transparent}
+.int-flag-v2.int-flag-high{background:#FEF2F2;border-left-color:#EF4444;border-top-color:#FECACA;border-right-color:#FECACA;border-bottom-color:#FECACA}
+.int-flag-v2.int-flag-medium{background:#FFFBEB;border-left-color:#F59E0B;border-top-color:#FDE68A;border-right-color:#FDE68A;border-bottom-color:#FDE68A}
+.int-flag-icon{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:1px}
+.int-flag-high .int-flag-icon{background:#FEE2E2;color:#DC2626}
+.int-flag-medium .int-flag-icon{background:#FEF3C7;color:#B45309}
+.int-flag-body{flex:1;min-width:0}
+.int-flag-title{font-size:12px;font-weight:800;color:var(--text);margin-bottom:2px;line-height:1.2}
+.int-flag-desc{font-size:11px;color:#64748B;line-height:1.4}
+.int-flag-count{font-size:14px;font-weight:900;padding:2px 8px;border-radius:7px;min-width:26px;text-align:center;flex-shrink:0;align-self:center}
+.int-flag-high .int-flag-count{color:#DC2626;background:#FEE2E2}
+.int-flag-medium .int-flag-count{color:#B45309;background:#FEF3C7}
+.int-clean-state{display:flex;align-items:center;gap:12px;padding:14px 12px;background:#ECFDF5;border-radius:12px;border:1.5px solid #A7F3D0}
+.int-risk-header{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:11px;margin-bottom:12px;border:1.5px solid}
+.int-risk-label{font-size:13px;font-weight:800;line-height:1.2}
+.int-risk-sub{font-size:11px;opacity:.75;margin-top:1px}
+.int-perq-section{margin-top:12px;padding-top:12px;border-top:1px solid #F1F5F9}
+.int-perq-heading{font-size:10.5px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none}
+.int-perq-heading:hover{color:var(--text2)}
+.int-perq-list{max-height:220px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#CBD5E1 transparent;transition:max-height .3s ease}
+.int-perq-list.collapsed{max-height:0;overflow:hidden}
+.int-perq-item{display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:7px 10px;background:#F8FAFC;border-radius:9px;border:1px solid #F1F5F9}
+.int-perq-qnum{font-size:11px;font-weight:900;background:linear-gradient(135deg,var(--blue),var(--accent));color:#fff;padding:2px 8px;border-radius:6px;flex-shrink:0;letter-spacing:.3px}
+.int-perq-summary{font-size:11px;color:#475569;line-height:1.4;flex:1}
+.int-session-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;padding-top:12px;border-top:1px solid #F1F5F9}
+.int-meta-chip{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:600;color:#64748B;background:#F1F5F9;border-radius:6px;padding:3px 8px}
+.risk-pill-v2{font-size:10.5px;font-weight:800;border-radius:999px;padding:3px 10px;border:1.5px solid;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
 
 /* CONFIRM MODAL */
 .confirm-overlay{display:none;position:fixed;inset:0;background:rgba(8,15,30,.75);backdrop-filter:blur(10px);z-index:3000;align-items:center;justify-content:center;padding:20px}
@@ -321,43 +390,68 @@ $toast         = $_GET['toast'] ?? '';
   <span style="color:var(--text);font-weight:600"><?= htmlspecialchars($c['name']) ?></span>
 </div>
 
-<!-- ACTION BAR -->
-<div class="action-bar animate-in">
-  <div style="flex:1;min-width:0">
-    <div style="font-size:20px;font-weight:800;letter-spacing:-.3px"><?= htmlspecialchars($c['name']) ?></div>
-    <div style="font-size:12px;color:var(--gray);margin-top:2px">
-      <?= htmlspecialchars($c['phone'] ?? '') ?> &nbsp;·&nbsp; <?= htmlspecialchars($c['campaign_name'] ?? '—') ?>
+<!-- HERO HEADER -->
+<div class="hero-card animate-in">
+  <div class="hero-accent"></div>
+  <div class="hero-body">
+    <div class="hero-left">
+      <div class="hero-avatar" style="background:linear-gradient(<?= $avatarGrad ?>)"><?= htmlspecialchars($initials) ?></div>
+      <div style="min-width:0;flex:1">
+        <div class="hero-name"><?= htmlspecialchars($c['name']) ?></div>
+        <div class="hero-meta">
+          <?php if (!empty($c['phone'])): ?>
+          <span><i class="fa-solid fa-phone fa-xs"></i> <?= htmlspecialchars($c['phone']) ?></span>
+          <?php endif; ?>
+          <?php if (!empty($c['email'])): ?>
+          <span><i class="fa-solid fa-envelope fa-xs"></i> <?= htmlspecialchars($c['email']) ?></span>
+          <?php endif; ?>
+          <?php if (!empty($c['campaign_name'])): ?>
+          <span><i class="fa-solid fa-briefcase fa-xs"></i> <?= htmlspecialchars($c['campaign_name']) ?></span>
+          <?php endif; ?>
+          <?php if (!empty($c['city'])): ?>
+          <span><i class="fa-solid fa-location-dot fa-xs"></i> <?= htmlspecialchars($c['city']) ?></span>
+          <?php endif; ?>
+        </div>
+      </div>
+    </div>
+    <div class="hero-right">
+      <span class="badge badge-<?= $c['status'] ?>" style="font-size:12px;padding:5px 14px;flex-shrink:0">
+        <?= ucfirst(str_replace('_', ' ', $c['status'])) ?>
+      </span>
+      <?php if (!empty($c['phone'])): ?>
+      <a href="tel:<?= htmlspecialchars($c['phone']) ?>" class="ha-btn ha-btn-green">
+        <i class="fa-solid fa-phone fa-xs"></i> Call
+      </a>
+      <?php endif; ?>
+      <?php if ($interviewLink): ?>
+      <button onclick="copyLink()" class="ha-btn ha-btn-indigo">
+        <i class="fa-solid fa-link fa-xs"></i> Copy Link
+      </button>
+      <?php endif; ?>
+      <?php if (defined('DIALER_API_KEY') && DIALER_API_KEY): ?>
+      <button onclick="openCallModal()" class="ha-btn" style="background:linear-gradient(135deg,#059669,#10B981);color:#fff;border-color:transparent" title="Trigger AI Call">
+        <i class="fa-solid fa-phone fa-xs"></i> AI Call
+      </button>
+      <?php endif; ?>
+      <button onclick="openStatusModal()" class="ha-btn ha-btn-primary">
+        <i class="fa-solid fa-pen fa-xs"></i> Status
+      </button>
+      <button onclick="openEditModal()" class="ha-btn ha-btn-ghost">
+        <i class="fa-solid fa-user-pen fa-xs"></i> Edit
+      </button>
+      <div class="ha-sep"></div>
+      <button onclick="scheduleReminder()" class="ha-btn ha-btn-ghost" title="Set reminder">
+        <i class="fa-solid fa-bell fa-xs"></i>
+      </button>
+      <a href="export_candidate.php?id=<?= $c['id'] ?>" target="_blank" class="ha-btn ha-btn-ghost" title="Export PDF">
+        <i class="fa-solid fa-file-export fa-xs"></i>
+      </a>
+      <button onclick="confirmDelete(<?= $c['id'] ?>,'<?= addslashes(htmlspecialchars($c['name'])) ?>')"
+        class="ha-btn ha-btn-danger" title="Delete candidate">
+        <i class="fa-solid fa-trash fa-xs"></i>
+      </button>
     </div>
   </div>
-  <span class="badge badge-<?= $c['status'] ?>" style="font-size:12px;padding:5px 14px">
-    <?= ucfirst(str_replace('_', ' ', $c['status'])) ?>
-  </span>
-  <?php if (!empty($c['phone'])): ?>
-  <a href="tel:<?= htmlspecialchars($c['phone']) ?>" class="btn-green" style="padding:8px 16px;font-size:13px">
-    <i class="fa-solid fa-phone fa-sm"></i> Call
-  </a>
-  <?php endif; ?>
-  <?php if ($interviewLink): ?>
-  <button onclick="copyLink()" class="btn-purple" style="padding:8px 16px;font-size:13px">
-    <i class="fa-solid fa-link fa-sm"></i> Copy Link
-  </button>
-  <?php endif; ?>
-  <button onclick="openStatusModal()" class="btn-primary" style="padding:8px 16px;font-size:13px">
-    <i class="fa-solid fa-pen fa-sm"></i> Update Status
-  </button>
-  <button onclick="openEditModal()" class="btn-primary" style="padding:8px 16px;font-size:13px;background:linear-gradient(135deg,#2563EB,#3B82F6)">
-    <i class="fa-solid fa-user-pen fa-sm"></i> Edit Details
-  </button>
-  <button onclick="scheduleReminder()" class="btn-green" style="padding:8px 16px;font-size:13px">
-    <i class="fa-solid fa-bell fa-sm"></i> Reminder
-  </button>
-  <a href="export_candidate.php?id=<?= $c['id'] ?>" target="_blank" class="btn-primary" style="padding:8px 16px;font-size:13px;background:linear-gradient(135deg,#6B21A8,#7C3AED);text-decoration:none">
-    <i class="fa-solid fa-file-export fa-sm"></i> Export PDF
-  </a>
-  <button onclick="confirmDelete(<?= $c['id'] ?>,'<?= addslashes(htmlspecialchars($c['name'])) ?>')"
-    class="btn-danger" style="padding:8px 14px;font-size:13px" title="Delete candidate">
-    <i class="fa-solid fa-trash fa-sm"></i>
-  </button>
 </div>
 
 <div class="detail-grid">
@@ -366,44 +460,49 @@ $toast         = $_GET['toast'] ?? '';
 <div>
 
   <!-- SCORE CARD -->
-  <div class="card animate-in" style="text-align:center;padding:24px 20px">
-    <?php if ($display_score !== null):
-      $maxScore = $displayMaxScore ?: ($result['max_score'] ?? 100); ?>
-    <div class="score-circle" style="color:<?= $scoreColor ?>;background:<?= $scoreBg ?>">
-      <div class="score-big" style="color:<?= $scoreColor ?>"><?= $display_score ?></div>
-      <div class="score-sub" style="color:<?= $scoreColor ?>">/ <?= $maxScore ?></div>
+  <div class="card animate-in" style="text-align:center;padding:26px 20px">
+    <?php if ($display_score !== null): ?>
+    <div class="ring-wrap">
+      <svg width="120" height="120" viewBox="0 0 108 108" aria-hidden="true">
+        <circle class="ring-track" cx="54" cy="54" r="46"/>
+        <circle class="ring-fill" cx="54" cy="54" r="46"
+          stroke="<?= $scoreColor ?>"
+          stroke-dasharray="<?= $ringCirc ?>"
+          stroke-dashoffset="<?= $ringCirc ?>"
+          data-offset="<?= $ringOffset ?>"/>
+      </svg>
+      <div class="ring-center">
+        <div class="ring-score" style="color:<?= $scoreColor ?>"><?= $display_score ?></div>
+        <div class="ring-max">/ <?= $display_max ?></div>
+      </div>
     </div>
-    <div style="display:inline-flex;align-items:center;gap:6px;padding:6px 20px;border-radius:20px;
+
+    <div style="display:inline-flex;align-items:center;gap:6px;padding:5px 18px;border-radius:20px;
                 background:<?= $scoreBg ?>;border:1.5px solid <?= $scoreColor ?>40;
-                font-size:14px;font-weight:800;color:<?= $scoreColor ?>;margin-bottom:14px">
+                font-size:13px;font-weight:800;color:<?= $scoreColor ?>;margin-bottom:12px">
       <?= $pf === 'pass'
         ? '<i class="fa-solid fa-circle-check"></i> PASSED'
         : ($pf === 'pending'
           ? '<i class="fa-regular fa-clock"></i> REVIEW PENDING'
           : '<i class="fa-solid fa-circle-xmark"></i> FAILED') ?>
     </div>
+
     <?php if (!empty($result['recruiter_override_score'])): ?>
-    <div style="font-size:11px;color:var(--orange);background:#FFFBEB;padding:4px 12px;border-radius:20px;display:inline-flex;align-items:center;gap:4px;margin-bottom:12px">
+    <div style="font-size:11px;color:var(--orange);background:#FFFBEB;padding:4px 12px;border-radius:20px;
+                display:inline-flex;align-items:center;gap:4px;margin-bottom:10px">
       <i class="fa-solid fa-bolt fa-xs"></i> Recruiter Override
     </div>
     <?php endif; ?>
 
-    <div style="margin-top:4px;text-align:center">
-      <div style="font-size:12px;color:var(--gray);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Total Marks</div>
-      <div style="font-size:18px;font-weight:900;color:var(--text);margin-top:2px">
-        <?= (int)$display_score ?> / <?= (int)$maxScore ?>
-      </div>
-      <?php if (!empty($result['recruiter_override_score'])): ?>
-      <div style="font-size:11px;color:var(--gray);margin-top:4px">Manual override applied</div>
-      <?php else: ?>
-      <div style="font-size:11px;color:var(--gray);margin-top:4px">AI/manual reviewed total</div>
-      <?php endif; ?>
+    <div style="font-size:11px;color:var(--gray);font-weight:600;margin-bottom:2px">
+      <?= !empty($result['recruiter_override_score']) ? 'Manual override applied' : 'AI evaluated total' ?>
     </div>
-    <button type="button" class="btn-sm" onclick="switchTab('qa', document.querySelector('[data-tab-btn=qa]'))" style="width:100%;justify-content:center;margin-top:8px">
+
+    <button type="button" class="btn-sm" onclick="switchTab('qa', document.querySelector('[data-tab-btn=qa]'))"
+      style="width:100%;justify-content:center;margin-top:12px">
       <i class="fa-solid fa-pen-to-square"></i> Mark in Q&A
     </button>
 
-    <!-- Override -->
     <?php if ($result): ?>
     <div style="margin-top:16px;padding-top:16px;border-top:1px solid #F1F5F9;text-align:left">
       <div style="font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">
@@ -413,7 +512,7 @@ $toast         = $_GET['toast'] ?? '';
         <?= csrf_input() ?>
         <input type="number" name="override_score" class="form-control"
           style="width:70px;padding:7px 10px;font-size:13px"
-          placeholder="Score" min="0" max="<?= (int)$maxScore ?>" value="<?= $result['recruiter_override_score'] ?? '' ?>">
+          placeholder="Score" min="0" max="<?= $display_max ?>" value="<?= $result['recruiter_override_score'] ?? '' ?>">
         <input type="text" name="reason" class="form-control"
           placeholder="Reason..." required style="font-size:13px;padding:7px 10px">
         <button type="submit" name="override_score" class="btn-sm" style="white-space:nowrap">Save</button>
@@ -460,13 +559,47 @@ $toast         = $_GET['toast'] ?? '';
   <div class="card animate-in">
     <div class="card-header"><h3><i class="fa-solid fa-clipboard-list" style="color:var(--purple)"></i> Apply Form</h3></div>
     <?php foreach ($application_answers as $ans):
-      $value = $ans['value'] ?? '';
+      $value    = $ans['value'] ?? '';
+      $ansType  = $ans['type']  ?? '';
+      $ansKey   = strtolower((string)($ans['key'] ?? ''));
       if (is_array($value)) $value = implode(', ', array_filter($value));
+      // File fields: fall back to resume_path / photo_path columns if dynamic value is empty
+      if ($ansType === 'file' && trim((string)$value) === '') {
+        if ((str_contains($ansKey, 'resume') || str_contains($ansKey, 'cv')) && !empty($c['resume_path'])) {
+          $value = $c['resume_path'];
+        } elseif (str_contains($ansKey, 'photo') && !empty($c['photo_path'])) {
+          $value = $c['photo_path'];
+        }
+      }
       if (trim((string)$value) === '') $value = '—';
+      $isFilePath = $ansType === 'file' && str_starts_with((string)$value, 'uploads/');
     ?>
     <div class="info-row">
       <div class="info-key"><?= htmlspecialchars($ans['label'] ?? $ans['key'] ?? 'Field') ?></div>
-      <div class="info-val"><?= nl2br(htmlspecialchars((string)$value)) ?></div>
+      <div class="info-val">
+        <?php if ($isFilePath):
+          $fileUrl   = BASE_URL . '/' . $value;
+          $origName  = $ans['original_name'] ?? basename((string)$value);
+          $fileExt   = strtolower(pathinfo((string)$value, PATHINFO_EXTENSION));
+          $isImg     = in_array($fileExt, ['jpg','jpeg','png','gif','webp']);
+          $isPdf     = $fileExt === 'pdf';
+        ?>
+          <?php if ($isImg): ?>
+            <a href="<?= htmlspecialchars($fileUrl) ?>" target="_blank">
+              <img src="<?= htmlspecialchars($fileUrl) ?>" style="max-width:120px;max-height:80px;border-radius:6px;border:1px solid #E2E8F0;display:block">
+            </a>
+          <?php else: ?>
+            <a href="<?= htmlspecialchars($fileUrl) ?>" target="_blank"
+               style="display:inline-flex;align-items:center;gap:7px;color:var(--accent);font-weight:600;font-size:13px;text-decoration:none;background:#EFF6FF;padding:6px 12px;border-radius:8px;border:1px solid #DBEAFE">
+              <i class="fa-solid <?= $isPdf ? 'fa-file-pdf' : 'fa-file-word' ?>" style="color:<?= $isPdf ? '#EF4444' : '#1D4ED8' ?>"></i>
+              <?= htmlspecialchars($origName) ?>
+              <i class="fa-solid fa-arrow-up-right-from-square fa-xs" style="opacity:.5"></i>
+            </a>
+          <?php endif; ?>
+        <?php else: ?>
+          <?= nl2br(htmlspecialchars((string)$value)) ?>
+        <?php endif; ?>
+      </div>
     </div>
     <?php endforeach; ?>
   </div>
@@ -474,58 +607,191 @@ $toast         = $_GET['toast'] ?? '';
 
   <!-- INTEGRITY -->
   <?php
-  $flagMap = [];
-  $addFlag = function($key, $label, $count, $severity, $icon, $desc) use (&$flagMap) {
-    $count = (int)$count;
-    if ($count <= 0) return;
-    if (!isset($flagMap[$key])) $flagMap[$key] = ['label'=>$label,'count'=>0,'severity'=>$severity,'icon'=>$icon,'desc'=>$desc];
-    $flagMap[$key]['count'] += $count;
-  };
-  $addFlag('tab_switches', 'Tab / Window Switches', (int)($session['tab_switch_count'] ?? 0) + (int)($cheat['tab_switches'] ?? 0), 'medium', 'fa-window-restore', 'Candidate left or changed the interview window.');
-  $addFlag('copy_paste', 'Copy / Paste Activity', (int)($session['copy_count'] ?? 0) + (int)($cheat['copy_paste'] ?? 0), 'high', 'fa-copy', 'Paste or copy shortcut activity detected during answers.');
-  $addFlag('face_not_visible', 'Face / Lighting Issue', (int)($session['face_not_detected_count'] ?? 0) + (int)($cheat['face_away'] ?? 0), 'medium', 'fa-face-frown', 'Camera visibility or lighting was not reliable.');
-  $addFlag('total_flags', 'Total Integrity Events', (int)($cheat['total_flags'] ?? 0), 'info', 'fa-triangle-exclamation', 'Total raw monitoring events recorded.');
-  foreach ($answers as $ansFlagRow) {
-    $rowFlags = json_decode((string)($ansFlagRow['cheat_flags'] ?? ''), true);
-    if (!is_array($rowFlags)) continue;
-    foreach ($rowFlags as $event) {
-      $msg = strtolower((string)($event['msg'] ?? ''));
-      if (str_contains($msg, 'paste')) $addFlag('paste_events', 'Paste Events', 1, 'high', 'fa-paste', 'Candidate pasted content into an answer field.');
-      elseif (str_contains($msg, 'tab') || str_contains($msg, 'window')) $addFlag('tab_events', 'Navigation Events', 1, 'medium', 'fa-window-restore', 'Candidate navigated away from the interview window.');
-      elseif (str_contains($msg, 'light') || str_contains($msg, 'face')) $addFlag('face_events', 'Camera Visibility Events', 1, 'medium', 'fa-video-slash', 'Camera/face visibility warning during test.');
+  $hasSession = !empty($session);
+
+  // cheat_summary has reliable top-level counts from the frontend
+  $rawTab  = (int)($cheat['tab_switches'] ?? 0);
+  $rawCopy = (int)($cheat['copy_paste']   ?? 0);
+
+  // cheat_flags is a CUMULATIVE global log sent with every answer.
+  // The last answer's log contains all events for the full interview, each tagged with a question number.
+  // "Window focus lost" and "Time expired" are noise — excluded.
+  $allEvents = [];
+  if (!empty($answers)) {
+    $lastAns = $answers[array_key_last($answers)];
+    $decoded = json_decode((string)($lastAns['cheat_flags'] ?? ''), true);
+    if (is_array($decoded)) $allEvents = $decoded;
+  }
+
+  $rawFace = 0;
+  $byQuestion = []; // [qNum => [tab, paste, face]]
+  foreach ($allEvents as $evt) {
+    $msg  = trim((string)($evt['msg'] ?? ''));
+    $qNum = (int)($evt['question'] ?? 0);
+    $ml   = strtolower($msg);
+    if ($msg === '' || str_contains($ml, 'time expired') || str_contains($ml, 'window focus lost')) continue;
+
+    if (!isset($byQuestion[$qNum])) $byQuestion[$qNum] = ['tab' => 0, 'paste' => 0, 'face' => 0];
+
+    if (str_contains($ml, 'tab switch') || str_contains($ml, 'visibilitychange')) {
+      $byQuestion[$qNum]['tab']++;
+    } elseif (str_contains($ml, 'paste') || str_contains($ml, 'ctrl+v')) {
+      $byQuestion[$qNum]['paste']++;
+    } elseif (str_contains($ml, 'low light') || str_contains($ml, 'face not visible')) {
+      $byQuestion[$qNum]['face']++;
     }
   }
-  $flags = array_values($flagMap);
-  $severityStyle = [
-    'info' => ['#64748B', '#F8FAFC', '#E2E8F0'],
-    'medium' => ['#B45309', '#FFFBEB', '#FDE68A'],
-    'high' => ['#DC2626', '#FEF2F2', '#FECACA'],
-    'critical' => ['#BE123C', '#FFF1F2', '#FDA4AF'],
-  ];
+  // Count questions affected by face/light issues (not raw event spam from 4s polling)
+  $rawFace = count(array_filter($byQuestion, fn($c) => $c['face'] > 0));
+
+  // Build per-question summary rows — only for questions that had real events
+  $perQuestionFlags = [];
+  ksort($byQuestion);
+  foreach ($byQuestion as $qNum => $counts) {
+    if ($counts['tab'] + $counts['paste'] + $counts['face'] === 0) continue;
+    $parts = [];
+    if ($counts['paste']) $parts[] = $counts['paste'] . ' paste' . ($counts['paste'] > 1 ? 's' : '');
+    if ($counts['tab'])   $parts[] = $counts['tab']   . ' tab switch' . ($counts['tab'] > 1 ? 'es' : '');
+    if ($counts['face'])  $parts[] = $counts['face']  . ' face/light issue' . ($counts['face'] > 1 ? 's' : '');
+    $perQuestionFlags[] = [
+      'num'     => $qNum,
+      'summary' => implode(', ', $parts),
+      'high'    => $counts['paste'] > 0,
+    ];
+  }
+
+  $totalFlagCount = $rawTab + $rawCopy;
+
+  // Overall risk — based only on real signals
+  if ($totalFlagCount === 0 && $rawFace === 0 && empty($perQuestionFlags)) {
+    $riskLevel = 'clean';
+    $riskLabel = 'Clean Interview';   $riskSub = 'No suspicious activity detected';
+    $riskColor = '#065F46'; $riskBg = '#ECFDF5'; $riskBd = '#A7F3D0'; $riskIconClr = '#10B981';
+    $riskIcon  = 'fa-shield-check';
+  } elseif ($rawCopy >= 3 || $rawTab >= 10) {
+    $riskLevel = 'critical';
+    $riskLabel = 'Critical Risk';     $riskSub = 'Significant integrity violations detected';
+    $riskColor = '#BE123C'; $riskBg = '#FFF1F2'; $riskBd = '#FECDD3'; $riskIconClr = '#F43F5E';
+    $riskIcon  = 'fa-triangle-exclamation';
+  } elseif ($rawCopy > 0 || $rawTab >= 4) {
+    $riskLevel = 'high';
+    $riskLabel = 'High Risk';         $riskSub = 'Suspicious activity detected — review recommended';
+    $riskColor = '#991B1B'; $riskBg = '#FEF2F2'; $riskBd = '#FECACA'; $riskIconClr = '#EF4444';
+    $riskIcon  = 'fa-triangle-exclamation';
+  } elseif ($totalFlagCount > 0 || $rawFace > 0) {
+    $riskLevel = 'medium';
+    $riskLabel = 'Medium Risk';       $riskSub = 'Minor flags noted — may warrant a closer look';
+    $riskColor = '#92400E'; $riskBg = '#FFFBEB'; $riskBd = '#FDE68A'; $riskIconClr = '#F59E0B';
+    $riskIcon  = 'fa-exclamation-circle';
+  } else {
+    $riskLevel = 'clean';
+    $riskLabel = 'Clean Interview';   $riskSub = 'No suspicious activity detected';
+    $riskColor = '#065F46'; $riskBg = '#ECFDF5'; $riskBd = '#A7F3D0'; $riskIconClr = '#10B981';
+    $riskIcon  = 'fa-shield-check';
+  }
+
+  $flagDefs = [];
+  if ($rawTab > 0)  $flagDefs[] = ['Tab / Window Switches',  'Candidate navigated away from the interview window.',                    'medium', 'fa-window-restore', $rawTab];
+  if ($rawCopy > 0) $flagDefs[] = ['Copy / Paste Activity',  'Paste shortcuts triggered — may have used external reference material.', 'high',   'fa-paste',          $rawCopy];
+  if ($rawFace > 0) $flagDefs[] = ['Face / Lighting Issues', 'Camera detected poor visibility or low light conditions.',               'medium', 'fa-face-frown',      $rawFace];
   ?>
   <div class="card animate-in">
-    <div class="card-header"><h3><i class="fa-solid fa-shield-halved" style="color:var(--orange)"></i> Integrity</h3></div>
-    <?php if (empty($flags)): ?>
-    <div class="int-flag int-clean">
-      <i class="fa-solid fa-shield-check" style="color:#10B981;font-size:20px"></i>
+    <div class="card-header">
+      <h3><i class="fa-solid fa-shield-halved" style="color:var(--orange)"></i> Integrity</h3>
+      <?php if ($riskLevel !== 'clean'): ?>
+      <span class="risk-pill-v2" style="color:<?= $riskColor ?>;background:<?= $riskBg ?>;border-color:<?= $riskBd ?>">
+        <i class="fa-solid <?= $riskIcon ?>" style="color:<?= $riskIconClr ?>"></i> <?= $riskLabel ?>
+      </span>
+      <?php endif; ?>
+    </div>
+
+    <?php if ($riskLevel !== 'clean'): ?>
+    <div class="int-risk-header" style="background:<?= $riskBg ?>;border-color:<?= $riskBd ?>">
+      <i class="fa-solid <?= $riskIcon ?>" style="color:<?= $riskIconClr ?>;font-size:16px;flex-shrink:0"></i>
       <div>
-        <div style="font-size:13px;font-weight:700;color:#065F46">Clean Interview</div>
-        <div style="font-size:11px;color:#047857">No flags detected</div>
+        <div class="int-risk-label" style="color:<?= $riskColor ?>"><?= $riskLabel ?></div>
+        <div class="int-risk-sub"   style="color:<?= $riskColor ?>"><?= $riskSub ?></div>
       </div>
     </div>
-    <?php else: foreach ($flags as $flag):
-      [$clr, $bg, $bd] = $severityStyle[$flag['severity']] ?? $severityStyle['info'];
-    ?>
-    <div class="int-flag" style="background:<?= $bg ?>;border-color:<?= $bd ?>">
-      <i class="fa-solid <?= htmlspecialchars($flag['icon']) ?>" style="color:<?= $clr ?>;font-size:16px;width:18px;text-align:center"></i>
-      <div style="flex:1">
-        <div style="font-size:13px;font-weight:800;color:<?= $clr ?>"><?= htmlspecialchars($flag['label']) ?></div>
-        <div class="flag-desc"><?= htmlspecialchars($flag['desc']) ?></div>
+    <?php endif; ?>
+
+    <?php if ($hasSession): ?>
+    <div class="int-stat-grid">
+      <div class="int-stat" style="<?= $rawTab > 0  ? 'border-color:#FDE68A;background:#FFFBEB' : '' ?>">
+        <div class="int-stat-val" style="color:<?= $rawTab > 0  ? '#B45309' : '#94A3B8' ?>"><?= $rawTab ?></div>
+        <div class="int-stat-label">Tab Switches</div>
       </div>
-      <span class="risk-pill" style="background:#fff;color:<?= $clr ?>;border:1px solid <?= $bd ?>"><?= htmlspecialchars($flag['severity']) ?></span>
-      <div style="font-size:16px;font-weight:900;color:<?= $clr ?>"><?= (int)$flag['count'] ?>×</div>
+      <div class="int-stat" style="<?= $rawCopy > 0 ? 'border-color:#FECACA;background:#FEF2F2' : '' ?>">
+        <div class="int-stat-val" style="color:<?= $rawCopy > 0 ? '#DC2626' : '#94A3B8' ?>"><?= $rawCopy ?></div>
+        <div class="int-stat-label">Copy / Paste</div>
+      </div>
+      <div class="int-stat" style="<?= $rawFace > 0 ? 'border-color:#FDE68A;background:#FFFBEB' : '' ?>">
+        <div class="int-stat-val" style="color:<?= $rawFace > 0 ? '#B45309' : '#94A3B8' ?>"><?= $rawFace ?></div>
+        <div class="int-stat-label">Face / Light</div>
+      </div>
     </div>
-    <?php endforeach; endif; ?>
+    <?php endif; ?>
+
+    <?php if ($riskLevel === 'clean'): ?>
+    <div class="int-clean-state">
+      <i class="fa-solid fa-shield-check" style="color:#10B981;font-size:22px;flex-shrink:0"></i>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#065F46">No suspicious activity detected</div>
+        <div style="font-size:11px;color:#047857;margin-top:2px">Interview passed all integrity checks</div>
+      </div>
+    </div>
+    <?php else: ?>
+
+    <?php foreach ($flagDefs as [$ftitle, $fdesc, $fsev, $ficon, $fcount]): ?>
+    <div class="int-flag-v2 int-flag-<?= $fsev ?>">
+      <div class="int-flag-icon"><i class="fa-solid <?= $ficon ?>"></i></div>
+      <div class="int-flag-body">
+        <div class="int-flag-title"><?= $ftitle ?></div>
+        <div class="int-flag-desc"><?= $fdesc ?></div>
+      </div>
+      <div class="int-flag-count"><?= $fcount ?>×</div>
+    </div>
+    <?php endforeach; ?>
+
+    <?php if (!empty($perQuestionFlags)): ?>
+    <div class="int-perq-section">
+      <div class="int-perq-heading" onclick="togglePerQ(this)">
+        <i class="fa-solid fa-list-check fa-xs"></i> Per-Question Events
+        <span style="font-size:10px;background:#F1F5F9;padding:1px 7px;border-radius:99px;color:var(--gray)"><?= count($perQuestionFlags) ?></span>
+        <i class="fa-solid fa-chevron-down fa-xs" style="margin-left:auto;transition:transform .25s" id="perq-chevron"></i>
+      </div>
+      <div class="int-perq-list" id="perq-list">
+      <?php foreach ($perQuestionFlags as $pq): ?>
+      <div class="int-perq-item">
+        <span class="int-perq-qnum">Q<?= (int)$pq['num'] ?></span>
+        <span class="int-perq-summary" style="<?= $pq['high'] ? 'color:#DC2626;font-weight:600' : '' ?>">
+          <?= htmlspecialchars($pq['summary']) ?>
+        </span>
+      </div>
+      <?php endforeach; ?>
+      </div>
+    </div>
+    <?php endif; ?>
+    <?php endif; ?>
+
+    <?php if ($session && (!empty($session['duration_seconds']) || !empty($session['started_at']))): ?>
+    <div class="int-session-meta">
+      <?php if (!empty($session['duration_seconds'])): ?>
+      <span class="int-meta-chip"><i class="fa-solid fa-stopwatch fa-xs"></i> <?= round((int)$session['duration_seconds'] / 60, 1) ?> min</span>
+      <?php endif; ?>
+      <?php if (!empty($session['started_at'])): ?>
+      <span class="int-meta-chip"><i class="fa-regular fa-clock fa-xs"></i> <?= date('d M, h:i A', strtotime($session['started_at'])) ?></span>
+      <?php endif; ?>
+      <?php if (!empty($session['completed_at'])): ?>
+      <span class="int-meta-chip" style="color:#059669"><i class="fa-solid fa-circle-check fa-xs"></i> Completed</span>
+      <?php endif; ?>
+    </div>
+    <?php elseif (!$hasSession): ?>
+    <div style="text-align:center;padding:16px 0 8px;color:var(--gray)">
+      <i class="fa-regular fa-clock fa-lg" style="opacity:.35;display:block;margin-bottom:6px"></i>
+      <div style="font-size:12px;font-weight:600">Interview not yet taken</div>
+    </div>
+    <?php endif; ?>
   </div>
 
   <!-- INTERVIEW LINK -->
@@ -564,6 +830,13 @@ $toast         = $_GET['toast'] ?? '';
       <?php if (count($notes_db)): ?><span class="tab-badge tab-badge-orange"><?= count($notes_db) ?></span><?php endif; ?>
       <span class="kb-hint">4</span>
     </button>
+    <?php if (defined('DIALER_API_KEY') && DIALER_API_KEY): ?>
+    <button class="tab-btn" onclick="switchTab('aicall',this)" data-tab-btn="aicall" style="<?= $ai_call ? '' : 'opacity:.6' ?>">
+      <i class="fa-solid fa-phone-volume fa-sm" style="color:#059669"></i> AI Call
+      <?php if ($ai_call): ?><span class="tab-badge" style="background:#059669"><?= $ai_call['interview_score'] ?? '—' ?></span><?php endif; ?>
+      <span class="kb-hint">5</span>
+    </button>
+    <?php endif; ?>
   </div>
 
   <!-- TAB: RECORDING -->
@@ -581,7 +854,8 @@ $toast         = $_GET['toast'] ?? '';
         <?php
         $ext = strtolower(pathinfo(strtok($recUrl ?? '', '?'), PATHINFO_EXTENSION));
         if ($recUrl && in_array($ext, ['mp4','webm','mov','mkv'])): ?>
-        <video controls preload="metadata" style="width:100%;height:100%;object-fit:contain">
+        <video id="rec-video" controls preload="auto" style="width:100%;height:100%;object-fit:contain"
+               onloadedmetadata="fixWebmDuration(this)">
           <source src="<?= htmlspecialchars($recUrl) ?>">
         </video>
         <?php elseif ($recUrl && in_array($ext, ['mp3','wav','ogg','m4a','webm'])): ?>
@@ -641,7 +915,7 @@ $toast         = $_GET['toast'] ?? '';
         <button type="button" class="rec-mini-btn" onclick="toggleFloatingRecording(true)">
           <i class="fa-solid fa-up-right-and-down-left-from-center"></i> Open floating recording
         </button>
-        <a class="rec-mini-btn" href="<?= htmlspecialchars($recUrl) ?>" target="_blank" rel="noopener">
+        <a class="rec-mini-btn" href="video_view.php?id=<?= $id ?>" target="_blank" rel="noopener">
           <i class="fa-solid fa-arrow-up-right-from-square"></i> New tab
         </a>
       </div>
@@ -815,6 +1089,144 @@ $toast         = $_GET['toast'] ?? '';
     </div>
   </div>
 
+  <!-- TAB: AI CALL RESULTS -->
+  <?php if (defined('DIALER_API_KEY') && DIALER_API_KEY): ?>
+  <div class="tab-panel" id="tab-aicall">
+  <?php if (!$ai_call): ?>
+    <div class="card animate-in" style="text-align:center;padding:48px 24px">
+      <i class="fa-solid fa-phone-volume fa-3x" style="color:#D1FAE5;margin-bottom:16px;display:block"></i>
+      <div style="font-size:16px;font-weight:700;margin-bottom:8px">No AI Call results yet</div>
+      <div style="font-size:13px;color:var(--gray)">Click <strong>AI Call</strong> to trigger a second-round call. Results will appear here automatically after the call ends.</div>
+    </div>
+  <?php else:
+    // Grade colours
+    $gradeColor = match(strtoupper($ai_call['interview_grade'] ?? '')) {
+      'A+','A' => ['#ECFDF5','#065F46','#10B981'],
+      'B'      => ['#EFF6FF','#1E40AF','#3B82F6'],
+      'C'      => ['#FFFBEB','#92400E','#F59E0B'],
+      default  => ['#FEF2F2','#991B1B','#EF4444'],
+    };
+    $recColor = match(strtolower($ai_call['interview_recommendation'] ?? '')) {
+      'advance'  => '#059669',
+      'consider' => '#D97706',
+      default    => '#DC2626',
+    };
+    $recIcon = match(strtolower($ai_call['interview_recommendation'] ?? '')) {
+      'advance'  => 'fa-circle-check',
+      'consider' => 'fa-circle-question',
+      default    => 'fa-circle-xmark',
+    };
+    $strengths   = json_decode($ai_call['strengths'] ?? '[]', true) ?: [];
+    $improvements= json_decode($ai_call['improvements'] ?? '[]', true) ?: [];
+    $transcript  = json_decode($ai_call['transcript'] ?? '[]', true);
+    $isJsonTrans = is_array($transcript);
+  ?>
+    <!-- Score card -->
+    <div class="card animate-in" style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+        <div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--gray);margin-bottom:4px">AI Call Score — Round 2</div>
+          <div style="font-size:12px;color:var(--gray)"><?= date('d M Y, h:i A', strtotime($ai_call['received_at'])) ?> &middot; <?= $ai_call['duration_sec'] ? floor($ai_call['duration_sec']/60).'m '.($ai_call['duration_sec']%60).'s' : '—' ?> &middot; <?= ucfirst($ai_call['sentiment'] ?? '—') ?></div>
+        </div>
+        <!-- Grade badge -->
+        <div style="background:<?= $gradeColor[0] ?>;border:2px solid <?= $gradeColor[2] ?>;border-radius:14px;padding:10px 20px;text-align:center;min-width:80px">
+          <div style="font-size:28px;font-weight:900;color:<?= $gradeColor[1] ?>;line-height:1"><?= htmlspecialchars($ai_call['interview_grade'] ?? '—') ?></div>
+          <div style="font-size:10px;font-weight:700;color:<?= $gradeColor[2] ?>;text-transform:uppercase;letter-spacing:.5px"><?= ($ai_call['interview_score'] !== null ? $ai_call['interview_score'].'/100' : '—') ?></div>
+        </div>
+      </div>
+
+      <!-- Recommendation -->
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:<?= $gradeColor[0] ?>;border-radius:10px;margin-bottom:16px">
+        <i class="fa-solid <?= $recIcon ?>" style="color:<?= $recColor ?>;font-size:20px"></i>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:<?= $recColor ?>">Recommendation: <?= htmlspecialchars($ai_call['interview_recommendation'] ?? '—') ?></div>
+          <?php if ($ai_call['score_reasoning']): ?>
+          <div style="font-size:12px;color:var(--gray2);margin-top:3px"><?= htmlspecialchars($ai_call['score_reasoning']) ?></div>
+          <?php endif; ?>
+        </div>
+      </div>
+
+      <!-- Summary -->
+      <?php if ($ai_call['summary']): ?>
+      <div style="font-size:13px;color:var(--text);line-height:1.6;padding:12px 16px;background:#F8FAFC;border-radius:10px;margin-bottom:16px;border-left:3px solid <?= $gradeColor[2] ?>">
+        <?= htmlspecialchars($ai_call['summary']) ?>
+      </div>
+      <?php endif; ?>
+
+      <!-- Strengths / Improvements -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div style="background:#F0FDF4;border-radius:10px;padding:14px">
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#065F46;margin-bottom:8px"><i class="fa-solid fa-thumbs-up fa-xs"></i> Strengths</div>
+          <?php if ($strengths): foreach ($strengths as $s): ?>
+          <div style="font-size:12px;color:#065F46;padding:4px 0;border-bottom:1px solid #D1FAE5;display:flex;align-items:flex-start;gap:6px">
+            <i class="fa-solid fa-check fa-xs" style="margin-top:3px;flex-shrink:0"></i><?= htmlspecialchars($s) ?>
+          </div>
+          <?php endforeach; else: ?>
+          <div style="font-size:12px;color:var(--gray)">—</div>
+          <?php endif; ?>
+        </div>
+        <div style="background:#FEF2F2;border-radius:10px;padding:14px">
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#991B1B;margin-bottom:8px"><i class="fa-solid fa-triangle-exclamation fa-xs"></i> Improvements</div>
+          <?php if ($improvements): foreach ($improvements as $imp): ?>
+          <div style="font-size:12px;color:#991B1B;padding:4px 0;border-bottom:1px solid #FECACA;display:flex;align-items:flex-start;gap:6px">
+            <i class="fa-solid fa-arrow-up fa-xs" style="margin-top:3px;flex-shrink:0"></i><?= htmlspecialchars($imp) ?>
+          </div>
+          <?php endforeach; else: ?>
+          <div style="font-size:12px;color:var(--gray)">—</div>
+          <?php endif; ?>
+        </div>
+      </div>
+    </div>
+
+    <!-- Transcript -->
+    <?php if ($ai_call['transcript']): ?>
+    <div class="card animate-in">
+      <div class="card-header">
+        <h3><i class="fa-solid fa-comments" style="color:var(--blue)"></i> Call Transcript</h3>
+      </div>
+      <div style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-top:4px">
+      <?php if ($isJsonTrans): foreach ($transcript as $turn):
+        $isAgent = strtolower($turn['role'] ?? $turn['speaker'] ?? '') !== 'user';
+        $speaker = $isAgent ? 'AI Agent' : ($c['name'] ?: 'Candidate');
+        $text    = $turn['content'] ?? $turn['text'] ?? $turn['message'] ?? '';
+      ?>
+        <div style="display:flex;gap:10px;align-items:flex-start;<?= $isAgent ? '' : 'flex-direction:row-reverse' ?>">
+          <div style="width:30px;height:30px;border-radius:50%;background:<?= $isAgent ? 'linear-gradient(135deg,#6366F1,#8B5CF6)' : 'linear-gradient(135deg,#0EA5E9,#3B82F6)' ?>;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <i class="fa-solid <?= $isAgent ? 'fa-robot' : 'fa-user' ?> fa-xs" style="color:#fff"></i>
+          </div>
+          <div style="background:<?= $isAgent ? '#F1F5F9' : '#EFF6FF' ?>;border-radius:10px;padding:10px 14px;max-width:75%;font-size:13px;line-height:1.5;color:var(--text)">
+            <div style="font-size:10px;font-weight:700;color:var(--gray);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px"><?= htmlspecialchars($speaker) ?></div>
+            <?= htmlspecialchars($text) ?>
+          </div>
+        </div>
+      <?php endforeach; else: ?>
+        <pre style="font-size:12px;line-height:1.6;color:var(--text);white-space:pre-wrap;margin:0"><?= htmlspecialchars((string)$ai_call['transcript']) ?></pre>
+      <?php endif; ?>
+      </div>
+    </div>
+    <?php endif; ?>
+
+    <!-- History of past calls -->
+    <?php if (count($ai_calls) > 1): ?>
+    <div class="card animate-in" style="margin-top:16px">
+      <div class="card-header"><h3><i class="fa-solid fa-clock-rotate-left" style="color:var(--gray)"></i> Previous Calls</h3></div>
+      <?php foreach (array_slice($ai_calls, 1) as $past):
+        $pg = strtoupper($past['interview_grade'] ?? '?');
+      ?>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F1F5F9;font-size:12px;color:var(--gray2)">
+        <span><?= date('d M Y, h:i A', strtotime($past['received_at'])) ?></span>
+        <span><?= $past['duration_sec'] ? floor($past['duration_sec']/60).'m' : '—' ?></span>
+        <span style="font-weight:700"><?= ($past['interview_score'] ?? '—') ?>/100</span>
+        <span style="font-weight:700"><?= $pg ?> — <?= htmlspecialchars($past['interview_recommendation'] ?? '—') ?></span>
+      </div>
+      <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+
+  <?php endif; ?>
+  </div>
+  <?php endif; ?>
+
 </div><!-- /right -->
 </div><!-- /detail-grid -->
 
@@ -823,7 +1235,7 @@ $toast         = $_GET['toast'] ?? '';
   <div class="floating-rec-head" id="floatingRecHandle">
     <span><i class="fa-solid fa-grip-lines"></i> Recording</span>
     <div class="floating-rec-actions">
-      <a href="<?= htmlspecialchars($recUrl) ?>" target="_blank" rel="noopener" title="Open in new tab"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+      <a href="video_view.php?id=<?= $id ?>" target="_blank" rel="noopener" title="Open in new tab"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
       <a href="<?= htmlspecialchars($recUrl) ?>" download title="Download"><i class="fa-solid fa-download"></i></a>
       <button type="button" onclick="toggleFloatingRecording(false)" title="Close"><i class="fa-solid fa-xmark"></i></button>
     </div>
@@ -832,10 +1244,51 @@ $toast         = $_GET['toast'] ?? '';
     <?php
     $floatExt = strtolower(pathinfo(strtok($recUrl, '?'), PATHINFO_EXTENSION));
     if (in_array($floatExt, ['mp4','webm','mov','mkv'])): ?>
-      <video controls preload="metadata"><source src="<?= htmlspecialchars($recUrl) ?>"></video>
+      <video controls preload="auto" onloadedmetadata="fixWebmDuration(this)"><source src="<?= htmlspecialchars($recUrl) ?>"></video>
     <?php else: ?>
-      <audio controls preload="metadata"><source src="<?= htmlspecialchars($recUrl) ?>"></audio>
+      <audio controls preload="auto"><source src="<?= htmlspecialchars($recUrl) ?>"></audio>
     <?php endif; ?>
+  </div>
+</div>
+<?php endif; ?>
+
+<!-- AI CALL MODAL -->
+<?php if (defined('DIALER_API_KEY') && DIALER_API_KEY): ?>
+<div class="modal-overlay" id="callModal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <h3><i class="fa-solid fa-phone" style="color:#10B981"></i> Trigger AI Call</h3>
+      <button class="modal-close" onclick="closeModal('callModal')">✕</button>
+    </div>
+    <div style="padding:0 20px 20px">
+      <div class="form-group">
+        <label class="form-label">Phone Number</label>
+        <input class="form-control" id="callPhone" value="<?= htmlspecialchars($c['phone'] ?? '') ?>">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Candidate Name</label>
+        <input class="form-control" id="callName" value="<?= htmlspecialchars($c['name'] ?? '') ?>">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Caller ID <span style="font-size:11px;color:var(--gray)">(outbound number shown to candidate)</span></label>
+        <input class="form-control" id="callCallerId" value="<?= htmlspecialchars(DIALER_CALLER_ID) ?>">
+      </div>
+      <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px;margin-bottom:16px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--gray);margin-bottom:8px">Context passed to AI</div>
+        <div style="font-size:12px;color:var(--text2);display:grid;gap:4px">
+          <div><b>Role:</b> <?= htmlspecialchars($c['job_role'] ?? '—') ?></div>
+          <div><b>Campaign:</b> <?= htmlspecialchars($c['campaign_name'] ?? '—') ?></div>
+          <div style="word-break:break-all"><b>Interview Link:</b> <?= htmlspecialchars(defined('INTERVIEW_URL') ? INTERVIEW_URL . '?t=' . ($c['unique_token'] ?? '') : '—') ?></div>
+        </div>
+      </div>
+      <div id="callResult" style="display:none;margin-bottom:12px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="closeModal('callModal')" class="btn-sm">Cancel</button>
+        <button onclick="triggerCall()" id="callBtn" class="btn-primary" style="background:#10B981;border-color:#10B981">
+          <i class="fa-solid fa-phone fa-xs"></i> Call Now
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 <?php endif; ?>
@@ -941,7 +1394,12 @@ function toggleFloatingRecording(show) {
   const box = document.getElementById('floatingRecording');
   if (!box) return;
   box.classList.toggle('show', !!show);
-  if (!show) box.querySelectorAll('audio, video').forEach(m => m.pause());
+  if (show) {
+    const v = box.querySelector('video');
+    if (v) fixWebmDuration(v);
+  } else {
+    box.querySelectorAll('audio, video').forEach(m => m.pause());
+  }
 }
 
 (() => {
@@ -970,9 +1428,12 @@ function toggleFloatingRecording(show) {
   handle.addEventListener('pointerup', () => dragging = false);
 })();
 
-// ── SCORE BARS ANIMATE ────────────────────────────────────────
+// ── RING + SCORE BARS ANIMATE ────────────────────────────────
 window.addEventListener('load', () => {
   setTimeout(() => {
+    document.querySelectorAll('.ring-fill').forEach(el => {
+      el.style.strokeDashoffset = el.dataset.offset;
+    });
     document.querySelectorAll('.sbar-fill').forEach(el => {
       el.style.width = el.dataset.w + '%';
     });
@@ -1002,6 +1463,39 @@ function showToast(msg, type = 'success') {
 }
 
 // ── MODALS ────────────────────────────────────────────────────
+function openCallModal() { document.getElementById('callModal')?.classList.add('active'); }
+
+async function triggerCall() {
+  const btn = document.getElementById('callBtn');
+  const res = document.getElementById('callResult');
+  btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin fa-xs"></i> Calling…';
+  res.style.display = 'none';
+  try {
+    const r = await fetch('/api/outreach.php?action=trigger_ai_call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        candidate_id: <?= $id ?>,
+        caller_id: document.getElementById('callCallerId').value.trim(),
+      })
+    });
+    const d = await r.json();
+    res.style.display = 'block';
+    if (d.success) {
+      res.innerHTML = '<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:10px 14px;font-size:13px;color:#065F46"><i class="fa-solid fa-circle-check"></i> Call triggered! Status: <b>' + (d.status||'ringing') + '</b><br><span style="font-size:11px;opacity:.7">Call ID: ' + (d.call_id||'—') + '</span></div>';
+      btn.innerHTML = '<i class="fa-solid fa-check fa-xs"></i> Called';
+      btn.style.background = '#059669';
+    } else {
+      res.innerHTML = '<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 14px;font-size:13px;color:#991B1B"><i class="fa-solid fa-triangle-exclamation"></i> ' + (d.error||'Failed') + '</div>';
+      btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-phone fa-xs"></i> Retry';
+    }
+  } catch(e) {
+    res.style.display = 'block';
+    res.innerHTML = '<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 14px;font-size:13px;color:#991B1B">Network error — try again</div>';
+    btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-phone fa-xs"></i> Call Now';
+  }
+}
+
 function openStatusModal() { document.getElementById('statusModal').classList.add('active'); }
 function openEditModal() { document.getElementById('editModal').classList.add('active'); }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
@@ -1125,6 +1619,17 @@ async function scheduleReminder() {
 }
 
 // ── COPY LINK ─────────────────────────────────────────────────
+function fixWebmDuration(video) {
+  if (!isNaN(video.duration) && video.duration !== Infinity && video.duration > 0) return;
+  // WebM files from MediaRecorder lack duration metadata; seeking to a huge value
+  // forces the browser to scan the file and calculate the real duration.
+  video.currentTime = 1e101;
+  video.addEventListener('timeupdate', function handler() {
+    video.removeEventListener('timeupdate', handler);
+    video.currentTime = 0;
+  }, { once: true });
+}
+
 function copyLink() {
   const link = '<?= $interviewLink ?>';
   if (!link) return;
@@ -1139,6 +1644,15 @@ function copyLink() {
     });
 }
 
+// ── PER-Q TOGGLE ─────────────────────────────────────────────
+function togglePerQ(heading) {
+  const list = document.getElementById('perq-list');
+  const chev = document.getElementById('perq-chevron');
+  if (!list) return;
+  list.classList.toggle('collapsed');
+  if (chev) chev.style.transform = list.classList.contains('collapsed') ? 'rotate(-90deg)' : '';
+}
+
 // ── KEYBOARD SHORTCUTS ────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.target.matches('input, textarea, select')) return;
@@ -1150,6 +1664,8 @@ document.addEventListener('keydown', e => {
   if (e.key === '2') switchTab('recording', document.querySelector('[data-tab-btn=recording]'));
   if (e.key === '3') switchTab('transcript',tabBtns[2]);
   if (e.key === '4') switchTab('notes',     tabBtns[3]);
+  const aiBtn = document.querySelector('[data-tab-btn=aicall]');
+  if (e.key === '5' && aiBtn) switchTab('aicall', aiBtn);
 });
 </script>
 

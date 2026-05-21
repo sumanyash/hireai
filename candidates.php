@@ -1,30 +1,49 @@
 <?php
 require_once __DIR__ . '/includes/auth_check.php';
-$campaigns = db_fetch_all("SELECT id, name, job_role FROM campaigns WHERE org_id=? ORDER BY name", [$user['org_id']], 'i');
+$campaigns    = db_fetch_all("SELECT id, name, job_role FROM campaigns WHERE org_id=? ORDER BY name", [$user['org_id']], 'i');
 $sel_campaign = (int)($_GET['campaign_id'] ?? 0);
-$search = trim($_GET['q'] ?? '');
+$search       = trim($_GET['q'] ?? '');
+$active_status = $_GET['status'] ?? 'all';
+$per_page     = 10;
+$page         = max(1, (int)($_GET['page'] ?? 1));
 
-$where  = "c.org_id=?";
-$params = [$user['org_id']];
-$types  = 'i';
-if ($sel_campaign) { $where .= " AND c.campaign_id=?"; $params[] = $sel_campaign; $types .= 'i'; }
+// Base WHERE (no status filter) — for counts & pills
+$bwhere  = "c.org_id=?";
+$bparams = [$user['org_id']];
+$btypes  = 'i';
+if ($sel_campaign) { $bwhere .= " AND c.campaign_id=?"; $bparams[] = $sel_campaign; $btypes .= 'i'; }
 if ($search) {
     $like = "%$search%";
-    $where .= " AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)";
-    $params[] = $like; $params[] = $like; $params[] = $like; $types .= 'sss';
+    $bwhere .= " AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)";
+    $bparams[] = $like; $bparams[] = $like; $bparams[] = $like; $btypes .= 'sss';
 }
 
+// Status counts across all statuses (no status filter)
+$count_rows = db_fetch_all("SELECT c.status FROM candidates c WHERE $bwhere", $bparams, $btypes);
+$total = count($count_rows);
+$status_counts = [];
+foreach ($count_rows as $r) $status_counts[$r['status']] = ($status_counts[$r['status']] ?? 0) + 1;
+
+// Paginated query WITH status filter
+$where  = $bwhere;
+$params = $bparams;
+$types  = $btypes;
+if ($active_status !== 'all') { $where .= " AND c.status=?"; $params[] = $active_status; $types .= 's'; }
+
+$count_row      = db_fetch_one("SELECT COUNT(*) cnt FROM candidates c WHERE $where", $params, $types);
+$total_filtered = (int)($count_row['cnt'] ?? 0);
+$total_pages    = max(1, (int)ceil($total_filtered / $per_page));
+$page           = min($page, $total_pages);
+$offset         = ($page - 1) * $per_page;
+
 $candidates = db_fetch_all(
-    "SELECT c.*, camp.name campaign_name, ir.total_score, ir.pass_fail, ir.id result_id
+    "SELECT c.*, camp.name campaign_name, ir.total_score, ir.max_score, ir.pass_fail, ir.id result_id
      FROM candidates c
      LEFT JOIN campaigns camp ON c.campaign_id=camp.id
      LEFT JOIN interview_results ir ON c.id=ir.candidate_id
-     WHERE $where ORDER BY c.created_at DESC",
-    $params, $types
+     WHERE $where ORDER BY c.created_at DESC LIMIT ? OFFSET ?",
+    array_merge($params, [$per_page, $offset]), $types . 'ii'
 );
-$total = count($candidates);
-$status_counts = [];
-foreach ($candidates as $c) $status_counts[$c['status']] = ($status_counts[$c['status']] ?? 0) + 1;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -68,12 +87,15 @@ foreach ($candidates as $c) $status_counts[$c['status']] = ($status_counts[$c['s
 .cand-table th{padding:10px 14px;text-align:left;font-size:10px;font-weight:800;color:var(--gray);text-transform:uppercase;letter-spacing:.7px;background:#F8FAFC;border-bottom:2px solid #E2E8F0;white-space:nowrap}
 .cand-table th:first-child{border-radius:10px 0 0 0}
 .cand-table th:last-child{border-radius:0 10px 0 0}
-.cand-table td{padding:12px 14px;border-bottom:1px solid #F1F5F9;vertical-align:middle;transition:background .15s}
-.cand-table tr:hover td{background:#F8FAFC}
-.cand-table tr:last-child td{border-bottom:none}
-.cand-avatar{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--blue),var(--accent));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:13px;flex-shrink:0}
+.cand-table td{padding:12px 14px;border-bottom:1px solid #F1F5F9;vertical-align:middle;transition:background .12s}
+.cand-table tbody tr{animation:rowIn .35s ease both}
+.cand-table tbody tr:hover td{background:#F8FAFC}
+.cand-table tbody tr:last-child td{border-bottom:none}
+@keyframes rowIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.cand-avatar{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:13px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.12)}
 .cname-cell{display:flex;align-items:center;gap:10px}
-.cname{font-weight:700;color:var(--text);font-size:13px}
+.cname{font-weight:700;color:var(--text);font-size:13px;text-decoration:none}
+.cname:hover{color:var(--blue)}
 .cphone{font-size:11px;color:var(--gray);margin-top:1px}
 .referral-cell{font-size:12px;color:var(--gray2);max-width:150px}
 .referral-cell span{display:block;font-size:10px;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}
@@ -81,14 +103,25 @@ foreach ($candidates as $c) $status_counts[$c['status']] = ($status_counts[$c['s
 .score-pass{background:#ECFDF5;color:#065F46}
 .score-fail{background:#FEF2F2;color:#991B1B}
 .score-pending{background:#F1F5F9;color:var(--gray)}
-.act-btns{display:flex;gap:6px;opacity:0;transition:opacity .2s}
-.cand-table tr:hover .act-btns{opacity:1}
-.act-btn{width:30px;height:30px;border-radius:8px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;transition:all .15s}
-.act-view{background:#EFF6FF;color:#1E40AF}.act-view:hover{background:#DBEAFE}
-.act-del{background:#FEF2F2;color:#991B1B}.act-del:hover{background:#FECACA}
-.act-call{background:#ECFDF5;color:#065F46}.act-call:hover{background:#D1FAE5}
+.act-btns{display:flex;gap:6px;opacity:0;transition:opacity .15s}
+.cand-table tbody tr:hover .act-btns{opacity:1}
+.act-btn{width:30px;height:30px;border-radius:8px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;transition:all .12s;text-decoration:none}
+.act-view{background:#EFF6FF;color:#1E40AF}.act-view:hover{background:#DBEAFE;transform:scale(1.08)}
+.act-del{background:#FEF2F2;color:#991B1B}.act-del:hover{background:#FECACA;transform:scale(1.08)}
+.act-call{background:#ECFDF5;color:#065F46}.act-call:hover{background:#D1FAE5;transform:scale(1.08)}
+.act-wa{background:#25D36620;color:#128C7E;border:1px solid #25D36630}.act-wa:hover{background:#25D36630;transform:scale(1.08)}
 .empty-state{text-align:center;padding:60px 20px;color:var(--gray)}
 .empty-icon{font-size:48px;opacity:.2;margin-bottom:12px}
+
+/* ── PAGINATION ──────────────────────────────────────────── */
+.pagination{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-top:1px solid #F1F5F9;flex-wrap:wrap;gap:10px}
+.pg-info{font-size:12px;color:var(--gray);font-weight:600}
+.pg-btns{display:flex;gap:4px;align-items:center}
+.pg-btn{display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:9px;font-size:12px;font-weight:700;text-decoration:none;color:var(--text2);border:1.5px solid #E2E8F0;background:#fff;transition:all .15s;cursor:pointer}
+.pg-btn:hover{background:#F8FAFC;border-color:#CBD5E1}
+.pg-btn.active{background:var(--blue);color:#fff;border-color:var(--blue);box-shadow:0 2px 8px rgba(37,99,235,.3)}
+.pg-btn.disabled{opacity:.35;pointer-events:none}
+.pg-ellipsis{padding:6px 4px;font-size:12px;color:var(--gray)}
 
 /* ── ADD MODAL ───────────────────────────────────────────── */
 .add-modal-overlay{display:none;position:fixed;inset:0;background:rgba(8,15,30,.7);backdrop-filter:blur(12px);z-index:2000;align-items:center;justify-content:center;padding:20px}
@@ -139,30 +172,39 @@ foreach ($candidates as $c) $status_counts[$c['status']] = ($status_counts[$c['s
 
 <!-- HERO -->
 <div class="page-hero animate-in">
-  <div class="hero-title">👥 Candidates</div>
-  <div class="hero-sub">Manage your candidate pipeline across all campaigns</div>
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-    <div class="hero-stats">
-      <?php
-      $stats = [
-        'Total' => $total,
-        'Shortlisted' => $status_counts['shortlisted'] ?? 0,
-        'Completed' => $status_counts['interview_completed'] ?? 0,
-        'Rejected' => $status_counts['rejected'] ?? 0,
-      ];
-      foreach ($stats as $lbl => $num): ?>
-      <div class="hstat">
-        <div class="hstat-num"><?= $num ?></div>
-        <div class="hstat-lbl"><?= $lbl ?></div>
-      </div>
-      <?php endforeach; ?>
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+    <div>
+      <div class="hero-title"><i class="fa-solid fa-users" style="font-size:22px;opacity:.8;margin-right:10px"></i>Candidates</div>
+      <div class="hero-sub">Manage your candidate pipeline across all campaigns</div>
     </div>
-    <button onclick="openAddModal()" class="btn-primary" style="padding:10px 22px;font-size:14px;white-space:nowrap">
-      <i class="fa-solid fa-plus fa-sm"></i> Add Candidate
-    </button>
-    <a href="export_candidates.php?<?= http_build_query(['campaign_id'=>$sel_campaign ?: null,'status'=>($_GET['status'] ?? '') !== 'all' ? ($_GET['status'] ?? '') : null]) ?>" class="btn-outline" style="padding:10px 18px;font-size:14px;white-space:nowrap;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18);color:#fff">
-      <i class="fa-solid fa-file-csv fa-sm"></i> Export CSV
-    </a>
+    <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap">
+      <button onclick="openAddModal()" class="btn-primary" style="padding:10px 20px;font-size:13px;white-space:nowrap">
+        <i class="fa-solid fa-plus fa-sm"></i> Add Candidate
+      </button>
+      <a href="export_candidates.php?<?= http_build_query(['campaign_id'=>$sel_campaign ?: null,'status'=>$active_status !== 'all' ? $active_status : null]) ?>"
+         class="btn-outline" style="padding:10px 16px;font-size:13px;white-space:nowrap;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#fff;text-decoration:none">
+        <i class="fa-solid fa-file-csv fa-sm"></i> Export
+      </a>
+    </div>
+  </div>
+  <div class="hero-stats" style="margin-top:18px">
+    <?php
+    $hstats = [
+      ['Total',       $total,                              'fa-users',        '#93C5FD'],
+      ['Shortlisted', $status_counts['shortlisted'] ?? 0,  'fa-circle-check', '#6EE7B7'],
+      ['Completed',   $status_counts['interview_completed'] ?? 0, 'fa-video','#C4B5FD'],
+      ['Rejected',    $status_counts['rejected'] ?? 0,     'fa-circle-xmark', '#FCA5A5'],
+      ['Pending',     $status_counts['pending'] ?? 0,      'fa-clock',        '#FCD34D'],
+    ];
+    foreach ($hstats as [$lbl, $num, $icon, $color]): ?>
+    <div class="hstat">
+      <div style="display:flex;align-items:center;gap:8px">
+        <i class="fa-solid <?= $icon ?>" style="color:<?= $color ?>;font-size:16px;opacity:.9"></i>
+        <div class="hstat-num"><?= $num ?></div>
+      </div>
+      <div class="hstat-lbl"><?= $lbl ?></div>
+    </div>
+    <?php endforeach; ?>
   </div>
 </div>
 
@@ -170,7 +212,7 @@ foreach ($candidates as $c) $status_counts[$c['status']] = ($status_counts[$c['s
 <form method="GET" class="filter-bar animate-in">
   <div class="search-wrap">
     <i class="fa-solid fa-magnifying-glass"></i>
-    <input class="search-input" type="text" name="q" placeholder="Search name, phone, email..." value="<?= htmlspecialchars($search) ?>" oninput="this.form.submit()">
+    <input class="search-input" type="text" name="q" id="search-q" placeholder="Search name, phone, email..." value="<?= htmlspecialchars($search) ?>" autocomplete="off">
   </div>
   <select class="filter-select" name="campaign_id" onchange="this.form.submit()">
     <option value="">All Campaigns</option>
@@ -187,7 +229,8 @@ foreach ($candidates as $c) $status_counts[$c['status']] = ($status_counts[$c['s
   <?php endif; ?>
 </form>
 
-<!-- STATUS PILLS -->
+<!-- STATUS PILLS + TABLE (swapped on search) -->
+<div id="results-container">
 <?php
 $statuses = ['all'=>'All','pending'=>'Pending','outreach_sent'=>'Outreached','interview_started'=>'In Progress','interview_completed'=>'Completed','shortlisted'=>'Shortlisted','rejected'=>'Rejected','on_hold'=>'On Hold'];
 $active_status = $_GET['status'] ?? 'all';
@@ -205,76 +248,85 @@ $active_status = $_GET['status'] ?? 'all';
 </div>
 
 <!-- TABLE -->
+<?php
+$avatarPalette = [
+  'A'=>'135deg,#6366F1,#8B5CF6','B'=>'135deg,#3B82F6,#6366F1','C'=>'135deg,#0EA5E9,#3B82F6',
+  'D'=>'135deg,#10B981,#059669','E'=>'135deg,#F59E0B,#D97706','F'=>'135deg,#EF4444,#DC2626',
+  'G'=>'135deg,#8B5CF6,#7C3AED','H'=>'135deg,#06B6D4,#0891B2','I'=>'135deg,#84CC16,#65A30D',
+  'J'=>'135deg,#F97316,#EA580C','K'=>'135deg,#EC4899,#DB2777','L'=>'135deg,#14B8A6,#0D9488',
+  'M'=>'135deg,#6366F1,#4F46E5','N'=>'135deg,#3B82F6,#2563EB','O'=>'135deg,#10B981,#047857',
+  'P'=>'135deg,#F59E0B,#B45309','Q'=>'135deg,#EF4444,#B91C1C','R'=>'135deg,#8B5CF6,#6D28D9',
+  'S'=>'135deg,#F97316,#C2410C','T'=>'135deg,#06B6D4,#0E7490','U'=>'135deg,#84CC16,#4D7C0F',
+  'V'=>'135deg,#EC4899,#BE185D','W'=>'135deg,#14B8A6,#0F766E','X'=>'135deg,#6366F1,#4338CA',
+  'Y'=>'135deg,#F59E0B,#92400E','Z'=>'135deg,#EF4444,#991B1B',
+];
+?>
 <div class="card animate-in" style="padding:0;overflow:hidden">
-  <?php
-  $filtered = $candidates;
-  if ($active_status !== 'all') $filtered = array_filter($candidates, fn($c) => $c['status'] === $active_status);
-  $filtered = array_values($filtered);
-  ?>
   <table class="cand-table">
     <thead>
       <tr>
         <th style="width:36px;text-align:center"><input type="checkbox" id="select-all-cands" title="Select All" style="cursor:pointer;width:16px;height:16px"></th>
         <th>Candidate</th>
         <th>Campaign</th>
-        <th>Referral</th>
         <th>Status</th>
         <th>Score</th>
         <th>Applied</th>
-        <th></th>
+        <th style="width:120px"></th>
       </tr>
     </thead>
     <tbody>
-    <?php if (empty($filtered)): ?>
+    <?php if (empty($candidates)): ?>
     <tr>
-      <td colspan="8">
+      <td colspan="7">
         <div class="empty-state">
-          <div class="empty-icon">👥</div>
+          <div class="empty-icon"><i class="fa-solid fa-users"></i></div>
           <div style="font-size:16px;font-weight:700;margin-bottom:6px">No candidates found</div>
-          <div style="font-size:13px;margin-bottom:16px">Add your first candidate to get started</div>
+          <div style="font-size:13px;margin-bottom:16px">Try adjusting your filters or add a new candidate</div>
           <button onclick="openAddModal()" class="btn-primary">
             <i class="fa-solid fa-plus fa-sm"></i> Add Candidate
           </button>
         </div>
       </td>
     </tr>
-    <?php else: foreach ($filtered as $c):
-      $initials = strtoupper(implode('', array_map(fn($w) => $w[0], explode(' ', trim($c['name'])))));
-      $initials = substr($initials, 0, 2);
+    <?php else: foreach ($candidates as $i => $c):
+      $initials = strtoupper(substr(trim($c['name']), 0, 1));
+      $w2 = array_filter(explode(' ', trim($c['name'])));
+      if (count($w2) > 1) $initials .= strtoupper(substr(end($w2), 0, 1));
+      $firstLetter = strtoupper(substr(trim($c['name']), 0, 1));
+      $grad = $avatarPalette[$firstLetter] ?? '135deg,#6366F1,#8B5CF6';
       $score = $c['total_score'];
+      $maxScore = (int)($c['max_score'] ?? 100) ?: 100;
       $pf = $c['pass_fail'] ?? null;
+      $delay = min($i * 40, 400);
     ?>
-    <tr>
-      <td style="width:36px;text-align:center;padding:12px 8px"><input type="checkbox" class="cand-chk" value="<?= $c['id'] ?>" style="cursor:pointer;width:16px;height:16px"></td>
+    <tr style="animation-delay:<?= $delay ?>ms">
+      <td style="width:36px;text-align:center;padding:12px 8px">
+        <input type="checkbox" class="cand-chk" value="<?= $c['id'] ?>" style="cursor:pointer;width:16px;height:16px">
+      </td>
       <td>
         <div class="cname-cell">
-          <div class="cand-avatar"><?= htmlspecialchars($initials) ?></div>
+          <div class="cand-avatar" style="background:linear-gradient(<?= $grad ?>)"><?= htmlspecialchars($initials) ?></div>
           <div>
-            <div class="cname"><?= htmlspecialchars($c['name']) ?></div>
+            <a href="candidate_detail.php?id=<?= $c['id'] ?>" class="cname"><?= htmlspecialchars($c['name']) ?></a>
             <div class="cphone"><?= htmlspecialchars($c['phone'] ?? $c['email'] ?? '—') ?></div>
           </div>
         </div>
       </td>
-      <td style="font-size:12px;color:var(--gray2)"><?= htmlspecialchars($c['campaign_name'] ?? '—') ?></td>
-      <td class="referral-cell">
-        <?php if (!empty($c['referred_by_name'])): ?>
-          <span>Referred by</span><?= htmlspecialchars($c['referred_by_name']) ?>
-        <?php else: ?>
-          —
-        <?php endif; ?>
+      <td style="font-size:12px;color:var(--gray2);max-width:180px">
+        <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><?= htmlspecialchars($c['campaign_name'] ?? '—') ?></div>
       </td>
       <td><span class="badge badge-<?= $c['status'] ?>"><?= ucfirst(str_replace('_', ' ', $c['status'])) ?></span></td>
       <td>
         <?php if ($score !== null): ?>
         <span class="score-pill <?= $pf === 'pass' ? 'score-pass' : 'score-fail' ?>">
           <i class="fa-solid fa-<?= $pf === 'pass' ? 'circle-check' : 'circle-xmark' ?> fa-xs"></i>
-          <?= $score ?>
+          <?= $score ?>/<?= $maxScore ?>
         </span>
         <?php else: ?>
         <span class="score-pill score-pending"><i class="fa-regular fa-clock fa-xs"></i> Pending</span>
         <?php endif; ?>
       </td>
-      <td style="font-size:12px;color:var(--gray)"><?= $c['created_at'] ? date('d M Y', strtotime($c['created_at'])) : '—' ?></td>
+      <td style="font-size:12px;color:var(--gray);white-space:nowrap"><?= $c['created_at'] ? date('d M Y', strtotime($c['created_at'])) : '—' ?></td>
       <td>
         <div class="act-btns">
           <a href="candidate_detail.php?id=<?= $c['id'] ?>" class="act-btn act-view" title="View">
@@ -284,8 +336,8 @@ $active_status = $_GET['status'] ?? 'all';
           <a href="tel:<?= htmlspecialchars($c['phone']) ?>" class="act-btn act-call" title="Call">
             <i class="fa-solid fa-phone"></i>
           </a>
-          <button onclick="sendWA(<?= $c['id'] ?>,'<?= htmlspecialchars($c['name'] ?: $c['phone']) ?>')"
-            class="act-btn" style="background:#25D36620;color:#25D366;border:1px solid #25D36640" title="Send WhatsApp Invite">
+          <button onclick="sendWA(<?= $c['id'] ?>,'<?= htmlspecialchars(addslashes($c['name'] ?: $c['phone'])) ?>')"
+            class="act-btn act-wa" title="WhatsApp Invite">
             <i class="fa-brands fa-whatsapp"></i>
           </button>
           <?php endif; ?>
@@ -299,7 +351,42 @@ $active_status = $_GET['status'] ?? 'all';
     <?php endforeach; endif; ?>
     </tbody>
   </table>
+
+  <!-- PAGINATION -->
+  <?php if ($total_pages > 1 || $total_filtered > 0): ?>
+  <div class="pagination">
+    <div class="pg-info">
+      Showing <?= $offset + 1 ?>–<?= min($offset + $per_page, $total_filtered) ?> of <?= $total_filtered ?> candidates
+    </div>
+    <div class="pg-btns">
+      <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page - 1])) ?>"
+         class="pg-btn <?= $page <= 1 ? 'disabled' : '' ?>">
+        <i class="fa-solid fa-chevron-left fa-xs"></i> Prev
+      </a>
+      <?php
+      $range_start = max(1, $page - 2);
+      $range_end   = min($total_pages, $page + 2);
+      if ($range_start > 1): ?>
+        <a href="?<?= http_build_query(array_merge($_GET, ['page' => 1])) ?>" class="pg-btn">1</a>
+        <?php if ($range_start > 2): ?><span class="pg-ellipsis">…</span><?php endif; ?>
+      <?php endif;
+      for ($p = $range_start; $p <= $range_end; $p++): ?>
+        <a href="?<?= http_build_query(array_merge($_GET, ['page' => $p])) ?>"
+           class="pg-btn <?= $p === $page ? 'active' : '' ?>"><?= $p ?></a>
+      <?php endfor;
+      if ($range_end < $total_pages): ?>
+        <?php if ($range_end < $total_pages - 1): ?><span class="pg-ellipsis">…</span><?php endif; ?>
+        <a href="?<?= http_build_query(array_merge($_GET, ['page' => $total_pages])) ?>" class="pg-btn"><?= $total_pages ?></a>
+      <?php endif; ?>
+      <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page + 1])) ?>"
+         class="pg-btn <?= $page >= $total_pages ? 'disabled' : '' ?>">
+        Next <i class="fa-solid fa-chevron-right fa-xs"></i>
+      </a>
+    </div>
+  </div>
+  <?php endif; ?>
 </div>
+</div><!-- /#results-container -->
 
 <!-- ══ ADD CANDIDATE MODAL ══════════════════════════════════ -->
 <div class="add-modal-overlay" id="addModal">
@@ -425,11 +512,14 @@ Ravi Kumar, , ravi@email.com"></textarea>
   </div>
 </div>
 
-<!-- BULK DELETE BAR -->
-<div id="bulk-bar-cands" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:12px 24px;border-radius:12px;box-shadow:0 4px 24px #0006;align-items:center;gap:16px;z-index:999">
-  <span id="bulk-cands-count" style="font-weight:600">0 selected</span>
-  <button onclick="bulkDeleteCands()" style="background:#ef4444;color:#fff;border:none;padding:8px 20px;border-radius:8px;font-weight:600;cursor:pointer">🗑 Delete Selected</button>
-  <button onclick="clearCandSelection()" style="background:#475569;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer">Cancel</button>
+<!-- BULK ACTION BAR -->
+<div id="bulk-bar-cands" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:12px 20px;border-radius:14px;box-shadow:0 4px 32px rgba(0,0,0,.45);align-items:center;gap:10px;z-index:999;white-space:nowrap;flex-wrap:wrap;max-width:95vw">
+  <span id="bulk-cands-count" style="font-weight:700;margin-right:4px">0 selected</span>
+  <button onclick="bulkStatus('shortlisted')" style="background:#059669;color:#fff;border:none;padding:7px 14px;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px">✅ Shortlist</button>
+  <button onclick="bulkStatus('rejected')"   style="background:#dc2626;color:#fff;border:none;padding:7px 14px;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px">❌ Reject</button>
+  <button onclick="bulkWhatsApp()"           style="background:#16a34a;color:#fff;border:none;padding:7px 14px;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px">📲 WhatsApp All</button>
+  <button onclick="bulkDeleteCands()"        style="background:#475569;color:#fff;border:none;padding:7px 14px;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px">🗑 Delete</button>
+  <button onclick="clearCandSelection()"     style="background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);padding:7px 12px;border-radius:8px;cursor:pointer;font-size:13px">✕</button>
 </div>
 
 <!-- DELETE CONFIRM -->
@@ -703,6 +793,78 @@ function showToast(msg, type = 'success') {
     t.style.animation = 'toastOut .3s forwards';
     setTimeout(() => t.remove(), 300);
   }, 3500);
+}
+
+// ── SEARCH DEBOUNCE (no page reload) ─────────────────────────
+(function() {
+  const sq = document.getElementById('search-q');
+  if (!sq) return;
+  let timer, ctrl;
+  async function runSearch() {
+    const form = sq.closest('form');
+    const params = new URLSearchParams(new FormData(form));
+    params.set('q', sq.value.trim());
+    params.delete('page');
+    const url = '?' + params.toString();
+    if (ctrl) ctrl.abort();
+    ctrl = new AbortController();
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      const html = await res.text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const fresh = doc.getElementById('results-container');
+      if (fresh) document.getElementById('results-container').replaceWith(fresh);
+      history.replaceState(null, '', url);
+    } catch(e) { if (e.name !== 'AbortError') sq.closest('form').submit(); }
+  }
+  sq.addEventListener('input', function() {
+    clearTimeout(timer);
+    timer = setTimeout(runSearch, 500);
+  });
+  sq.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); runSearch(); }
+  });
+})();
+
+// ── BULK STATUS UPDATE ────────────────────────────────────────
+async function bulkStatus(status) {
+  const checked = getCheckedCands();
+  if (!checked.length) return;
+  const label = status === 'shortlisted' ? 'shortlist' : 'reject';
+  if (!confirm(`${label.charAt(0).toUpperCase()+label.slice(1)} ${checked.length} candidate(s)?`)) return;
+  const ids = checked.map(c => parseInt(c.value));
+  try {
+    const r = await fetch('/api/candidates.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'bulk_status_update', candidate_ids: ids, status })
+    });
+    const d = await r.json();
+    if (d.success) {
+      showToast(`✅ ${d.updated} candidate(s) marked as ${status.replace('_',' ')}`, 'success');
+      setTimeout(() => location.reload(), 900);
+    } else {
+      showToast('❌ ' + (d.error || 'Update failed'), 'error');
+    }
+  } catch(e) { showToast('❌ Network error', 'error'); }
+}
+
+async function bulkWhatsApp() {
+  const checked = getCheckedCands();
+  if (!checked.length) return;
+  if (!confirm(`Send WhatsApp interview invite to ${checked.length} candidate(s)?`)) return;
+  const ids = checked.map(c => parseInt(c.value));
+  showToast('Sending WhatsApp invites…', 'info');
+  try {
+    const r = await fetch('/api/outreach.php?action=bulk_send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidate_ids: ids })
+    });
+    const d = await r.json();
+    showToast(`✅ Sent: ${d.sent} | Failed: ${d.failed}`, d.failed > 0 ? 'info' : 'success');
+    setTimeout(() => location.reload(), 1200);
+  } catch(e) { showToast('❌ Network error', 'error'); }
 }
 
 // ── KEYBOARD ──────────────────────────────────────────────────

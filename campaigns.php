@@ -374,6 +374,30 @@ if ($action === 'delete_application_field' && $campaign_id) {
     header("Location: campaigns.php?action=apply_form&id=$campaign_id"); exit;
 }
 
+if ($action === 'clone_campaign' && $campaign_id) {
+    $sent = $_GET['csrf_token'] ?? '';
+    if (!$sent || !hash_equals(csrf_token(), $sent)) { http_response_code(419); exit('Invalid security token.'); }
+    $src = db_fetch_one("SELECT * FROM campaigns WHERE id=? AND org_id=?", [$campaign_id, $user['org_id']], 'ii');
+    if ($src) {
+        $new_id = db_insert(
+            "INSERT INTO campaigns (org_id,created_by,name,job_role,description,share_token,start_date,end_date,integration_type,integration_endpoint,el_agent_id,passing_score,num_questions,language,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'draft')",
+            [$user['org_id'],$user['user_id'],'Copy of '.$src['name'],$src['job_role'],$src['description'],bin2hex(random_bytes(12)),null,null,$src['integration_type'],$src['integration_endpoint'],$src['el_agent_id'],(int)$src['passing_score'],(int)$src['num_questions'],$src['language']],
+            'iisssssssssiis'
+        );
+        foreach (db_fetch_all("SELECT * FROM questions WHERE campaign_id=? ORDER BY order_no", [$campaign_id], 'i') as $q) {
+            db_insert("INSERT INTO questions (campaign_id,parameter,parameter_label,weight,max_marks,question_text,ideal_answer_hint,question_type,options_json,branch_rules_json,is_required,order_no) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                [$new_id,$q['parameter'],$q['parameter_label'],(int)$q['weight'],(int)$q['max_marks'],$q['question_text'],$q['ideal_answer_hint'],$q['question_type'],$q['options_json'],$q['branch_rules_json'],(int)$q['is_required'],(int)$q['order_no']],'issiisssssii');
+        }
+        foreach (db_fetch_all("SELECT * FROM application_fields WHERE campaign_id=? AND is_active=1 ORDER BY order_no", [$campaign_id], 'i') as $f) {
+            db_insert("INSERT INTO application_fields (campaign_id,field_key,field_label,field_type,placeholder,help_text,options_json,is_required,order_no,is_active) VALUES (?,?,?,?,?,?,?,?,?,1)",
+                [$new_id,$f['field_key'],$f['field_label'],$f['field_type'],$f['placeholder'],$f['help_text'],$f['options_json'],(int)$f['is_required'],(int)$f['order_no']],'issssssii');
+        }
+        audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $new_id, 'campaign_cloned', ['source_id' => $campaign_id]);
+        header("Location: campaigns.php?action=questions&id=$new_id&msg=cloned"); exit;
+    }
+    header("Location: campaigns.php?msg=clone_failed"); exit;
+}
+
 if ($action === 'delete_campaign' && $campaign_id) {
     $sent = $_GET['csrf_token'] ?? '';
     if (!$sent || !hash_equals(csrf_token(), $sent)) {
@@ -520,6 +544,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
                 <button type="submit" class="btn-green" style="padding:5px 12px;font-size:13px">▶ Activate</button>
               </form>
             <?php endif; ?>
+            <a href="campaigns.php?action=clone_campaign&id=<?= $c['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" class="btn-sm" style="color:#7C3AED;border-color:#7C3AED40;background:#EDE9FE10" onclick="return confirm('Clone this campaign (questions + form fields will be copied)?')">📋 Clone</a>
             <a href="campaigns.php?action=delete_campaign&id=<?= $c['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" class="btn-danger" style="padding:5px 12px;font-size:13px;text-decoration:none" onclick="return confirm('Delete this campaign and all mapped candidates/interview data? This cannot be undone.')">Delete</a>
           </td>
         </tr>
@@ -755,6 +780,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
     <div style="display:flex;gap:8px">
       <?php if ($canPreview): ?>
       <button type="button" onclick="copyCampaignLink(<?= htmlspecialchars(json_encode($applyLink), ENT_QUOTES, 'UTF-8') ?>)" class="btn-green">Copy Apply Link</button>
+      <a href="<?= htmlspecialchars($applyLink) ?>" target="_blank" rel="noopener" class="btn-sm" style="color:#7C3AED;border-color:#7C3AED40;background:#EDE9FE20">🧪 Test Run</a>
       <a href="https://wa.me/?text=<?= urlencode('Apply here: ' . $applyLink) ?>" target="_blank" rel="noopener" class="btn-sm" style="color:#16A34A;border-color:#16A34A40;background:#16A34A10">Share WA</a>
       <?php else: ?>
       <a href="campaigns.php?action=apply_form&id=<?= $campaign_id ?>" class="btn-sm" style="color:#B45309;border-color:#F59E0B55;background:#FEF3C7">Configure Apply Form</a>

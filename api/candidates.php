@@ -314,6 +314,24 @@ if ($action === 'delete' && $method === 'POST') {
     json_response(['success' => true, 'message' => 'Candidate deleted successfully']);
 }
 
+// ── BULK STATUS UPDATE ────────────────────────────────────────────────────────
+if ($action === 'bulk_status_update' && $method === 'POST') {
+    $ids    = array_map('intval', $input['candidate_ids'] ?? []);
+    $ids    = array_filter($ids);
+    $status = trim($input['status'] ?? '');
+    $allowed = ['pending','outreach_sent','interview_started','interview_completed','shortlisted','rejected','on_hold'];
+    if (empty($ids) || !in_array($status, $allowed)) json_response(['error' => 'Invalid request'], 400);
+    $updated = 0;
+    foreach ($ids as $cid) {
+        $c = db_fetch_one("SELECT id FROM candidates WHERE id=? AND org_id=?", [$cid, $user['org_id']], 'ii');
+        if (!$c) continue;
+        db_execute("UPDATE candidates SET status=? WHERE id=?", [$status, $cid], 'si');
+        audit_log($user['org_id'], $user['user_id'] ?? null, 'candidate', $cid, 'status_updated', ['status' => $status, 'bulk' => true]);
+        $updated++;
+    }
+    json_response(['success' => true, 'updated' => $updated]);
+}
+
 // ── UPDATE STATUS ─────────────────────────────────────────────────────────────
 if ($action === 'update_status' && $method === 'POST') {
     $candidate_id = (int)($input['candidate_id'] ?? 0);

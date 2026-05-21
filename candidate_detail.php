@@ -790,19 +790,11 @@ $toast         = $_GET['toast'] ?? '';
     <button class="tab-btn" onclick="switchTab('recording',this)" data-tab-btn="recording">
       <i class="fa-solid fa-video fa-sm"></i> Recording <span class="kb-hint">2</span>
     </button>
-    <button class="tab-btn" onclick="switchTab('transcript',this)" data-tab-btn="transcript">
-      <i class="fa-solid fa-scroll fa-sm"></i> Transcript <span class="kb-hint">3</span>
-    </button>
-    <button class="tab-btn" onclick="switchTab('notes',this)" data-tab-btn="notes">
-      <i class="fa-solid fa-note-sticky fa-sm"></i> Notes
-      <?php if (count($notes_db)): ?><span class="tab-badge tab-badge-orange"><?= count($notes_db) ?></span><?php endif; ?>
-      <span class="kb-hint">4</span>
-    </button>
     <?php if (defined('DIALER_API_KEY') && DIALER_API_KEY): ?>
     <button class="tab-btn" onclick="switchTab('aicall',this)" data-tab-btn="aicall" style="<?= $ai_call ? '' : 'opacity:.6' ?>">
       <i class="fa-solid fa-phone-volume fa-sm" style="color:#059669"></i> AI Call
       <?php if ($ai_call): ?><span class="tab-badge" style="background:#059669"><?= $ai_call['interview_score'] ?? '—' ?></span><?php endif; ?>
-      <span class="kb-hint">5</span>
+      <span class="kb-hint">3</span>
     </button>
     <?php endif; ?>
   </div>
@@ -1002,56 +994,6 @@ $toast         = $_GET['toast'] ?? '';
       <div style="text-align:center;padding:40px;color:var(--gray)">
         <i class="fa-regular fa-comment-dots fa-2x" style="margin-bottom:12px;display:block;opacity:.3"></i>
         <div style="font-weight:600">No answers yet</div>
-      </div>
-      <?php endif; ?>
-    </div>
-  </div>
-
-  <!-- TAB: TRANSCRIPT -->
-  <div class="tab-panel" id="tab-transcript">
-    <div class="card animate-in">
-      <div class="card-header">
-        <h3><i class="fa-solid fa-scroll" style="color:var(--blue)"></i> Full Transcript</h3>
-      </div>
-      <?php if (!empty($session['full_transcript'])): ?>
-      <div style="background:#F8FAFC;border-radius:10px;padding:16px;max-height:500px;overflow-y:auto;font-size:14px;line-height:1.8;white-space:pre-wrap;color:var(--text2)">
-        <?= htmlspecialchars($session['full_transcript']) ?>
-      </div>
-      <?php else: ?>
-      <div style="text-align:center;padding:40px;color:var(--gray)">
-        <i class="fa-solid fa-scroll fa-2x" style="margin-bottom:12px;display:block;opacity:.3"></i>
-        <div style="font-weight:600">No transcript available</div>
-      </div>
-      <?php endif; ?>
-    </div>
-  </div>
-
-  <!-- TAB: NOTES -->
-  <div class="tab-panel" id="tab-notes">
-    <div class="card animate-in">
-      <div class="card-header">
-        <h3><i class="fa-solid fa-note-sticky" style="color:var(--orange)"></i> Recruiter Notes</h3>
-      </div>
-      <form method="POST" style="display:flex;gap:8px;margin-bottom:16px">
-        <?= csrf_input() ?>
-        <input type="text" name="note" class="form-control" placeholder="Add a note about this candidate..." required>
-        <button type="submit" name="add_note" class="btn-primary" style="white-space:nowrap;padding:10px 18px">
-          <i class="fa-solid fa-plus fa-sm"></i> Add
-        </button>
-      </form>
-      <?php if (!empty($notes_db)): foreach ($notes_db as $n): ?>
-      <div class="note-item">
-        <div class="note-text"><?= htmlspecialchars($n['note']) ?></div>
-        <div class="note-meta">
-          <span><i class="fa-solid fa-user fa-xs"></i> <?= htmlspecialchars($n['recruiter_name'] ?? 'Admin') ?></span>
-          <span><i class="fa-regular fa-clock fa-xs"></i> <?= date('d M Y, h:i A', strtotime($n['created_at'])) ?></span>
-        </div>
-      </div>
-      <?php endforeach;
-      else: ?>
-      <div style="text-align:center;padding:32px;color:var(--gray)">
-        <i class="fa-regular fa-note-sticky fa-2x" style="margin-bottom:12px;display:block;opacity:.3"></i>
-        <div style="font-weight:600">No notes yet</div>
       </div>
       <?php endif; ?>
     </div>
@@ -1630,10 +1572,8 @@ document.addEventListener('keydown', e => {
   }
   if (e.key === '1') switchTab('qa',        document.querySelector('[data-tab-btn=qa]'));
   if (e.key === '2') switchTab('recording', document.querySelector('[data-tab-btn=recording]'));
-  if (e.key === '3') switchTab('transcript',tabBtns[2]);
-  if (e.key === '4') switchTab('notes',     tabBtns[3]);
   const aiBtn = document.querySelector('[data-tab-btn=aicall]');
-  if (e.key === '5' && aiBtn) switchTab('aicall', aiBtn);
+  if (e.key === '3' && aiBtn) switchTab('aicall', aiBtn);
 });
 </script>
 

@@ -487,38 +487,6 @@ $toast         = $_GET['toast'] ?? '';
           : '<i class="fa-solid fa-circle-xmark"></i> FAILED') ?>
     </div>
 
-    <?php if (!empty($result['recruiter_override_score'])): ?>
-    <div style="font-size:11px;color:var(--orange);background:#FFFBEB;padding:4px 12px;border-radius:20px;
-                display:inline-flex;align-items:center;gap:4px;margin-bottom:10px">
-      <i class="fa-solid fa-bolt fa-xs"></i> Recruiter Override
-    </div>
-    <?php endif; ?>
-
-    <div style="font-size:11px;color:var(--gray);font-weight:600;margin-bottom:2px">
-      <?= !empty($result['recruiter_override_score']) ? 'Manual override applied' : 'AI evaluated total' ?>
-    </div>
-
-    <button type="button" class="btn-sm" onclick="switchTab('qa', document.querySelector('[data-tab-btn=qa]'))"
-      style="width:100%;justify-content:center;margin-top:12px">
-      <i class="fa-solid fa-pen-to-square"></i> Mark in Q&A
-    </button>
-
-    <?php if ($result): ?>
-    <div style="margin-top:16px;padding-top:16px;border-top:1px solid #F1F5F9;text-align:left">
-      <div style="font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">
-        <i class="fa-solid fa-bolt fa-xs"></i> Override Score
-      </div>
-      <form method="POST" style="display:flex;gap:6px;align-items:flex-end">
-        <?= csrf_input() ?>
-        <input type="number" name="override_score" class="form-control"
-          style="width:70px;padding:7px 10px;font-size:13px"
-          placeholder="Score" min="0" max="<?= $display_max ?>" value="<?= $result['recruiter_override_score'] ?? '' ?>">
-        <input type="text" name="reason" class="form-control"
-          placeholder="Reason..." required style="font-size:13px;padding:7px 10px">
-        <button type="submit" name="override_score" class="btn-sm" style="white-space:nowrap">Save</button>
-      </form>
-    </div>
-    <?php endif; ?>
     <?php else: ?>
     <div style="padding:24px 0">
       <i class="fa-regular fa-clock fa-2x" style="color:var(--gray);margin-bottom:10px;display:block;opacity:.5"></i>

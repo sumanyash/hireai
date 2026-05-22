@@ -153,6 +153,31 @@ function candidate_short_value($value): string {
     return (string)$value;
 }
 
+$candidate_export_base_columns = [
+    ['key' => 'id', 'label' => 'ID', 'value' => fn($row) => $row['id'] ?? ''],
+    ['key' => 'candidate', 'label' => 'Name', 'value' => fn($row) => $row['name'] ?? ''],
+    ['key' => 'phone', 'label' => 'Phone', 'value' => fn($row) => $row['phone'] ?? ''],
+    ['key' => 'email', 'label' => 'Email', 'value' => fn($row) => $row['email'] ?? ''],
+    ['key' => 'city', 'label' => 'City', 'value' => fn($row) => $row['city'] ?? ''],
+    ['key' => 'experience_years', 'label' => 'Experience', 'value' => fn($row) => $row['experience_years'] ?? ''],
+    ['key' => 'current_ctc', 'label' => 'Current CTC', 'value' => fn($row) => $row['current_ctc'] ?? ''],
+    ['key' => 'expected_ctc', 'label' => 'Expected CTC', 'value' => fn($row) => $row['expected_ctc'] ?? ''],
+    ['key' => 'source', 'label' => 'Source', 'value' => fn($row) => $row['source'] ?? ''],
+    ['key' => 'referred_by_name', 'label' => 'Referral Name', 'value' => fn($row) => $row['referred_by_name'] ?? ''],
+    ['key' => 'referred_medium', 'label' => 'Referral Medium', 'value' => fn($row) => $row['referred_medium'] ?? ''],
+    ['key' => 'campaign', 'label' => 'Campaign', 'value' => fn($row) => $row['campaign_name'] ?? ''],
+    ['key' => 'job_role', 'label' => 'Role', 'value' => fn($row) => $row['job_role'] ?? ''],
+    ['key' => 'status', 'label' => 'Status', 'value' => fn($row) => $row['status'] ?? ''],
+    ['key' => 'score', 'label' => 'Score', 'value' => fn($row) => $row['total_score'] ?? ''],
+    ['key' => 'max_score', 'label' => 'Max Score', 'value' => fn($row) => $row['max_score'] ?? ''],
+    ['key' => 'pass_fail', 'label' => 'Pass/Fail', 'value' => fn($row) => $row['pass_fail'] ?? ''],
+    ['key' => 'ai_summary', 'label' => 'AI Summary', 'value' => fn($row) => $row['ai_summary'] ?? ''],
+    ['key' => 'resume_path', 'label' => 'Resume', 'value' => fn($row) => $row['resume_path'] ?? ''],
+    ['key' => 'photo_path', 'label' => 'Photo', 'value' => fn($row) => $row['photo_path'] ?? ''],
+    ['key' => 'applied', 'label' => 'Applied At', 'value' => fn($row) => $row['created_at'] ?? ''],
+    ['key' => 'updated_at', 'label' => 'Updated At', 'value' => fn($row) => $row['updated_at'] ?? ''],
+];
+
 $dynamic_candidate_columns = [];
 foreach ($column_source_rows as $row) {
     foreach (candidate_app_answers($row) as $key => $answer) {
@@ -163,44 +188,40 @@ foreach ($column_source_rows as $row) {
             $fieldKey = (string)$key;
             $label = (string)$key;
         }
-        if ($fieldKey !== '') $dynamic_candidate_columns[$fieldKey] = $label ?: $fieldKey;
+        if ($fieldKey !== '') {
+            $exportLabel = (string)$fieldKey;
+            $dynamic_candidate_columns[$fieldKey] = [
+                'label' => $label ?: $exportLabel,
+                'export_label' => $exportLabel,
+            ];
+        }
     }
 }
 
-$candidate_table_columns = [
-    ['key' => 'candidate', 'label' => 'Candidate', 'visible' => true, 'base' => true],
-    ['key' => 'id', 'label' => 'ID', 'visible' => false],
-    ['key' => 'phone', 'label' => 'Phone', 'visible' => false],
-    ['key' => 'email', 'label' => 'Email', 'visible' => false],
-    ['key' => 'city', 'label' => 'City', 'visible' => false],
-    ['key' => 'experience_years', 'label' => 'Experience', 'visible' => false],
-    ['key' => 'current_ctc', 'label' => 'Current CTC', 'visible' => false],
-    ['key' => 'expected_ctc', 'label' => 'Expected CTC', 'visible' => false],
-    ['key' => 'source', 'label' => 'Source', 'visible' => false],
-    ['key' => 'referred_by_name', 'label' => 'Referral Name', 'visible' => false],
-    ['key' => 'referred_medium', 'label' => 'Referral Medium', 'visible' => false],
-    ['key' => 'campaign', 'label' => 'Campaign', 'visible' => true, 'base' => true],
-    ['key' => 'job_role', 'label' => 'Role', 'visible' => false],
-    ['key' => 'status', 'label' => 'Status', 'visible' => true, 'base' => true],
-    ['key' => 'score', 'label' => 'Score', 'visible' => true, 'base' => true],
-    ['key' => 'max_score', 'label' => 'Max Score', 'visible' => false],
-    ['key' => 'pass_fail', 'label' => 'Pass/Fail', 'visible' => false],
-    ['key' => 'ai_summary', 'label' => 'AI Summary', 'visible' => false],
-    ['key' => 'resume_path', 'label' => 'Resume', 'visible' => false],
-    ['key' => 'photo_path', 'label' => 'Photo', 'visible' => false],
-    ['key' => 'applied', 'label' => 'Applied At', 'visible' => true, 'base' => true],
-    ['key' => 'updated_at', 'label' => 'Updated At', 'visible' => false],
-];
-foreach ($dynamic_candidate_columns as $fieldKey => $label) {
+$default_visible_columns = ['candidate', 'campaign', 'status', 'score', 'applied'];
+$candidate_table_columns = [];
+foreach ($candidate_export_base_columns as $column) {
+    $candidate_table_columns[] = [
+        'key' => $column['key'],
+        'label' => $column['key'] === 'candidate' ? 'Candidate' : $column['label'],
+        'export_label' => $column['label'],
+        'visible' => in_array($column['key'], $default_visible_columns, true),
+        'base' => in_array($column['key'], $default_visible_columns, true),
+        'export' => true,
+    ];
+}
+foreach ($dynamic_candidate_columns as $fieldKey => $meta) {
     $candidate_table_columns[] = [
         'key' => 'app_' . candidate_col_key((string)$fieldKey),
         'field_key' => (string)$fieldKey,
-        'label' => $label,
+        'label' => $meta['label'],
+        'export_label' => $meta['export_label'],
         'visible' => false,
         'dynamic' => true,
+        'export' => true,
     ];
 }
-$candidate_table_columns[] = ['key' => 'action', 'label' => 'Action', 'visible' => true, 'base' => true];
+$candidate_table_columns[] = ['key' => 'action', 'label' => 'Action', 'export_label' => 'Action', 'visible' => true, 'base' => true, 'export' => false];
 $candidate_table_colspan = count($candidate_table_columns) + 1;
 ?>
 <!DOCTYPE html>
@@ -252,6 +273,9 @@ $candidate_table_colspan = count($candidate_table_columns) + 1;
 .columns-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 6px}
 .columns-panel label{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;font-size:12px;font-weight:700;color:var(--text2);cursor:pointer;white-space:nowrap}
 .columns-panel label:hover{background:#F8FAFC}
+.column-label{display:flex;min-width:0;flex-direction:column;line-height:1.15}
+.column-label strong{overflow:hidden;text-overflow:ellipsis}
+.column-label small{color:var(--gray);font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;margin-top:2px;overflow:hidden;text-overflow:ellipsis}
 .col-hidden-default{display:none}
 .extra-col{max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--gray2);font-size:12px}
 .extra-col-wide{min-width:260px;white-space:normal;line-height:1.35}
@@ -482,6 +506,7 @@ $avatarPalette = [
             </div>
             <div class="columns-mini-actions">
               <button type="button" onclick="setColumnPreset('all')">All</button>
+              <button type="button" onclick="setColumnPreset('export')">Export</button>
               <button type="button" onclick="setColumnPreset('core')">Core</button>
             </div>
           </div>
@@ -491,10 +516,18 @@ $avatarPalette = [
             $colKey = htmlspecialchars($col['key']);
             $checked = !empty($col['visible']) ? 'checked' : '';
             $core = !empty($col['base']) ? '1' : '0';
+            $exportCol = !empty($col['export']) ? '1' : '0';
+            $exportLabel = (string)($col['export_label'] ?? $col['label']);
+            $optionSearch = strtolower($col['label'] . ' ' . $exportLabel . ' ' . $col['key']);
           ?>
-            <label data-column-option="<?= htmlspecialchars(strtolower($col['label'])) ?>">
-              <input type="checkbox" data-col-key="<?= $colKey ?>" data-core="<?= $core ?>" <?= $checked ?> onchange="toggleColumn(this)">
-              <?= htmlspecialchars($col['label']) ?>
+            <label data-column-option="<?= htmlspecialchars($optionSearch) ?>">
+              <input type="checkbox" data-col-key="<?= $colKey ?>" data-core="<?= $core ?>" data-export="<?= $exportCol ?>" <?= $checked ?> onchange="toggleColumn(this)">
+              <span class="column-label">
+                <strong><?= htmlspecialchars($col['label']) ?></strong>
+                <?php if ($exportLabel !== (string)$col['label']): ?>
+                <small>Export: <?= htmlspecialchars($exportLabel) ?></small>
+                <?php endif; ?>
+              </span>
             </label>
           <?php endforeach; ?>
           </div>
@@ -1177,13 +1210,15 @@ function toggleColumn(box) {
     cell.classList.toggle('col-hidden-default', !box.checked);
     cell.style.display = box.checked ? '' : 'none';
   });
+  saveColumnState();
 }
 
 function setColumnPreset(mode) {
   document.querySelectorAll('#columnsPanel input[data-col-key]').forEach(box => {
-    box.checked = mode === 'all' || box.dataset.core === '1';
+    box.checked = mode === 'all' || (mode === 'export' && box.dataset.export === '1') || (mode === 'core' && box.dataset.core === '1');
     toggleColumn(box);
   });
+  saveColumnState();
 }
 
 function filterColumnOptions(term) {
@@ -1206,8 +1241,25 @@ document.addEventListener('keydown', e => {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
+  restoreColumnState();
   document.querySelectorAll('#columnsPanel input[data-col-key]').forEach(toggleColumn);
 });
+
+function saveColumnState() {
+  const boxes = [...document.querySelectorAll('#columnsPanel input[data-col-key]')];
+  if (!boxes.length) return;
+  const selected = boxes.filter(box => box.checked).map(box => box.dataset.colKey);
+  try { localStorage.setItem('hireai_candidate_columns', JSON.stringify(selected)); } catch(e) {}
+}
+
+function restoreColumnState() {
+  let selected = null;
+  try { selected = JSON.parse(localStorage.getItem('hireai_candidate_columns') || 'null'); } catch(e) {}
+  if (!Array.isArray(selected)) return;
+  document.querySelectorAll('#columnsPanel input[data-col-key]').forEach(box => {
+    box.checked = selected.includes(box.dataset.colKey);
+  });
+}
 
 // ── BULK STATUS UPDATE ────────────────────────────────────────
 async function bulkStatus(status) {

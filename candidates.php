@@ -92,12 +92,21 @@ $page           = min($page, $total_pages);
 $offset         = ($page - 1) * $per_page;
 
 $candidates = db_fetch_all(
-    "SELECT c.*, camp.name campaign_name, ir.total_score, ir.max_score, ir.pass_fail, ir.id result_id
+    "SELECT c.*, camp.name campaign_name, camp.job_role, ir.total_score, ir.max_score, ir.pass_fail, ir.ai_summary, ir.id result_id
      FROM candidates c
      LEFT JOIN campaigns camp ON c.campaign_id=camp.id
      LEFT JOIN interview_results ir ON c.id=ir.candidate_id
      WHERE $where ORDER BY $sort_sql LIMIT ? OFFSET ?",
     array_merge($params, [$per_page, $offset]), $types . 'ii'
+);
+$column_source_rows = db_fetch_all(
+    "SELECT c.application_answers_json
+     FROM candidates c
+     LEFT JOIN campaigns camp ON c.campaign_id=camp.id
+     LEFT JOIN interview_results ir ON c.id=ir.candidate_id
+     WHERE $where",
+    $params,
+    $types
 );
 $candidate_export_params = [
     'campaign_id' => $sel_campaign ?: null,
@@ -111,6 +120,88 @@ $candidate_export_params = [
     'f_applied' => $filter_applied ?: null,
     'detailed' => 1,
 ];
+
+function candidate_col_key(string $key): string {
+    $key = strtolower(preg_replace('/[^a-zA-Z0-9_]+/', '_', $key));
+    return trim($key, '_') ?: 'column';
+}
+
+function candidate_app_answers(array $row): array {
+    $answers = json_decode((string)($row['application_answers_json'] ?? ''), true);
+    return is_array($answers) ? $answers : [];
+}
+
+function candidate_app_field_value(array $row, string $fieldKey): string {
+    foreach (candidate_app_answers($row) as $key => $answer) {
+        if (is_array($answer)) {
+            $answerKey = (string)($answer['key'] ?? $key);
+            if ($answerKey !== $fieldKey && (string)$key !== $fieldKey) continue;
+            $value = $answer['value'] ?? '';
+        } else {
+            if ((string)$key !== $fieldKey) continue;
+            $value = $answer;
+        }
+        if (is_array($value)) return implode(', ', array_map('strval', $value));
+        return (string)$value;
+    }
+    return '';
+}
+
+function candidate_short_value($value): string {
+    if ($value === null || $value === '') return '—';
+    if (is_array($value)) $value = implode(', ', array_map('strval', $value));
+    return (string)$value;
+}
+
+$dynamic_candidate_columns = [];
+foreach ($column_source_rows as $row) {
+    foreach (candidate_app_answers($row) as $key => $answer) {
+        if (is_array($answer)) {
+            $fieldKey = (string)($answer['key'] ?? $key);
+            $label = (string)($answer['label'] ?? $fieldKey);
+        } else {
+            $fieldKey = (string)$key;
+            $label = (string)$key;
+        }
+        if ($fieldKey !== '') $dynamic_candidate_columns[$fieldKey] = $label ?: $fieldKey;
+    }
+}
+
+$candidate_table_columns = [
+    ['key' => 'candidate', 'label' => 'Candidate', 'visible' => true, 'base' => true],
+    ['key' => 'id', 'label' => 'ID', 'visible' => false],
+    ['key' => 'phone', 'label' => 'Phone', 'visible' => false],
+    ['key' => 'email', 'label' => 'Email', 'visible' => false],
+    ['key' => 'city', 'label' => 'City', 'visible' => false],
+    ['key' => 'experience_years', 'label' => 'Experience', 'visible' => false],
+    ['key' => 'current_ctc', 'label' => 'Current CTC', 'visible' => false],
+    ['key' => 'expected_ctc', 'label' => 'Expected CTC', 'visible' => false],
+    ['key' => 'source', 'label' => 'Source', 'visible' => false],
+    ['key' => 'referred_by_name', 'label' => 'Referral Name', 'visible' => false],
+    ['key' => 'referred_medium', 'label' => 'Referral Medium', 'visible' => false],
+    ['key' => 'campaign', 'label' => 'Campaign', 'visible' => true, 'base' => true],
+    ['key' => 'job_role', 'label' => 'Role', 'visible' => false],
+    ['key' => 'status', 'label' => 'Status', 'visible' => true, 'base' => true],
+    ['key' => 'score', 'label' => 'Score', 'visible' => true, 'base' => true],
+    ['key' => 'max_score', 'label' => 'Max Score', 'visible' => false],
+    ['key' => 'pass_fail', 'label' => 'Pass/Fail', 'visible' => false],
+    ['key' => 'ai_summary', 'label' => 'AI Summary', 'visible' => false],
+    ['key' => 'resume_path', 'label' => 'Resume', 'visible' => false],
+    ['key' => 'photo_path', 'label' => 'Photo', 'visible' => false],
+    ['key' => 'applied', 'label' => 'Applied At', 'visible' => true, 'base' => true],
+    ['key' => 'updated_at', 'label' => 'Updated At', 'visible' => false],
+];
+foreach ($dynamic_candidate_columns as $fieldKey => $label) {
+    $candidate_table_columns[] = [
+        'key' => 'app_' . candidate_col_key((string)$fieldKey),
+        'field_key' => (string)$fieldKey,
+        'label' => $label,
+        'visible' => false,
+        'dynamic' => true,
+    ];
+}
+$candidate_table_columns[] = ['key' => 'action', 'label' => 'Action', 'visible' => true, 'base' => true];
+$candidate_table_colspan = count($candidate_table_columns) + 1;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -137,20 +228,33 @@ $candidate_export_params = [
 .search-input:focus{outline:none;border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
 .filter-select{padding:9px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13px;background:#F8FAFC;cursor:pointer;color:var(--text);transition:all .2s}
 .filter-select:focus{outline:none;border-color:var(--blue)}
-.dt-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:16px 18px;background:#fff;border-bottom:1px solid #E2E8F0}
+.dt-toolbar{display:grid;grid-template-columns:minmax(260px,1fr) auto;align-items:start;gap:14px 18px;padding:16px 18px;background:#fff;border-bottom:1px solid #E2E8F0}
 .dt-left,.dt-actions,.dt-search{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dt-left{min-width:0}
+.dt-actions{justify-content:flex-end}
 .dt-label{font-size:13px;font-weight:700;color:var(--text2);display:flex;align-items:center;gap:6px}
 .dt-select{padding:7px 10px;border:1.5px solid #E2E8F0;border-radius:9px;background:#F8FAFC;font-size:13px;font-weight:700;color:var(--text);outline:none}
 .dt-action{display:inline-flex;align-items:center;gap:6px;border:none;border-radius:9px;background:#2563EB;color:#fff;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer;text-decoration:none;box-shadow:0 4px 12px rgba(37,99,235,.18);transition:transform .12s,background .12s}
 .dt-action:hover{background:#1D4ED8;transform:translateY(-1px)}
+.dt-search{grid-column:1/-1;justify-content:flex-start}
 .dt-search label{font-size:13px;font-weight:800;color:var(--text2);font-style:italic}
 .dt-search-input{width:190px;padding:8px 12px;border:1.5px solid #E2E8F0;border-radius:9px;background:#fff;font-size:13px;outline:none}
 .dt-search-input:focus,.col-filter:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
 .columns-menu{position:relative}
-.columns-panel{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1px solid #E2E8F0;border-radius:12px;box-shadow:0 18px 60px rgba(15,23,42,.18);padding:10px;z-index:20;min-width:180px}
+.columns-panel{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1px solid #E2E8F0;border-radius:14px;box-shadow:0 18px 60px rgba(15,23,42,.18);padding:12px;z-index:20;width:360px;max-width:calc(100vw - 40px);max-height:440px;overflow:auto}
 .columns-panel.active{display:block}
+.columns-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 4px 10px;border-bottom:1px solid #E2E8F0;margin-bottom:8px}
+.columns-title{font-size:12px;font-weight:900;color:var(--text);letter-spacing:.2px}
+.columns-mini-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.columns-mini-actions button{border:1px solid #D8B4FE;background:#FAF5FF;color:#6D28D9;border-radius:7px;padding:5px 8px;font-size:10px;font-weight:900;cursor:pointer}
+.columns-search{width:100%;padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:9px;margin-bottom:8px;font-size:12px;outline:none}
+.columns-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 6px}
 .columns-panel label{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;font-size:12px;font-weight:700;color:var(--text2);cursor:pointer;white-space:nowrap}
 .columns-panel label:hover{background:#F8FAFC}
+.col-hidden-default{display:none}
+.extra-col{max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--gray2);font-size:12px}
+.extra-col-wide{min-width:260px;white-space:normal;line-height:1.35}
+.path-pill{display:inline-block;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid #E2E8F0;background:#F8FAFC;border-radius:999px;padding:3px 8px;color:var(--gray2);font-size:11px}
 
 /* ── STATUS PILLS ────────────────────────────────────────── */
 .status-scroll{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;padding-bottom:4px}
@@ -252,6 +356,7 @@ $candidate_export_params = [
 @keyframes toastOut{to{opacity:0;transform:translateY(16px) scale(.96)}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+@media(max-width:900px){.dt-toolbar{grid-template-columns:1fr}.dt-actions{justify-content:flex-start}.columns-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -369,12 +474,29 @@ $avatarPalette = [
       <div class="columns-menu">
         <button type="button" class="dt-action" onclick="toggleColumnsPanel()"><i class="fa-solid fa-table-columns"></i> Columns Visible</button>
         <div class="columns-panel" id="columnsPanel">
-          <label><input type="checkbox" data-col="2" checked onchange="toggleColumn(this)"> Candidate</label>
-          <label><input type="checkbox" data-col="3" checked onchange="toggleColumn(this)"> Campaign</label>
-          <label><input type="checkbox" data-col="4" checked onchange="toggleColumn(this)"> Status</label>
-          <label><input type="checkbox" data-col="5" checked onchange="toggleColumn(this)"> Score</label>
-          <label><input type="checkbox" data-col="6" checked onchange="toggleColumn(this)"> Applied</label>
-          <label><input type="checkbox" data-col="7" checked onchange="toggleColumn(this)"> Action</label>
+          <div class="columns-head">
+            <div>
+              <div class="columns-title">Table Columns</div>
+              <div style="font-size:10px;color:var(--gray);font-weight:700">Same headers as detailed export</div>
+            </div>
+            <div class="columns-mini-actions">
+              <button type="button" onclick="setColumnPreset('all')">All</button>
+              <button type="button" onclick="setColumnPreset('core')">Core</button>
+            </div>
+          </div>
+          <input class="columns-search" type="text" id="columnsSearch" placeholder="Find column..." oninput="filterColumnOptions(this.value)">
+          <div class="columns-grid" id="columnsGrid">
+          <?php foreach ($candidate_table_columns as $col):
+            $colKey = htmlspecialchars($col['key']);
+            $checked = !empty($col['visible']) ? 'checked' : '';
+            $core = !empty($col['base']) ? '1' : '0';
+          ?>
+            <label data-column-option="<?= htmlspecialchars(strtolower($col['label'])) ?>">
+              <input type="checkbox" data-col-key="<?= $colKey ?>" data-core="<?= $core ?>" <?= $checked ?> onchange="toggleColumn(this)">
+              <?= htmlspecialchars($col['label']) ?>
+            </label>
+          <?php endforeach; ?>
+          </div>
         </div>
       </div>
     </div>
@@ -391,27 +513,45 @@ $avatarPalette = [
     <thead>
       <tr>
         <th style="width:36px;text-align:center"><input type="checkbox" id="select-all-cands" title="Select All" style="cursor:pointer;width:16px;height:16px"></th>
-        <th><a class="sort-link" href="?<?= http_build_query(array_merge($_GET, ['sort' => $sort === 'name' ? 'newest' : 'name', 'page' => 1])) ?>">Candidate <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i></a></th>
-        <th>Campaign <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i></th>
-        <th>Status <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i></th>
-        <th><a class="sort-link" href="?<?= http_build_query(array_merge($_GET, ['sort' => $sort === 'score_desc' ? 'score_asc' : 'score_desc', 'page' => 1])) ?>">Score <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i></a></th>
-        <th><a class="sort-link" href="?<?= http_build_query(array_merge($_GET, ['sort' => $sort === 'newest' ? 'oldest' : 'newest', 'page' => 1])) ?>">Applied <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i></a></th>
-        <th style="width:120px">Action <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i></th>
+        <?php foreach ($candidate_table_columns as $col):
+          $hiddenClass = empty($col['visible']) ? ' col-hidden-default' : '';
+          $colKey = htmlspecialchars($col['key']);
+          $label = htmlspecialchars($col['label']);
+          $style = $col['key'] === 'action' ? ' style="width:120px"' : '';
+        ?>
+        <th class="<?= $hiddenClass ?>" data-col-key="<?= $colKey ?>"<?= $style ?>>
+          <?php if ($col['key'] === 'candidate'): ?>
+            <a class="sort-link" href="?<?= http_build_query(array_merge($_GET, ['sort' => $sort === 'name' ? 'newest' : 'name', 'page' => 1])) ?>"><?= $label ?> <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i></a>
+          <?php elseif ($col['key'] === 'score'): ?>
+            <a class="sort-link" href="?<?= http_build_query(array_merge($_GET, ['sort' => $sort === 'score_desc' ? 'score_asc' : 'score_desc', 'page' => 1])) ?>"><?= $label ?> <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i></a>
+          <?php elseif ($col['key'] === 'applied'): ?>
+            <a class="sort-link" href="?<?= http_build_query(array_merge($_GET, ['sort' => $sort === 'newest' ? 'oldest' : 'newest', 'page' => 1])) ?>"><?= $label ?> <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i></a>
+          <?php else: ?>
+            <?= $label ?> <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i>
+          <?php endif; ?>
+        </th>
+        <?php endforeach; ?>
       </tr>
       <tr class="filter-row">
         <th></th>
-        <th><input class="col-filter" name="f_candidate" form="candidateFilterForm" value="<?= htmlspecialchars($filter_candidate) ?>" placeholder="Search Candidate"></th>
-        <th><input class="col-filter" name="f_campaign" form="candidateFilterForm" value="<?= htmlspecialchars($filter_campaign) ?>" placeholder="Search Campaign"></th>
-        <th><input class="col-filter" name="f_status" form="candidateFilterForm" value="<?= htmlspecialchars($filter_status) ?>" placeholder="Search Status"></th>
-        <th><input class="col-filter" name="f_score" form="candidateFilterForm" value="<?= htmlspecialchars($filter_score) ?>" placeholder="Search Score"></th>
-        <th><input class="col-filter" name="f_applied" form="candidateFilterForm" value="<?= htmlspecialchars($filter_applied) ?>" placeholder="Search Date"></th>
-        <th></th>
+        <?php foreach ($candidate_table_columns as $col):
+          $hiddenClass = empty($col['visible']) ? ' col-hidden-default' : '';
+          $colKey = htmlspecialchars($col['key']);
+          $filterHtml = '';
+          if ($col['key'] === 'candidate') $filterHtml = '<input class="col-filter" name="f_candidate" form="candidateFilterForm" value="' . htmlspecialchars($filter_candidate) . '" placeholder="Search Candidate">';
+          if ($col['key'] === 'campaign') $filterHtml = '<input class="col-filter" name="f_campaign" form="candidateFilterForm" value="' . htmlspecialchars($filter_campaign) . '" placeholder="Search Campaign">';
+          if ($col['key'] === 'status') $filterHtml = '<input class="col-filter" name="f_status" form="candidateFilterForm" value="' . htmlspecialchars($filter_status) . '" placeholder="Search Status">';
+          if ($col['key'] === 'score') $filterHtml = '<input class="col-filter" name="f_score" form="candidateFilterForm" value="' . htmlspecialchars($filter_score) . '" placeholder="Search Score">';
+          if ($col['key'] === 'applied') $filterHtml = '<input class="col-filter" name="f_applied" form="candidateFilterForm" value="' . htmlspecialchars($filter_applied) . '" placeholder="Search Date">';
+        ?>
+        <th class="<?= $hiddenClass ?>" data-col-key="<?= $colKey ?>"><?= $filterHtml ?></th>
+        <?php endforeach; ?>
       </tr>
     </thead>
     <tbody>
     <?php if (empty($candidates)): ?>
     <tr>
-      <td colspan="7">
+      <td colspan="<?= $candidate_table_colspan ?>">
         <div class="empty-state">
           <div class="empty-icon"><i class="fa-solid fa-users"></i></div>
           <div style="font-size:16px;font-weight:700;margin-bottom:6px">No candidates found</div>
@@ -437,7 +577,12 @@ $avatarPalette = [
       <td style="width:36px;text-align:center;padding:12px 8px">
         <input type="checkbox" class="cand-chk" value="<?= $c['id'] ?>" style="cursor:pointer;width:16px;height:16px">
       </td>
-      <td>
+      <?php foreach ($candidate_table_columns as $col):
+        $colKey = htmlspecialchars($col['key']);
+        $hiddenClass = empty($col['visible']) ? ' col-hidden-default' : '';
+      ?>
+      <?php if ($col['key'] === 'candidate'): ?>
+      <td class="<?= $hiddenClass ?>" data-col-key="<?= $colKey ?>">
         <div class="cname-cell">
           <div class="cand-avatar" style="background:linear-gradient(<?= $grad ?>)"><?= htmlspecialchars($initials) ?></div>
           <div>
@@ -446,11 +591,14 @@ $avatarPalette = [
           </div>
         </div>
       </td>
-      <td style="font-size:12px;color:var(--gray2);max-width:180px">
+      <?php elseif ($col['key'] === 'campaign'): ?>
+      <td class="<?= $hiddenClass ?>" data-col-key="<?= $colKey ?>" style="font-size:12px;color:var(--gray2);max-width:180px">
         <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><?= htmlspecialchars($c['campaign_name'] ?? '—') ?></div>
       </td>
-      <td><span class="badge badge-<?= $c['status'] ?>"><?= ucfirst(str_replace('_', ' ', $c['status'])) ?></span></td>
-      <td>
+      <?php elseif ($col['key'] === 'status'): ?>
+      <td class="<?= $hiddenClass ?>" data-col-key="<?= $colKey ?>"><span class="badge badge-<?= $c['status'] ?>"><?= ucfirst(str_replace('_', ' ', $c['status'])) ?></span></td>
+      <?php elseif ($col['key'] === 'score'): ?>
+      <td class="<?= $hiddenClass ?>" data-col-key="<?= $colKey ?>">
         <?php if ($score !== null): ?>
         <span class="score-pill <?= $pf === 'pass' ? 'score-pass' : 'score-fail' ?>">
           <i class="fa-solid fa-<?= $pf === 'pass' ? 'circle-check' : 'circle-xmark' ?> fa-xs"></i>
@@ -460,8 +608,10 @@ $avatarPalette = [
         <span class="score-pill score-pending"><i class="fa-regular fa-clock fa-xs"></i> Pending</span>
         <?php endif; ?>
       </td>
-      <td style="font-size:12px;color:var(--gray);white-space:nowrap"><?= $c['created_at'] ? date('d M Y', strtotime($c['created_at'])) : '—' ?></td>
-      <td>
+      <?php elseif ($col['key'] === 'applied'): ?>
+      <td class="<?= $hiddenClass ?>" data-col-key="<?= $colKey ?>" style="font-size:12px;color:var(--gray);white-space:nowrap"><?= $c['created_at'] ? date('d M Y', strtotime($c['created_at'])) : '—' ?></td>
+      <?php elseif ($col['key'] === 'action'): ?>
+      <td class="<?= $hiddenClass ?>" data-col-key="<?= $colKey ?>">
         <div class="act-btns">
           <a href="candidate_detail?id=<?= $c['id'] ?>" class="act-btn act-view" title="View">
             <i class="fa-solid fa-eye"></i>
@@ -481,6 +631,22 @@ $avatarPalette = [
           </button>
         </div>
       </td>
+      <?php else:
+        $plainValue = !empty($col['dynamic'])
+          ? candidate_app_field_value($c, (string)$col['field_key'])
+          : ($col['key'] === 'max_score' ? $maxScore : ($col['key'] === 'pass_fail' ? $pf : ($c[$col['key']] ?? '')));
+        $isWide = in_array($col['key'], ['ai_summary'], true) || !empty($col['dynamic']);
+        $displayValue = candidate_short_value($plainValue);
+      ?>
+      <td class="extra-col<?= $isWide ? ' extra-col-wide' : '' ?><?= $hiddenClass ?>" data-col-key="<?= $colKey ?>" title="<?= htmlspecialchars($displayValue) ?>">
+        <?php if (in_array($col['key'], ['resume_path', 'photo_path'], true) && $displayValue !== '—'): ?>
+          <span class="path-pill"><?= htmlspecialchars($displayValue) ?></span>
+        <?php else: ?>
+          <?= htmlspecialchars($displayValue) ?>
+        <?php endif; ?>
+      </td>
+      <?php endif; ?>
+      <?php endforeach; ?>
     </tr>
     <?php endforeach; endif; ?>
     </tbody>
@@ -957,7 +1123,9 @@ function showToast(msg, type = 'success') {
 
 function copyCandidateTable() {
   const rows = [...document.querySelectorAll('.cand-table tr')].map(row =>
-    [...row.children].map(cell => cell.innerText.replace(/\s+/g, ' ').trim()).join('\t')
+    [...row.children]
+      .filter(cell => getComputedStyle(cell).display !== 'none')
+      .map(cell => cell.innerText.replace(/\s+/g, ' ').trim()).join('\t')
   ).join('\n');
   navigator.clipboard?.writeText(rows).then(
     () => showToast('Candidate table copied', 'success'),
@@ -974,9 +1142,25 @@ function toggleColumnsPanel() {
 }
 
 function toggleColumn(box) {
-  const col = parseInt(box.dataset.col, 10);
-  document.querySelectorAll(`.cand-table tr > *:nth-child(${col})`).forEach(cell => {
+  const key = box.dataset.colKey;
+  if (!key) return;
+  const safeKey = window.CSS && CSS.escape ? CSS.escape(key) : key.replace(/"/g, '\\"');
+  document.querySelectorAll(`.cand-table [data-col-key="${safeKey}"]`).forEach(cell => {
     cell.style.display = box.checked ? '' : 'none';
+  });
+}
+
+function setColumnPreset(mode) {
+  document.querySelectorAll('#columnsPanel input[data-col-key]').forEach(box => {
+    box.checked = mode === 'all' || box.dataset.core === '1';
+    toggleColumn(box);
+  });
+}
+
+function filterColumnOptions(term) {
+  const q = (term || '').trim().toLowerCase();
+  document.querySelectorAll('#columnsGrid label[data-column-option]').forEach(label => {
+    label.style.display = !q || label.dataset.columnOption.includes(q) ? '' : 'none';
   });
 }
 

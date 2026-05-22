@@ -3,6 +3,28 @@ require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/functions.php';
 
+// Fallback router for extensionless URLs when nginx has not reloaded yet.
+// Example: /dashboard should still serve dashboard.php after login.
+$request_path = trim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH), '/');
+$route_map = [
+    'dashboard' => 'dashboard.php',
+    'campaigns' => 'campaigns.php',
+    'candidates' => 'candidates.php',
+    'candidate_detail' => 'candidate_detail.php',
+    'analytics' => 'analytics.php',
+    'outreach' => 'outreach.php',
+    'credits' => 'credits.php',
+    'admins' => 'admins.php',
+    'logout' => 'logout.php',
+    'video_view' => 'video_view.php',
+];
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($route_map[$request_path]) && !empty($_SESSION['token'])) {
+    $_SERVER['PHP_SELF'] = '/' . $route_map[$request_path];
+    $_SERVER['SCRIPT_NAME'] = '/' . $route_map[$request_path];
+    require __DIR__ . '/' . $route_map[$request_path];
+    exit;
+}
+
 // Session-based rate limiting
 $attempts     = $_SESSION['login_attempts'] ?? 0;
 $locked_until = $_SESSION['login_locked_until'] ?? 0;

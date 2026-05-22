@@ -4,6 +4,11 @@ $campaigns    = db_fetch_all("SELECT id, name, job_role FROM campaigns WHERE org
 $sel_campaign = (int)($_GET['campaign_id'] ?? 0);
 $search       = trim($_GET['q'] ?? '');
 $active_status = $_GET['status'] ?? 'all';
+$filter_candidate = trim($_GET['f_candidate'] ?? '');
+$filter_campaign  = trim($_GET['f_campaign'] ?? '');
+$filter_status    = trim($_GET['f_status'] ?? '');
+$filter_score     = trim($_GET['f_score'] ?? '');
+$filter_applied   = trim($_GET['f_applied'] ?? '');
 $sort = $_GET['sort'] ?? 'newest';
 $sort_sql = match ($sort) {
     'oldest' => 'c.created_at ASC',
@@ -12,7 +17,8 @@ $sort_sql = match ($sort) {
     'name' => 'c.name ASC',
     default => 'c.created_at DESC',
 };
-$per_page     = 10;
+$per_page = (int)($_GET['per_page'] ?? 10);
+if (!in_array($per_page, [5, 10, 25, 50, 100], true)) $per_page = 10;
 $page         = max(1, (int)($_GET['page'] ?? 1));
 
 // Base WHERE (no status filter) — for counts & pills
@@ -22,12 +28,45 @@ $btypes  = 'i';
 if ($sel_campaign) { $bwhere .= " AND c.campaign_id=?"; $bparams[] = $sel_campaign; $btypes .= 'i'; }
 if ($search) {
     $like = "%$search%";
+    $bwhere .= " AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR camp.name LIKE ? OR c.status LIKE ?)";
+    $bparams[] = $like; $bparams[] = $like; $bparams[] = $like; $bparams[] = $like; $bparams[] = $like; $btypes .= 'sssss';
+}
+if ($filter_candidate !== '') {
+    $like = "%$filter_candidate%";
     $bwhere .= " AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)";
     $bparams[] = $like; $bparams[] = $like; $bparams[] = $like; $btypes .= 'sss';
 }
+if ($filter_campaign !== '') {
+    $like = "%$filter_campaign%";
+    $bwhere .= " AND camp.name LIKE ?";
+    $bparams[] = $like; $btypes .= 's';
+}
+if ($filter_status !== '') {
+    $like = "%$filter_status%";
+    $bwhere .= " AND c.status LIKE ?";
+    $bparams[] = $like; $btypes .= 's';
+}
+if ($filter_score !== '') {
+    $like = "%$filter_score%";
+    $bwhere .= " AND CAST(ir.total_score AS CHAR) LIKE ?";
+    $bparams[] = $like; $btypes .= 's';
+}
+if ($filter_applied !== '') {
+    $like = "%$filter_applied%";
+    $bwhere .= " AND (DATE(c.created_at) LIKE ? OR DATE_FORMAT(c.created_at, '%d %b %Y') LIKE ?)";
+    $bparams[] = $like; $bparams[] = $like; $btypes .= 'ss';
+}
 
 // Status counts across all statuses (no status filter)
-$count_rows = db_fetch_all("SELECT c.status FROM candidates c WHERE $bwhere", $bparams, $btypes);
+$count_rows = db_fetch_all(
+    "SELECT c.status
+     FROM candidates c
+     LEFT JOIN campaigns camp ON c.campaign_id=camp.id
+     LEFT JOIN interview_results ir ON c.id=ir.candidate_id
+     WHERE $bwhere",
+    $bparams,
+    $btypes
+);
 $total = count($count_rows);
 $status_counts = [];
 foreach ($count_rows as $r) $status_counts[$r['status']] = ($status_counts[$r['status']] ?? 0) + 1;
@@ -38,7 +77,15 @@ $params = $bparams;
 $types  = $btypes;
 if ($active_status !== 'all') { $where .= " AND c.status=?"; $params[] = $active_status; $types .= 's'; }
 
-$count_row      = db_fetch_one("SELECT COUNT(*) cnt FROM candidates c WHERE $where", $params, $types);
+$count_row = db_fetch_one(
+    "SELECT COUNT(*) cnt
+     FROM candidates c
+     LEFT JOIN campaigns camp ON c.campaign_id=camp.id
+     LEFT JOIN interview_results ir ON c.id=ir.candidate_id
+     WHERE $where",
+    $params,
+    $types
+);
 $total_filtered = (int)($count_row['cnt'] ?? 0);
 $total_pages    = max(1, (int)ceil($total_filtered / $per_page));
 $page           = min($page, $total_pages);
@@ -52,6 +99,18 @@ $candidates = db_fetch_all(
      WHERE $where ORDER BY $sort_sql LIMIT ? OFFSET ?",
     array_merge($params, [$per_page, $offset]), $types . 'ii'
 );
+$candidate_export_params = [
+    'campaign_id' => $sel_campaign ?: null,
+    'status' => $active_status !== 'all' ? $active_status : null,
+    'q' => $search ?: null,
+    'sort' => $sort,
+    'f_candidate' => $filter_candidate ?: null,
+    'f_campaign' => $filter_campaign ?: null,
+    'f_status' => $filter_status ?: null,
+    'f_score' => $filter_score ?: null,
+    'f_applied' => $filter_applied ?: null,
+    'detailed' => 1,
+];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -78,6 +137,20 @@ $candidates = db_fetch_all(
 .search-input:focus{outline:none;border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
 .filter-select{padding:9px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13px;background:#F8FAFC;cursor:pointer;color:var(--text);transition:all .2s}
 .filter-select:focus{outline:none;border-color:var(--blue)}
+.dt-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:16px 18px;background:#fff;border-bottom:1px solid #E2E8F0}
+.dt-left,.dt-actions,.dt-search{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dt-label{font-size:13px;font-weight:700;color:var(--text2);display:flex;align-items:center;gap:6px}
+.dt-select{padding:7px 10px;border:1.5px solid #E2E8F0;border-radius:9px;background:#F8FAFC;font-size:13px;font-weight:700;color:var(--text);outline:none}
+.dt-action{display:inline-flex;align-items:center;gap:6px;border:none;border-radius:9px;background:#2563EB;color:#fff;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer;text-decoration:none;box-shadow:0 4px 12px rgba(37,99,235,.18);transition:transform .12s,background .12s}
+.dt-action:hover{background:#1D4ED8;transform:translateY(-1px)}
+.dt-search label{font-size:13px;font-weight:800;color:var(--text2);font-style:italic}
+.dt-search-input{width:190px;padding:8px 12px;border:1.5px solid #E2E8F0;border-radius:9px;background:#fff;font-size:13px;outline:none}
+.dt-search-input:focus,.col-filter:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.columns-menu{position:relative}
+.columns-panel{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1px solid #E2E8F0;border-radius:12px;box-shadow:0 18px 60px rgba(15,23,42,.18);padding:10px;z-index:20;min-width:180px}
+.columns-panel.active{display:block}
+.columns-panel label{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;font-size:12px;font-weight:700;color:var(--text2);cursor:pointer;white-space:nowrap}
+.columns-panel label:hover{background:#F8FAFC}
 
 /* ── STATUS PILLS ────────────────────────────────────────── */
 .status-scroll{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;padding-bottom:4px}
@@ -93,6 +166,13 @@ $candidates = db_fetch_all(
 /* ── TABLE ───────────────────────────────────────────────── */
 .cand-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
 .cand-table th{padding:10px 14px;text-align:left;font-size:10px;font-weight:800;color:var(--gray);text-transform:uppercase;letter-spacing:.7px;background:#F8FAFC;border-bottom:2px solid #E2E8F0;white-space:nowrap}
+.cand-table thead tr:first-child th{background:#E5E7EB;color:#111827;font-size:12px;text-align:center;font-style:italic;letter-spacing:0;text-transform:none;border-right:1px solid #DDE3EC}
+.cand-table thead tr:first-child th:nth-child(2),.cand-table thead tr:first-child th:nth-child(3),.cand-table thead tr:first-child th:nth-child(4),.cand-table thead tr:first-child th:nth-child(5),.cand-table thead tr:first-child th:nth-child(6){text-align:left}
+.cand-table thead tr.filter-row th{background:#E5E7EB;border-bottom:2px solid #E2E8F0;border-right:1px solid #DDE3EC;padding:12px}
+.col-filter{width:100%;min-width:100px;padding:9px 10px;border:1.5px solid transparent;border-radius:8px;background:#fff;font-size:12px;color:var(--text);font-weight:700;outline:none;text-transform:none;letter-spacing:0}
+.col-filter::placeholder{color:#94A3B8;font-style:italic}
+.sort-link{display:flex;align-items:center;justify-content:space-between;gap:8px;color:inherit;text-decoration:none}
+.sort-icon{color:#CBD5E1;font-size:11px}
 .cand-table th:first-child{border-radius:10px 0 0 0}
 .cand-table th:last-child{border-radius:0 10px 0 0}
 .cand-table td{padding:12px 14px;border-bottom:1px solid #F1F5F9;vertical-align:middle;transition:background .12s}
@@ -189,7 +269,7 @@ $candidates = db_fetch_all(
       <button onclick="openAddModal()" class="btn-primary" style="padding:10px 20px;font-size:13px;white-space:nowrap">
         <i class="fa-solid fa-plus fa-sm"></i> Add Candidate
       </button>
-      <a href="export_candidates.php?<?= http_build_query(['campaign_id'=>$sel_campaign ?: null,'status'=>$active_status !== 'all' ? $active_status : null,'q'=>$search ?: null,'sort'=>$sort,'detailed'=>1]) ?>"
+      <a href="export_candidates.php?<?= http_build_query($candidate_export_params) ?>"
          class="btn-outline" style="padding:10px 16px;font-size:13px;white-space:nowrap;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#fff;text-decoration:none">
         <i class="fa-solid fa-file-csv fa-sm"></i> Export Detailed
       </a>
@@ -216,33 +296,9 @@ $candidates = db_fetch_all(
   </div>
 </div>
 
-<!-- FILTER BAR -->
-<form method="GET" class="filter-bar animate-in">
-  <div class="search-wrap">
-    <i class="fa-solid fa-magnifying-glass"></i>
-    <input class="search-input" type="text" name="q" id="search-q" placeholder="Search name, phone, email..." value="<?= htmlspecialchars($search) ?>" autocomplete="off">
-  </div>
-  <select class="filter-select" name="campaign_id" onchange="this.form.submit()">
-    <option value="">All Campaigns</option>
-    <?php foreach ($campaigns as $camp): ?>
-    <option value="<?= $camp['id'] ?>" <?= $sel_campaign === (int)$camp['id'] ? 'selected' : '' ?>>
-      <?= htmlspecialchars($camp['name']) ?>
-    </option>
-    <?php endforeach; ?>
-  </select>
-  <select class="filter-select" name="sort" onchange="this.form.submit()">
-    <option value="newest" <?= $sort === 'newest' ? 'selected' : '' ?>>Newest first</option>
-    <option value="oldest" <?= $sort === 'oldest' ? 'selected' : '' ?>>Oldest first</option>
-    <option value="score_desc" <?= $sort === 'score_desc' ? 'selected' : '' ?>>Highest score</option>
-    <option value="score_asc" <?= $sort === 'score_asc' ? 'selected' : '' ?>>Lowest score</option>
-    <option value="name" <?= $sort === 'name' ? 'selected' : '' ?>>Name A-Z</option>
-  </select>
+<!-- TABLE CONTROLS -->
+<form method="GET" id="candidateFilterForm" class="animate-in">
   <input type="hidden" name="status" value="<?= htmlspecialchars($active_status) ?>">
-  <?php if ($search || $sel_campaign || $sort !== 'newest' || $active_status !== 'all'): ?>
-  <a href="candidates" class="btn-outline" style="padding:9px 14px;font-size:13px">
-    <i class="fa-solid fa-xmark fa-sm"></i> Clear
-  </a>
-  <?php endif; ?>
 </form>
 
 <!-- STATUS PILLS + TABLE (swapped on search) -->
@@ -277,17 +333,79 @@ $avatarPalette = [
   'Y'=>'135deg,#F59E0B,#92400E','Z'=>'135deg,#EF4444,#991B1B',
 ];
 ?>
-<div class="card animate-in" style="padding:0;overflow:hidden">
+<div class="card animate-in" style="padding:0;overflow:visible">
+  <div class="dt-toolbar">
+    <div class="dt-left">
+      <label class="dt-label">Show
+        <select class="dt-select" name="per_page" form="candidateFilterForm" onchange="document.getElementById('candidateFilterForm').submit()">
+          <?php foreach ([5,10,25,50,100] as $n): ?>
+          <option value="<?= $n ?>" <?= $per_page === $n ? 'selected' : '' ?>><?= $n ?></option>
+          <?php endforeach; ?>
+        </select>
+        entries
+      </label>
+      <select class="dt-select" name="campaign_id" form="candidateFilterForm" onchange="document.getElementById('candidateFilterForm').submit()" title="Campaign filter">
+        <option value="">All Campaigns</option>
+        <?php foreach ($campaigns as $camp): ?>
+        <option value="<?= $camp['id'] ?>" <?= $sel_campaign === (int)$camp['id'] ? 'selected' : '' ?>>
+          <?= htmlspecialchars($camp['name']) ?>
+        </option>
+        <?php endforeach; ?>
+      </select>
+      <select class="dt-select" name="sort" form="candidateFilterForm" onchange="document.getElementById('candidateFilterForm').submit()" title="Sort">
+        <option value="newest" <?= $sort === 'newest' ? 'selected' : '' ?>>Newest first</option>
+        <option value="oldest" <?= $sort === 'oldest' ? 'selected' : '' ?>>Oldest first</option>
+        <option value="score_desc" <?= $sort === 'score_desc' ? 'selected' : '' ?>>Highest score</option>
+        <option value="score_asc" <?= $sort === 'score_asc' ? 'selected' : '' ?>>Lowest score</option>
+        <option value="name" <?= $sort === 'name' ? 'selected' : '' ?>>Name A-Z</option>
+      </select>
+    </div>
+    <div class="dt-actions">
+      <button type="button" class="dt-action" onclick="copyCandidateTable()"><i class="fa-regular fa-copy"></i> Copy</button>
+      <a class="dt-action" href="export_candidates.php?<?= http_build_query($candidate_export_params) ?>"><i class="fa-regular fa-file-excel"></i> Excel</a>
+      <a class="dt-action" href="export_candidates.php?<?= http_build_query($candidate_export_params) ?>"><i class="fa-solid fa-file-csv"></i> CSV</a>
+      <button type="button" class="dt-action" onclick="printCandidateTable()"><i class="fa-regular fa-file-pdf"></i> PDF</button>
+      <button type="button" class="dt-action" onclick="printCandidateTable()"><i class="fa-solid fa-print"></i> Print</button>
+      <div class="columns-menu">
+        <button type="button" class="dt-action" onclick="toggleColumnsPanel()"><i class="fa-solid fa-table-columns"></i> Columns Visible</button>
+        <div class="columns-panel" id="columnsPanel">
+          <label><input type="checkbox" data-col="2" checked onchange="toggleColumn(this)"> Candidate</label>
+          <label><input type="checkbox" data-col="3" checked onchange="toggleColumn(this)"> Campaign</label>
+          <label><input type="checkbox" data-col="4" checked onchange="toggleColumn(this)"> Status</label>
+          <label><input type="checkbox" data-col="5" checked onchange="toggleColumn(this)"> Score</label>
+          <label><input type="checkbox" data-col="6" checked onchange="toggleColumn(this)"> Applied</label>
+          <label><input type="checkbox" data-col="7" checked onchange="toggleColumn(this)"> Action</label>
+        </div>
+      </div>
+    </div>
+    <div class="dt-search">
+      <label for="search-q">Search:</label>
+      <input class="dt-search-input" type="text" name="q" id="search-q" form="candidateFilterForm" value="<?= htmlspecialchars($search) ?>" autocomplete="off">
+      <?php if ($search || $sel_campaign || $sort !== 'newest' || $active_status !== 'all' || $filter_candidate || $filter_campaign || $filter_status || $filter_score || $filter_applied || $per_page !== 10): ?>
+      <a href="candidates" class="btn-outline" style="padding:8px 12px;font-size:12px">Clear</a>
+      <?php endif; ?>
+    </div>
+  </div>
+  <div style="overflow:auto">
   <table class="cand-table">
     <thead>
       <tr>
         <th style="width:36px;text-align:center"><input type="checkbox" id="select-all-cands" title="Select All" style="cursor:pointer;width:16px;height:16px"></th>
-        <th>Candidate</th>
-        <th>Campaign</th>
-        <th>Status</th>
-        <th>Score</th>
-        <th>Applied</th>
-        <th style="width:120px"></th>
+        <th><a class="sort-link" href="?<?= http_build_query(array_merge($_GET, ['sort' => $sort === 'name' ? 'newest' : 'name', 'page' => 1])) ?>">Candidate <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i></a></th>
+        <th>Campaign <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i></th>
+        <th>Status <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i></th>
+        <th><a class="sort-link" href="?<?= http_build_query(array_merge($_GET, ['sort' => $sort === 'score_desc' ? 'score_asc' : 'score_desc', 'page' => 1])) ?>">Score <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i></a></th>
+        <th><a class="sort-link" href="?<?= http_build_query(array_merge($_GET, ['sort' => $sort === 'newest' ? 'oldest' : 'newest', 'page' => 1])) ?>">Applied <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i></a></th>
+        <th style="width:120px">Action <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i></th>
+      </tr>
+      <tr class="filter-row">
+        <th></th>
+        <th><input class="col-filter" name="f_candidate" form="candidateFilterForm" value="<?= htmlspecialchars($filter_candidate) ?>" placeholder="Search Candidate"></th>
+        <th><input class="col-filter" name="f_campaign" form="candidateFilterForm" value="<?= htmlspecialchars($filter_campaign) ?>" placeholder="Search Campaign"></th>
+        <th><input class="col-filter" name="f_status" form="candidateFilterForm" value="<?= htmlspecialchars($filter_status) ?>" placeholder="Search Status"></th>
+        <th><input class="col-filter" name="f_score" form="candidateFilterForm" value="<?= htmlspecialchars($filter_score) ?>" placeholder="Search Score"></th>
+        <th><input class="col-filter" name="f_applied" form="candidateFilterForm" value="<?= htmlspecialchars($filter_applied) ?>" placeholder="Search Date"></th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -367,6 +485,7 @@ $avatarPalette = [
     <?php endforeach; endif; ?>
     </tbody>
   </table>
+  </div>
 
   <!-- PAGINATION -->
   <?php if ($total_pages > 1 || $total_filtered > 0): ?>
@@ -811,36 +930,60 @@ function showToast(msg, type = 'success') {
   }, 3500);
 }
 
-// ── SEARCH DEBOUNCE (no page reload) ─────────────────────────
+// ── TABLE SEARCH / COLUMN FILTERS ────────────────────────────
 (function() {
-  const sq = document.getElementById('search-q');
-  if (!sq) return;
-  let timer, ctrl;
+  const form = document.getElementById('candidateFilterForm');
+  const inputs = document.querySelectorAll('#search-q,.col-filter');
+  if (!form || !inputs.length) return;
+  let timer;
   async function runSearch() {
-    const form = sq.closest('form');
-    const params = new URLSearchParams(new FormData(form));
-    params.set('q', sq.value.trim());
-    params.delete('page');
-    const url = '?' + params.toString();
-    if (ctrl) ctrl.abort();
-    ctrl = new AbortController();
-    try {
-      const res = await fetch(url, { signal: ctrl.signal });
-      const html = await res.text();
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      const fresh = doc.getElementById('results-container');
-      if (fresh) document.getElementById('results-container').replaceWith(fresh);
-      history.replaceState(null, '', url);
-    } catch(e) { if (e.name !== 'AbortError') sq.closest('form').submit(); }
+    const pageInput = document.createElement('input');
+    pageInput.type = 'hidden';
+    pageInput.name = 'page';
+    pageInput.value = '1';
+    form.appendChild(pageInput);
+    form.submit();
   }
-  sq.addEventListener('input', function() {
-    clearTimeout(timer);
-    timer = setTimeout(runSearch, 500);
-  });
-  sq.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); runSearch(); }
+  inputs.forEach(input => {
+    input.addEventListener('input', function() {
+      clearTimeout(timer);
+      timer = setTimeout(runSearch, 550);
+    });
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); runSearch(); }
+    });
   });
 })();
+
+function copyCandidateTable() {
+  const rows = [...document.querySelectorAll('.cand-table tr')].map(row =>
+    [...row.children].map(cell => cell.innerText.replace(/\s+/g, ' ').trim()).join('\t')
+  ).join('\n');
+  navigator.clipboard?.writeText(rows).then(
+    () => showToast('Candidate table copied', 'success'),
+    () => showToast('Copy failed', 'error')
+  );
+}
+
+function printCandidateTable() {
+  window.print();
+}
+
+function toggleColumnsPanel() {
+  document.getElementById('columnsPanel')?.classList.toggle('active');
+}
+
+function toggleColumn(box) {
+  const col = parseInt(box.dataset.col, 10);
+  document.querySelectorAll(`.cand-table tr > *:nth-child(${col})`).forEach(cell => {
+    cell.style.display = box.checked ? '' : 'none';
+  });
+}
+
+document.addEventListener('click', e => {
+  const menu = document.querySelector('.columns-menu');
+  if (menu && !menu.contains(e.target)) document.getElementById('columnsPanel')?.classList.remove('active');
+});
 
 // ── BULK STATUS UPDATE ────────────────────────────────────────
 async function bulkStatus(status) {

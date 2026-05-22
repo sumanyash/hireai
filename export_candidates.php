@@ -4,6 +4,11 @@ require_once __DIR__ . '/includes/auth_check.php';
 $campaign_id = (int)($_GET['campaign_id'] ?? 0);
 $status = trim($_GET['status'] ?? '');
 $search = trim($_GET['q'] ?? '');
+$filter_candidate = trim($_GET['f_candidate'] ?? '');
+$filter_campaign  = trim($_GET['f_campaign'] ?? '');
+$filter_status    = trim($_GET['f_status'] ?? '');
+$filter_score     = trim($_GET['f_score'] ?? '');
+$filter_applied   = trim($_GET['f_applied'] ?? '');
 $sort = $_GET['sort'] ?? 'newest';
 $detailed = (int)($_GET['detailed'] ?? 0) === 1;
 $allowed = ['pending','outreach_sent','interview_started','interview_completed','shortlisted','rejected','on_hold'];
@@ -22,8 +27,33 @@ if ($campaign_id) { $where .= " AND c.campaign_id=?"; $params[] = $campaign_id; 
 if ($status && in_array($status, $allowed, true)) { $where .= " AND c.status=?"; $params[] = $status; $types .= 's'; }
 if ($search !== '') {
     $like = "%$search%";
+    $where .= " AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR camp.name LIKE ? OR c.status LIKE ?)";
+    $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like; $types .= 'sssss';
+}
+if ($filter_candidate !== '') {
+    $like = "%$filter_candidate%";
     $where .= " AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)";
     $params[] = $like; $params[] = $like; $params[] = $like; $types .= 'sss';
+}
+if ($filter_campaign !== '') {
+    $like = "%$filter_campaign%";
+    $where .= " AND camp.name LIKE ?";
+    $params[] = $like; $types .= 's';
+}
+if ($filter_status !== '') {
+    $like = "%$filter_status%";
+    $where .= " AND c.status LIKE ?";
+    $params[] = $like; $types .= 's';
+}
+if ($filter_score !== '') {
+    $like = "%$filter_score%";
+    $where .= " AND CAST(ir.total_score AS CHAR) LIKE ?";
+    $params[] = $like; $types .= 's';
+}
+if ($filter_applied !== '') {
+    $like = "%$filter_applied%";
+    $where .= " AND (DATE(c.created_at) LIKE ? OR DATE_FORMAT(c.created_at, '%d %b %Y') LIKE ?)";
+    $params[] = $like; $params[] = $like; $types .= 'ss';
 }
 
 $rows = db_fetch_all(

@@ -249,17 +249,17 @@ $candidate_table_colspan = count($candidate_table_columns) + 1;
 .search-input:focus{outline:none;border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
 .filter-select{padding:9px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13px;background:#F8FAFC;cursor:pointer;color:var(--text);transition:all .2s}
 .filter-select:focus{outline:none;border-color:var(--blue)}
-.dt-toolbar{display:grid;grid-template-columns:minmax(260px,1fr) auto;align-items:start;gap:14px 18px;padding:16px 18px;background:#fff;border-bottom:1px solid #E2E8F0}
+.dt-toolbar{display:flex;align-items:center;gap:12px;padding:14px 18px;background:#fff;border-bottom:1px solid #E2E8F0;flex-wrap:wrap}
 .dt-left,.dt-actions,.dt-search{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .dt-left{min-width:0}
-.dt-actions{justify-content:flex-end}
+.dt-actions{justify-content:flex-end;margin-left:auto}
 .dt-label{font-size:13px;font-weight:700;color:var(--text2);display:flex;align-items:center;gap:6px}
 .dt-select{padding:7px 10px;border:1.5px solid #E2E8F0;border-radius:9px;background:#F8FAFC;font-size:13px;font-weight:700;color:var(--text);outline:none}
 .dt-action{display:inline-flex;align-items:center;gap:6px;border:none;border-radius:9px;background:#2563EB;color:#fff;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer;text-decoration:none;box-shadow:0 4px 12px rgba(37,99,235,.18);transition:transform .12s,background .12s}
 .dt-action:hover{background:#1D4ED8;transform:translateY(-1px)}
-.dt-search{grid-column:1/-1;justify-content:flex-start}
-.dt-search label{font-size:13px;font-weight:800;color:var(--text2);font-style:italic}
-.dt-search-input{width:190px;padding:8px 12px;border:1.5px solid #E2E8F0;border-radius:9px;background:#fff;font-size:13px;outline:none}
+.dt-search{justify-content:flex-start}
+.dt-search label{font-size:13px;font-weight:800;color:var(--text2)}
+.dt-search-input{width:240px;padding:8px 12px;border:1.5px solid #E2E8F0;border-radius:9px;background:#fff;font-size:13px;outline:none}
 .dt-search-input:focus,.col-filter:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
 .columns-menu{position:relative}
 .columns-menu.open .dt-action{background:#1D4ED8;box-shadow:0 0 0 3px rgba(37,99,235,.14),0 4px 12px rgba(37,99,235,.18)}
@@ -295,10 +295,9 @@ $candidate_table_colspan = count($candidate_table_columns) + 1;
 /* ── TABLE ───────────────────────────────────────────────── */
 .cand-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
 .cand-table th{padding:10px 14px;text-align:left;font-size:10px;font-weight:800;color:var(--gray);text-transform:uppercase;letter-spacing:.7px;background:#F8FAFC;border-bottom:2px solid #E2E8F0;white-space:nowrap}
-.cand-table thead tr:first-child th{background:#E5E7EB;color:#111827;font-size:12px;text-align:center;font-style:italic;letter-spacing:0;text-transform:none;border-right:1px solid #DDE3EC}
-.cand-table thead tr:first-child th:nth-child(2),.cand-table thead tr:first-child th:nth-child(3),.cand-table thead tr:first-child th:nth-child(4),.cand-table thead tr:first-child th:nth-child(5),.cand-table thead tr:first-child th:nth-child(6){text-align:left}
-.cand-table thead tr.filter-row th{background:#E5E7EB;border-bottom:2px solid #E2E8F0;border-right:1px solid #DDE3EC;padding:12px}
-.col-filter{width:100%;min-width:100px;padding:9px 10px;border:1.5px solid transparent;border-radius:8px;background:#fff;font-size:12px;color:var(--text);font-weight:700;outline:none;text-transform:none;letter-spacing:0}
+.cand-table thead tr:first-child th{background:#F8FAFC;color:var(--gray);font-size:10px;text-align:left;font-style:normal;letter-spacing:.7px;text-transform:uppercase;border-right:none}
+.cand-table thead tr.filter-row th{background:#EFF6FF;border-bottom:2px solid #DBEAFE;border-right:none;padding:8px 12px}
+.col-filter{width:100%;min-width:100px;padding:7px 10px;border:1.5px solid #E2E8F0;border-radius:8px;background:#fff;font-size:12px;color:var(--text);font-weight:600;outline:none;text-transform:none;letter-spacing:0}
 .col-filter::placeholder{color:#94A3B8;font-style:italic}
 .sort-link{display:flex;align-items:center;justify-content:space-between;gap:8px;color:inherit;text-decoration:none}
 .sort-icon{color:#CBD5E1;font-size:11px}
@@ -381,7 +380,7 @@ $candidate_table_colspan = count($candidate_table_columns) + 1;
 @keyframes toastOut{to{opacity:0;transform:translateY(16px) scale(.96)}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
-@media(max-width:900px){.dt-toolbar{grid-template-columns:1fr}.dt-actions{justify-content:flex-start}.columns-grid{grid-template-columns:1fr}}
+@media(max-width:900px){.dt-actions{justify-content:flex-start;margin-left:0}.dt-search-input{width:100%}.columns-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -490,12 +489,14 @@ $avatarPalette = [
         <option value="name" <?= $sort === 'name' ? 'selected' : '' ?>>Name A-Z</option>
       </select>
     </div>
+    <div class="dt-search">
+      <label for="search-q">Search</label>
+      <input class="dt-search-input" type="text" name="q" id="search-q" form="candidateFilterForm" value="<?= htmlspecialchars($search) ?>" placeholder="Name, phone, email..." autocomplete="off">
+      <?php if ($search || $sel_campaign || $sort !== 'newest' || $active_status !== 'all' || $filter_candidate || $filter_campaign || $filter_status || $filter_score || $filter_applied || $per_page !== 10): ?>
+      <a href="candidates" class="btn-outline" style="padding:8px 12px;font-size:12px">Clear</a>
+      <?php endif; ?>
+    </div>
     <div class="dt-actions">
-      <button type="button" class="dt-action" onclick="copyCandidateTable()"><i class="fa-regular fa-copy"></i> Copy</button>
-      <a class="dt-action" href="export_candidates.php?<?= http_build_query($candidate_export_params) ?>"><i class="fa-regular fa-file-excel"></i> Excel</a>
-      <a class="dt-action" href="export_candidates.php?<?= http_build_query($candidate_export_params) ?>"><i class="fa-solid fa-file-csv"></i> CSV</a>
-      <button type="button" class="dt-action" onclick="printCandidateTable()"><i class="fa-regular fa-file-pdf"></i> PDF</button>
-      <button type="button" class="dt-action" onclick="printCandidateTable()"><i class="fa-solid fa-print"></i> Print</button>
       <div class="columns-menu">
         <button type="button" id="columnsToggleBtn" class="dt-action" onclick="toggleColumnsPanel(event)" aria-expanded="false"><i class="fa-solid fa-table-columns"></i> Columns Visible</button>
         <div class="columns-panel" id="columnsPanel">
@@ -533,13 +534,6 @@ $avatarPalette = [
           </div>
         </div>
       </div>
-    </div>
-    <div class="dt-search">
-      <label for="search-q">Search:</label>
-      <input class="dt-search-input" type="text" name="q" id="search-q" form="candidateFilterForm" value="<?= htmlspecialchars($search) ?>" autocomplete="off">
-      <?php if ($search || $sel_campaign || $sort !== 'newest' || $active_status !== 'all' || $filter_candidate || $filter_campaign || $filter_status || $filter_score || $filter_applied || $per_page !== 10): ?>
-      <a href="candidates" class="btn-outline" style="padding:8px 12px;font-size:12px">Clear</a>
-      <?php endif; ?>
     </div>
   </div>
   <div style="overflow:auto">

@@ -241,8 +241,9 @@ $candidate_table_colspan = count($candidate_table_columns) + 1;
 .dt-search-input{width:190px;padding:8px 12px;border:1.5px solid #E2E8F0;border-radius:9px;background:#fff;font-size:13px;outline:none}
 .dt-search-input:focus,.col-filter:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
 .columns-menu{position:relative}
+.columns-menu.open .dt-action{background:#1D4ED8;box-shadow:0 0 0 3px rgba(37,99,235,.14),0 4px 12px rgba(37,99,235,.18)}
 .columns-panel{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1px solid #E2E8F0;border-radius:14px;box-shadow:0 18px 60px rgba(15,23,42,.18);padding:12px;z-index:20;width:360px;max-width:calc(100vw - 40px);max-height:440px;overflow:auto}
-.columns-panel.active{display:block}
+.columns-panel.active,.columns-menu.open .columns-panel{display:block}
 .columns-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 4px 10px;border-bottom:1px solid #E2E8F0;margin-bottom:8px}
 .columns-title{font-size:12px;font-weight:900;color:var(--text);letter-spacing:.2px}
 .columns-mini-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
@@ -472,7 +473,7 @@ $avatarPalette = [
       <button type="button" class="dt-action" onclick="printCandidateTable()"><i class="fa-regular fa-file-pdf"></i> PDF</button>
       <button type="button" class="dt-action" onclick="printCandidateTable()"><i class="fa-solid fa-print"></i> Print</button>
       <div class="columns-menu">
-        <button type="button" class="dt-action" onclick="toggleColumnsPanel()"><i class="fa-solid fa-table-columns"></i> Columns Visible</button>
+        <button type="button" id="columnsToggleBtn" class="dt-action" onclick="toggleColumnsPanel(event)" aria-expanded="false"><i class="fa-solid fa-table-columns"></i> Columns Visible</button>
         <div class="columns-panel" id="columnsPanel">
           <div class="columns-head">
             <div>
@@ -1137,15 +1138,43 @@ function printCandidateTable() {
   window.print();
 }
 
-function toggleColumnsPanel() {
-  document.getElementById('columnsPanel')?.classList.toggle('active');
+function getColumnsPanel() {
+  return document.getElementById('columnsPanel');
+}
+
+function getColumnsMenu() {
+  return document.querySelector('.columns-menu');
+}
+
+function setColumnsPanelState(open) {
+  const panel = getColumnsPanel();
+  const menu = getColumnsMenu();
+  const btn = document.getElementById('columnsToggleBtn');
+  if (!panel || !menu) return;
+  panel.classList.toggle('active', open);
+  menu.classList.toggle('open', open);
+  if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function toggleColumnsPanel(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  const panel = getColumnsPanel();
+  setColumnsPanelState(!panel?.classList.contains('active'));
+}
+
+function closeColumnsPanel() {
+  setColumnsPanelState(false);
 }
 
 function toggleColumn(box) {
-  const key = box.dataset.colKey;
+  const key = box?.dataset?.colKey;
   if (!key) return;
   const safeKey = window.CSS && CSS.escape ? CSS.escape(key) : key.replace(/"/g, '\\"');
   document.querySelectorAll(`.cand-table [data-col-key="${safeKey}"]`).forEach(cell => {
+    cell.classList.toggle('col-hidden-default', !box.checked);
     cell.style.display = box.checked ? '' : 'none';
   });
 }
@@ -1160,13 +1189,24 @@ function setColumnPreset(mode) {
 function filterColumnOptions(term) {
   const q = (term || '').trim().toLowerCase();
   document.querySelectorAll('#columnsGrid label[data-column-option]').forEach(label => {
-    label.style.display = !q || label.dataset.columnOption.includes(q) ? '' : 'none';
+    const haystack = label.dataset.columnOption || '';
+    label.style.display = !q || haystack.includes(q) ? '' : 'none';
   });
 }
 
+document.getElementById('columnsPanel')?.addEventListener('click', e => e.stopPropagation());
+
 document.addEventListener('click', e => {
-  const menu = document.querySelector('.columns-menu');
-  if (menu && !menu.contains(e.target)) document.getElementById('columnsPanel')?.classList.remove('active');
+  const menu = getColumnsMenu();
+  if (menu && !menu.contains(e.target)) closeColumnsPanel();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeColumnsPanel();
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('#columnsPanel input[data-col-key]').forEach(toggleColumn);
 });
 
 // ── BULK STATUS UPDATE ────────────────────────────────────────

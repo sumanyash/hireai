@@ -111,10 +111,11 @@ $qa='';
 foreach($questions as $idx=>$q){
   $answer=$answer_by_question[(int)$q['id']]??null;
   $answer_text=clean_answer_text($answer);
+  $audio_only=$answer_text===''&&trim((string)($answer['audio_url']??''))!=='';
   $qa.="Question ID: {$q['id']}\n";
   $qa.="Max marks: {$q['max_marks']}\n";
   $qa.="Question: {$q['question_text']}\n";
-  $qa.="Answer: ".($answer_text!==''?$answer_text:'[No gradable response recorded]')."\n";
+  $qa.="Answer: ".($answer_text!==''?$answer_text:($audio_only?'[Voice answer recorded but transcript is unavailable. Do not infer content; mark for manual review.]':'[No gradable response recorded]'))."\n";
   if(!empty($q['ideal_answer_hint']))$qa.="Scoring hints: {$q['ideal_answer_hint']}\n";
   $qa.="\n";
 }
@@ -205,8 +206,14 @@ foreach($questions as $q){
   $raw=$score_lookup_by_qid[$qid]??[];
   $score=(int)($raw['score']??0);
   $reasoning=$raw['reasoning']??'';
+  $answer_text=clean_answer_text($answer);
+  $audio_only=$has_answer&&$answer_text===''&&trim((string)($answer['audio_url']??''))!=='';
   if($has_answer&&$scoring_available&&!$raw){
     $reasoning='AI response did not include a matching score for this question.';
+  }
+  if($audio_only){
+    $score=0;
+    $reasoning='Voice answer recorded, but no transcript is available for AI scoring. Manual review required.';
   }
   if(!$has_answer){
     $score=0;

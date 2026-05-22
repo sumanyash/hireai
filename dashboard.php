@@ -1,5 +1,6 @@
 <?php require_once __DIR__ . '/includes/auth_check.php';
 $oid = $user['org_id'];
+$can_manage_campaigns = ($user['role'] ?? '') !== 'super_admin';
 
 // ── AJAX: recent activity fragment ──────────────────────────────────────────
 if (($_GET['ajax'] ?? '') === 'recent') {
@@ -21,7 +22,7 @@ if (($_GET['ajax'] ?? '') === 'recent') {
   <div class="act-row">
     <div class="act-avatar" style="background:linear-gradient(<?=$grad?>)"><?=$init2?></div>
     <div style="flex:1;min-width:0">
-      <a href="candidate_detail.php?id=<?=$r['id']?>" style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;color:var(--text);text-decoration:none"><?=htmlspecialchars($r['name']??'Unknown')?></a>
+      <a href="candidate_detail?id=<?=$r['id']?>" style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;color:var(--text);text-decoration:none"><?=htmlspecialchars($r['name']??'Unknown')?></a>
       <div style="font-size:11px;color:var(--gray);margin-top:2px;display:flex;align-items:center;gap:6px">
         <span><?=htmlspecialchars($r['campaign_name']??'—')?></span>
         <?php if($when):?><span style="color:#CBD5E1">·</span><span><?=$when?></span><?php endif;?>
@@ -73,7 +74,7 @@ $campaigns = db_fetch_all("SELECT ca.*,COUNT(DISTINCT c.id) total_candidates,SUM
 $daily=db_fetch_all("SELECT DATE(updated_at) day,COUNT(*) cnt FROM candidates WHERE org_id=? AND status IN ('interview_completed','shortlisted','rejected') AND updated_at>=DATE_SUB(NOW(),INTERVAL 14 DAY) GROUP BY DATE(updated_at) ORDER BY day ASC",[$oid],'i');
 $cl=[];$cd=[];
 for($i=13;$i>=0;$i--){$d=date('Y-m-d',strtotime("-$i days"));$cl[]=date('d M',strtotime($d));$f=array_values(array_filter($daily,fn($r)=>$r['day']===$d));$cd[]=$f?(int)$f[0]['cnt']:0;}
-?><!DOCTYPE html><html lang="en"><head><title>Dashboard — HireAI</title><?php include __DIR__.'/includes/head.php';?>
+?><!DOCTYPE html><html lang="en"><head><title>Dashboard — Avyukta Intellicall AI Hire</title><?php include __DIR__.'/includes/head.php';?>
 <style>
 /* DASHBOARD SPACING OVERRIDES */
 .dash-main .card,.dash-bottom .card{margin-bottom:0}
@@ -156,8 +157,10 @@ $greeting = $hour < 12 ? 'Good morning' : ($hour < 17 ? 'Good afternoon' : 'Good
     <div class="topbar-name"><?=htmlspecialchars($user['name']??'Admin')?></div>
     <div class="topbar-date"><?=date('l, d F Y')?></div>
     <div class="topbar-actions">
-      <a href="campaigns.php?action=new" class="btn-primary" style="font-size:12px;padding:6px 14px;box-shadow:0 4px 14px rgba(37,99,235,.35)"><i class="fa-solid fa-plus fa-xs"></i> New Campaign</a>
-      <a href="candidates.php" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;padding:6px 12px;border-radius:9px;border:1.5px solid rgba(255,255,255,.15);color:rgba(255,255,255,.75);text-decoration:none;background:rgba(255,255,255,.07);transition:background .15s"><i class="fa-solid fa-users fa-xs"></i> Candidates</a>
+      <?php if ($can_manage_campaigns): ?>
+      <a href="campaigns?action=new" class="btn-primary" style="font-size:12px;padding:6px 14px;box-shadow:0 4px 14px rgba(37,99,235,.35)"><i class="fa-solid fa-plus fa-xs"></i> New Campaign</a>
+      <?php endif; ?>
+      <a href="candidates" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;padding:6px 12px;border-radius:9px;border:1.5px solid rgba(255,255,255,.15);color:rgba(255,255,255,.75);text-decoration:none;background:rgba(255,255,255,.07);transition:background .15s"><i class="fa-solid fa-users fa-xs"></i> Candidates</a>
     </div>
   </div>
   <div class="topbar-right">
@@ -215,9 +218,9 @@ $greeting = $hour < 12 ? 'Good morning' : ($hour < 17 ? 'Good afternoon' : 'Good
 <!-- CAMPAIGNS + RECENT -->
 <div class="dash-bottom">
   <div class="card animate-in">
-    <div class="card-header"><h3><i class="fa-solid fa-rocket" style="color:var(--orange)"></i> Campaigns</h3><a href="campaigns.php?action=new" class="btn-primary-sm"><i class="fa-solid fa-plus fa-xs"></i> New</a></div>
+    <div class="card-header"><h3><i class="fa-solid fa-rocket" style="color:var(--orange)"></i> Campaigns</h3><?php if ($can_manage_campaigns): ?><a href="campaigns?action=new" class="btn-primary-sm"><i class="fa-solid fa-plus fa-xs"></i> New</a><?php endif; ?></div>
     <?php if(empty($campaigns)):?>
-    <div style="text-align:center;padding:32px 0;color:var(--gray)"><i class="fa-solid fa-folder-open fa-3x" style="margin-bottom:12px;display:block;opacity:.3"></i><p style="font-weight:600;margin-bottom:12px">No campaigns yet</p><a href="campaigns.php?action=new" class="btn-primary">Create First Campaign</a></div>
+    <div style="text-align:center;padding:32px 0;color:var(--gray)"><i class="fa-solid fa-folder-open fa-3x" style="margin-bottom:12px;display:block;opacity:.3"></i><p style="font-weight:600;margin-bottom:12px">No campaigns yet</p><?php if ($can_manage_campaigns): ?><a href="campaigns?action=new" class="btn-primary">Create First Campaign</a><?php else: ?><span style="font-size:12px">Campaign creation is available for Admin users.</span><?php endif; ?></div>
     <?php else: foreach($campaigns as $c):$prog=$c['total_candidates']>0?round($c['done_count']/$c['total_candidates']*100):0;?>
     <div class="camp-item">
       <div style="flex:1;min-width:0">
@@ -227,16 +230,16 @@ $greeting = $hour < 12 ? 'Good morning' : ($hour < 17 ? 'Good afternoon' : 'Good
       </div>
       <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:5px">
         <span class="badge badge-<?=$c['status']?>"><?=ucfirst($c['status'])?></span>
-        <a href="candidates.php?campaign_id=<?=$c['id']?>" class="btn-sm" style="font-size:11px;padding:4px 10px">View</a>
+        <a href="candidates?campaign_id=<?=$c['id']?>" class="btn-sm" style="font-size:11px;padding:4px 10px">View</a>
       </div>
     </div>
     <?php endforeach; endif;?>
   </div>
   <div class="card animate-in">
-    <div class="card-header"><h3><i class="fa-solid fa-clock-rotate-left" style="color:var(--accent)"></i> Recent Activity</h3><a href="candidates.php" class="btn-sm">View All <i class="fa-solid fa-arrow-right fa-xs"></i></a></div>
+    <div class="card-header"><h3><i class="fa-solid fa-clock-rotate-left" style="color:var(--accent)"></i> Recent Activity</h3><a href="candidates" class="btn-sm">View All <i class="fa-solid fa-arrow-right fa-xs"></i></a></div>
     <div id="ra-body">
     <?php if(empty($recent)):?>
-    <div style="text-align:center;padding:32px;color:var(--gray)">No activity yet. <a href="campaigns.php">Create a campaign →</a></div>
+    <div style="text-align:center;padding:32px;color:var(--gray)">No activity yet. <?php if ($can_manage_campaigns): ?><a href="campaigns">Create a campaign →</a><?php endif; ?></div>
     <?php else:
     $avatarGrads=['A'=>'135deg,#6366F1,#8B5CF6','B'=>'135deg,#3B82F6,#6366F1','C'=>'135deg,#0EA5E9,#3B82F6','D'=>'135deg,#10B981,#059669','E'=>'135deg,#F59E0B,#D97706','F'=>'135deg,#EF4444,#DC2626','G'=>'135deg,#8B5CF6,#7C3AED','H'=>'135deg,#06B6D4,#0891B2','I'=>'135deg,#84CC16,#65A30D','J'=>'135deg,#F97316,#EA580C','K'=>'135deg,#EC4899,#DB2777','L'=>'135deg,#14B8A6,#0D9488','M'=>'135deg,#6366F1,#4F46E5','N'=>'135deg,#3B82F6,#2563EB','O'=>'135deg,#10B981,#047857','P'=>'135deg,#F59E0B,#B45309','Q'=>'135deg,#EF4444,#B91C1C','R'=>'135deg,#8B5CF6,#6D28D9','S'=>'135deg,#F97316,#C2410C','T'=>'135deg,#06B6D4,#0E7490','U'=>'135deg,#84CC16,#4D7C0F','V'=>'135deg,#EC4899,#BE185D','W'=>'135deg,#14B8A6,#0F766E','X'=>'135deg,#6366F1,#4338CA','Y'=>'135deg,#F59E0B,#92400E','Z'=>'135deg,#EF4444,#991B1B'];
     foreach($recent as $i=>$r):
@@ -250,7 +253,7 @@ $greeting = $hour < 12 ? 'Good morning' : ($hour < 17 ? 'Good afternoon' : 'Good
     <div class="act-row">
       <div class="act-avatar" style="background:linear-gradient(<?=$grad?>)"><?=$initials?></div>
       <div style="flex:1;min-width:0">
-        <a href="candidate_detail.php?id=<?=$r['id']?>" style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;color:var(--text);text-decoration:none"><?=htmlspecialchars($r['name']??'Unknown')?></a>
+        <a href="candidate_detail?id=<?=$r['id']?>" style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;color:var(--text);text-decoration:none"><?=htmlspecialchars($r['name']??'Unknown')?></a>
         <div style="font-size:11px;color:var(--gray);margin-top:2px;display:flex;align-items:center;gap:6px">
           <span><?=htmlspecialchars($r['campaign_name']??'—')?></span>
           <?php if($when):?><span style="color:#CBD5E1">·</span><span><?=$when?></span><?php endif;?>
@@ -343,7 +346,7 @@ function loadRaPage(p) {
   const body = document.getElementById('ra-body');
   if (!body) return;
   body.style.opacity = '0.4';
-  fetch(`dashboard.php?ajax=recent&ra_page=${p}`)
+  fetch(`dashboard?ajax=recent&ra_page=${p}`)
     .then(r => r.json())
     .then(d => {
       body.innerHTML = d.html;

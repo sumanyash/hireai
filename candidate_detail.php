@@ -204,6 +204,9 @@ if (!$recUrl) {
 }
 $breakdown     = !empty($result['score_breakdown']) ? json_decode($result['score_breakdown'], true) : null;
 $cheat         = !empty($session['cheat_summary'])  ? json_decode($session['cheat_summary'],  true) : null;
+$quickTabSwitches = (int)($cheat['tab_switches'] ?? 0);
+$quickCopyPaste   = (int)($cheat['copy_paste'] ?? 0);
+$quickFlagTotal   = $quickTabSwitches + $quickCopyPaste;
 $interviewLink = defined('INTERVIEW_URL') ? INTERVIEW_URL . '?t=' . htmlspecialchars($c['unique_token'] ?? '') : '';
 $toast         = $_GET['toast'] ?? '';
 ?>
@@ -383,9 +386,9 @@ $toast         = $_GET['toast'] ?? '';
 
 <!-- BREADCRUMB -->
 <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--gray);margin-bottom:14px">
-  <a href="dashboard.php" style="color:var(--gray)"><i class="fa-solid fa-gauge-high fa-xs"></i> Dashboard</a>
+  <a href="dashboard" style="color:var(--gray)"><i class="fa-solid fa-gauge-high fa-xs"></i> Dashboard</a>
   <i class="fa-solid fa-chevron-right fa-xs"></i>
-  <a href="candidates.php" style="color:var(--gray)">Candidates</a>
+  <a href="candidates" style="color:var(--gray)">Candidates</a>
   <i class="fa-solid fa-chevron-right fa-xs"></i>
   <span style="color:var(--text);font-weight:600"><?= htmlspecialchars($c['name']) ?></span>
 </div>
@@ -411,6 +414,10 @@ $toast         = $_GET['toast'] ?? '';
           <?php if (!empty($c['city'])): ?>
           <span><i class="fa-solid fa-location-dot fa-xs"></i> <?= htmlspecialchars($c['city']) ?></span>
           <?php endif; ?>
+          <span style="color:<?= $quickFlagTotal ? '#B45309' : '#64748B' ?>">
+            <i class="fa-solid fa-shield-halved fa-xs"></i>
+            <?= $quickFlagTotal ? $quickTabSwitches . ' tab · ' . $quickCopyPaste . ' paste' : 'Clean integrity' ?>
+          </span>
         </div>
       </div>
     </div>
@@ -486,7 +493,6 @@ $toast         = $_GET['toast'] ?? '';
           ? '<i class="fa-regular fa-clock"></i> REVIEW PENDING'
           : '<i class="fa-solid fa-circle-xmark"></i> FAILED') ?>
     </div>
-
     <?php else: ?>
     <div style="padding:24px 0">
       <i class="fa-regular fa-clock fa-2x" style="color:var(--gray);margin-bottom:10px;display:block;opacity:.5"></i>
@@ -1553,6 +1559,15 @@ function copyLink() {
       ta.remove(); showToast('Link copied!', 'info');
     });
 }
+
+// Keep review playback sane: starting one recording/audio pauses all others.
+document.querySelectorAll('audio, video').forEach(media => {
+  media.addEventListener('play', () => {
+    document.querySelectorAll('audio, video').forEach(other => {
+      if (other !== media && !other.paused) other.pause();
+    });
+  });
+});
 
 // ── PER-Q TOGGLE ─────────────────────────────────────────────
 function togglePerQ(heading) {

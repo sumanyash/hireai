@@ -38,6 +38,13 @@ foreach ($channels as $key => $meta) {
 .wallet-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:22px}
 @media(max-width:980px){.wallet-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:560px){.wallet-grid{grid-template-columns:1fr}}
+.pricing-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
+@media(max-width:1100px){.pricing-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:620px){.pricing-grid{grid-template-columns:1fr}}
+.pricing-card{background:#fff;border:1px solid rgba(0,0,0,.05);border-radius:16px;padding:18px;box-shadow:var(--card-shadow)}
+.pricing-card h4{font-size:14px;font-weight:900;color:var(--text);margin:0 0 6px;display:flex;align-items:center;gap:8px}
+.pricing-card p{font-size:12px;color:var(--gray2);line-height:1.55;margin:0}
+.pricing-tag{display:inline-flex;margin-top:12px;padding:5px 10px;border-radius:999px;background:#F5F3FF;color:var(--blue);font-size:11px;font-weight:800}
 .wallet-card{background:#fff;border-radius:16px;padding:22px;box-shadow:var(--card-shadow);border:1px solid rgba(0,0,0,.04);position:relative;overflow:hidden}
 .wallet-icon{width:42px;height:42px;border-radius:12px;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:14px}
 .wallet-value{font-size:34px;font-weight:900;line-height:1;letter-spacing:-1px}
@@ -79,6 +86,32 @@ foreach ($channels as $key => $meta) {
   Low balance alert: <?= htmlspecialchars(implode(', ', $low)) ?> credits are at or below <?= (int)$summary['low_balance_threshold'] ?>.
 </div>
 <?php endif; ?>
+
+<div class="card animate-in" id="pricing" style="padding:22px;margin-bottom:22px">
+  <div class="card-header" style="margin-bottom:16px"><h3><i class="fa-solid fa-tags" style="color:var(--blue)"></i> Pricing Guide</h3></div>
+  <div class="pricing-grid">
+    <div class="pricing-card">
+      <h4><i class="fa-solid fa-microphone-lines" style="color:#6B21A8"></i> AI Interviews</h4>
+      <p>Used when a candidate completes an AI test with Q&A, recording, integrity checks, and scoring workflow.</p>
+      <span class="pricing-tag">Interview credit based</span>
+    </div>
+    <div class="pricing-card">
+      <h4><i class="fa-brands fa-whatsapp" style="color:#16A34A"></i> WhatsApp Outreach</h4>
+      <p>Invite, reminder, referral, and result messages consume WhatsApp credits when successfully sent.</p>
+      <span class="pricing-tag">Per sent message</span>
+    </div>
+    <div class="pricing-card">
+      <h4><i class="fa-solid fa-phone-volume" style="color:#2563EB"></i> AI Voice Calls</h4>
+      <p>Outbound AI calls use the configured voice agent and connected telephony provider balance.</p>
+      <span class="pricing-tag">Provider usage based</span>
+    </div>
+    <div class="pricing-card">
+      <h4><i class="fa-solid fa-building-shield" style="color:#F59E0B"></i> Enterprise Setup</h4>
+      <p>Custom domain, separate admin logins, CRM or Sheet integration, and reporting can be enabled per client.</p>
+      <span class="pricing-tag">Custom plan</span>
+    </div>
+  </div>
+</div>
 
 <div class="wallet-grid">
 <?php foreach ($channels as $key => [$label,$icon,$color,$balance]): ?>

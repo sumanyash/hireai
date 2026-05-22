@@ -20,7 +20,7 @@ if (time() < $locked_until) {
         $token = make_jwt($user['id'], $user['role'], $user['org_id']);
         $_SESSION['token'] = $token;
         $_SESSION['user']  = $user;
-        header('Location: ' . BASE_URL . '/dashboard.php');
+        header('Location: ' . BASE_URL . '/dashboard');
         exit;
     }
     $attempts++;
@@ -40,7 +40,7 @@ $is_locked = (time() < $locked_until);
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Avyukta HireAI — Login</title>
+<title>Avyukta Intellicall AI Hire</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -68,7 +68,7 @@ input:focus{border-color:#0066FF;box-shadow:0 0 0 3px rgba(0,102,255,.15)}
 <div class="login-box">
   <div class="logo">
     <img src="https://www.avyukta.in/assets/images/logoo.png" alt="Avyukta">
-    <p>AI-Powered Recruitment Platform</p>
+    <p>Avyukta Intellicall AI Hire</p>
   </div>
   <?php if (!empty($error)): ?>
     <div class="error"><?= htmlspecialchars($error) ?></div>
@@ -76,7 +76,7 @@ input:focus{border-color:#0066FF;box-shadow:0 0 0 3px rgba(0,102,255,.15)}
   <form method="POST" id="login-form">
     <div class="form-group">
       <label>Email Address</label>
-      <input type="email" name="email" placeholder="admin@hireai.in" required autocomplete="email" <?= $is_locked ? 'disabled' : '' ?>>
+      <input type="email" name="email" placeholder="Email address" required autocomplete="email" <?= $is_locked ? 'disabled' : '' ?>>
     </div>
     <div class="form-group">
       <label>Password</label>
@@ -86,7 +86,7 @@ input:focus{border-color:#0066FF;box-shadow:0 0 0 3px rgba(0,102,255,.15)}
       <?= $is_locked ? 'Account Locked' : 'Sign In →' ?>
     </button>
   </form>
-  <p class="hint">Powered by Avyukta Intellicall</p>
+  <p class="hint">Secure AI hiring workspace</p>
 </div>
 <script>
 document.getElementById('login-form')?.addEventListener('submit', function() {

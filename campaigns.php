@@ -3,6 +3,17 @@ require_once __DIR__ . '/includes/auth_check.php';
 
 $action      = $_GET['action'] ?? 'list';
 $campaign_id = (int)($_GET['id'] ?? 0);
+$can_manage_campaigns = ($user['role'] ?? '') !== 'super_admin';
+$campaign_write_actions = [
+    'new','save','edit','edit_save','add_question','edit_question','delete_question',
+    'add_application_field','add_application_template','delete_application_field',
+    'bulk_delete_application_fields','activate','clone_campaign','delete_campaign',
+    'bulk_delete_campaigns'
+];
+if (!$can_manage_campaigns && in_array($action, $campaign_write_actions, true)) {
+    header("Location: campaigns.php?msg=admin_campaigns_only");
+    exit;
+}
 
 function normalize_json_text($value) {
     $value = trim((string)$value);
@@ -505,21 +516,25 @@ if ($editing_question && !empty($editing_question['options_json'])) {
   </style>
   <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
     <div><h2>Campaigns</h2><p>Manage all hiring campaigns</p></div>
+    <?php if ($can_manage_campaigns): ?>
     <a href="campaigns.php?action=new" class="btn-primary">+ New Campaign</a>
+    <?php endif; ?>
   </div>
-  <?php if (!empty($_GET['msg'])): ?>
+  <?php if (($_GET['msg'] ?? '') === 'admin_campaigns_only'): ?>
+    <div class="alert alert-info"><i class="fa-solid fa-circle-info"></i> Campaign creation and changes are available for Admin users. Super Admin can review reports and manage admins.</div>
+  <?php elseif (!empty($_GET['msg'])): ?>
     <div class="alert alert-success">✅ Campaign <?= htmlspecialchars(str_replace('_',' ',$_GET['msg'])) ?>!</div>
   <?php endif; ?>
   <div class="card campaign-table-wrap">
     <table class="table">
       <thead><tr>
-        <th style="width:36px"><input type="checkbox" id="select-all-camps" title="Select All" style="cursor:pointer;width:16px;height:16px"></th>
+        <?php if ($can_manage_campaigns): ?><th style="width:36px"><input type="checkbox" id="select-all-camps" title="Select All" style="cursor:pointer;width:16px;height:16px"></th><?php endif; ?>
         <th>Campaign</th><th>Created By</th><th>Job Role</th><th>AI Agent</th><th>Candidates</th><th>Pass Score</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>
         <?php foreach ($campaigns as $c): ?>
         <tr>
           <?php $applyLink = campaign_apply_link($c); ?>
-          <td style="text-align:center"><input type="checkbox" class="camp-chk" value="<?= $c['id'] ?>" style="cursor:pointer;width:16px;height:16px"></td>
+          <?php if ($can_manage_campaigns): ?><td style="text-align:center"><input type="checkbox" class="camp-chk" value="<?= $c['id'] ?>" style="cursor:pointer;width:16px;height:16px"></td><?php endif; ?>
           <td><strong><?= htmlspecialchars($c['name']) ?></strong><br><small style="color:#8892A4"><?= date('d M Y', strtotime($c['created_at'])) ?></small></td>
           <td><strong><?= htmlspecialchars($c['creator_name'] ?: 'Unknown') ?></strong><br><small style="color:#8892A4">Audit enabled</small></td>
           <td><?= htmlspecialchars($c['job_role']) ?></td>
@@ -528,7 +543,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
           <td><?= $c['passing_score'] ?>/100</td>
           <td><span class="badge badge-<?= $c['status'] ?>"><?= ucfirst($c['status']) ?></span></td>
           <td class="campaign-actions">
-            <a href="campaigns.php?action=edit&id=<?= $c['id'] ?>" class="btn-sm">✏️ Edit</a>
+            <?php if ($can_manage_campaigns): ?><a href="campaigns.php?action=edit&id=<?= $c['id'] ?>" class="btn-sm">✏️ Edit</a><?php endif; ?>
             <a href="campaigns.php?action=apply_form&id=<?= $c['id'] ?>" class="btn-sm">Apply Form</a>
             <a href="campaigns.php?action=questions&id=<?= $c['id'] ?>" class="btn-sm">Questions</a>
             <a href="candidates.php?campaign_id=<?= $c['id'] ?>" class="btn-sm">Leads</a>
@@ -538,25 +553,28 @@ if ($editing_question && !empty($editing_question['options_json'])) {
             <?php else: ?>
             <a href="campaigns.php?action=apply_form&id=<?= $c['id'] ?>" class="btn-sm" style="color:#B45309;border-color:#F59E0B55;background:#FEF3C7">Form Pending</a>
             <?php endif; ?>
-            <?php if ($c['status'] !== 'active'): ?>
+            <?php if ($can_manage_campaigns && $c['status'] !== 'active'): ?>
               <form method="POST" action="campaigns.php?action=activate&id=<?= $c['id'] ?>" style="display:inline">
                 <?= csrf_input() ?>
                 <button type="submit" class="btn-green" style="padding:5px 12px;font-size:13px">▶ Activate</button>
               </form>
             <?php endif; ?>
+            <?php if ($can_manage_campaigns): ?>
             <a href="campaigns.php?action=clone_campaign&id=<?= $c['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" class="btn-sm" style="color:#7C3AED;border-color:#7C3AED40;background:#EDE9FE10" onclick="return confirm('Clone this campaign (questions + form fields will be copied)?')">📋 Clone</a>
             <a href="campaigns.php?action=delete_campaign&id=<?= $c['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" class="btn-danger" style="padding:5px 12px;font-size:13px;text-decoration:none" onclick="return confirm('Delete this campaign and all mapped candidates/interview data? This cannot be undone.')">Delete</a>
+            <?php endif; ?>
           </td>
         </tr>
         <?php endforeach; ?>
         <?php if (empty($campaigns)): ?>
-        <tr><td colspan="8" style="text-align:center;padding:32px;color:#8892A4">No campaigns yet. <a href="campaigns.php?action=new">Create your first →</a></td></tr>
+        <tr><td colspan="<?= $can_manage_campaigns ? 9 : 8 ?>" style="text-align:center;padding:32px;color:#8892A4">No campaigns yet. <?php if ($can_manage_campaigns): ?><a href="campaigns.php?action=new">Create your first →</a><?php endif; ?></td></tr>
         <?php endif; ?>
       </tbody>
     </table>
   </div>
 
   <!-- Bulk Delete Bar -->
+  <?php if ($can_manage_campaigns): ?>
   <div id="bulk-bar" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:12px 24px;border-radius:12px;box-shadow:0 4px 24px #0006;display:none;align-items:center;gap:16px;z-index:999">
     <span id="bulk-count" style="font-weight:600">0 selected</span>
     <form id="bulk-delete-form" method="POST" action="campaigns.php?action=bulk_delete_campaigns" style="display:inline">
@@ -566,6 +584,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
     </form>
     <button onclick="clearBulkSelection()" style="background:#475569;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer">Cancel</button>
   </div>
+  <?php endif; ?>
   <script>
     const selectAll = document.getElementById('select-all-camps');
     const bulkBar  = document.getElementById('bulk-bar');
@@ -575,6 +594,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
       return [...document.querySelectorAll('.camp-chk:checked')];
     }
     function updateBulkBar() {
+      if (!bulkBar || !bulkCount) return;
       const checked = getChecked();
       if (checked.length > 0) {
         bulkBar.style.display = 'flex';
@@ -583,20 +603,20 @@ if ($editing_question && !empty($editing_question['options_json'])) {
         bulkBar.style.display = 'none';
       }
     }
-    selectAll.addEventListener('change', function() {
+    selectAll?.addEventListener('change', function() {
       document.querySelectorAll('.camp-chk').forEach(c => c.checked = this.checked);
       updateBulkBar();
     });
     document.querySelectorAll('.camp-chk').forEach(c => {
       c.addEventListener('change', function() {
-        selectAll.checked = [...document.querySelectorAll('.camp-chk')].every(x => x.checked);
+        if (selectAll) selectAll.checked = [...document.querySelectorAll('.camp-chk')].every(x => x.checked);
         updateBulkBar();
       });
     });
     function clearBulkSelection() {
       document.querySelectorAll('.camp-chk').forEach(c => c.checked = false);
-      selectAll.checked = false;
-      bulkBar.style.display = 'none';
+      if (selectAll) selectAll.checked = false;
+      if (bulkBar) bulkBar.style.display = 'none';
     }
     function bulkDeleteCampaigns() {
       const ids = getChecked().map(c => c.value).join(',');

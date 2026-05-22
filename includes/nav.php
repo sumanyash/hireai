@@ -4,14 +4,14 @@
     <img src="https://www.avyukta.in/assets/images/logoo.png" alt="Avyukta" style="height:38px;width:auto;filter:brightness(0) invert(1);">
   </div>
   <div class="nav-links">
-    <a href="/dashboard.php" class="<?= $current==='dashboard.php'?'active':'' ?>"><i class="fa-solid fa-gauge-high fa-sm"></i> Dashboard</a>
-    <a href="/campaigns.php" class="<?= $current==='campaigns.php'?'active':'' ?>"><i class="fa-solid fa-rocket fa-sm"></i> Campaigns</a>
-    <a href="/candidates.php" class="<?= $current==='candidates.php'?'active':'' ?>"><i class="fa-solid fa-users fa-sm"></i> Candidates</a>
-    <a href="/analytics.php" class="<?= $current==='analytics.php'?'active':'' ?>"><i class="fa-solid fa-chart-line fa-sm"></i> Analytics</a>
-    <a href="/outreach.php" class="<?= $current==='outreach.php'?'active':'' ?>"><i class="fa-solid fa-paper-plane fa-sm"></i> Outreach</a>
-    <a href="/credits.php" class="<?= $current==='credits.php'?'active':'' ?>"><i class="fa-solid fa-coins fa-sm"></i> Credits</a>
+    <a href="/dashboard" class="<?= $current==='dashboard.php'?'active':'' ?>"><i class="fa-solid fa-gauge-high fa-sm"></i> Dashboard</a>
+    <a href="/campaigns" class="<?= $current==='campaigns.php'?'active':'' ?>"><i class="fa-solid fa-rocket fa-sm"></i> Campaigns</a>
+    <a href="/candidates" class="<?= $current==='candidates.php'?'active':'' ?>"><i class="fa-solid fa-users fa-sm"></i> Candidates</a>
+    <a href="/analytics" class="<?= $current==='analytics.php'?'active':'' ?>"><i class="fa-solid fa-chart-line fa-sm"></i> Analytics</a>
+    <a href="/outreach" class="<?= $current==='outreach.php'?'active':'' ?>"><i class="fa-solid fa-paper-plane fa-sm"></i> Outreach</a>
+    <a href="/credits" class="<?= $current==='credits.php'?'active':'' ?>"><i class="fa-solid fa-coins fa-sm"></i> Credits</a>
     <?php if (($user['role'] ?? '') === 'super_admin'): ?>
-    <a href="/admins.php" class="<?= $current==='admins.php'?'active':'' ?>"><i class="fa-solid fa-user-shield fa-sm"></i> Admins</a>
+    <a href="/admins" class="<?= $current==='admins.php'?'active':'' ?>"><i class="fa-solid fa-user-shield fa-sm"></i> Admins</a>
     <?php endif; ?>
   </div>
   <div class="nav-right">
@@ -33,7 +33,7 @@
           <i class="fa-solid fa-key fa-sm"></i> Change Password
         </button>
         <div class="nav-dd-divider"></div>
-        <a href="/logout.php" class="nav-dd-item nav-dd-logout">
+        <a href="/logout" class="nav-dd-item nav-dd-logout">
           <i class="fa-solid fa-right-from-bracket fa-sm"></i> Logout
         </a>
       </div>

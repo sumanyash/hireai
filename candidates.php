@@ -4,6 +4,14 @@ $campaigns    = db_fetch_all("SELECT id, name, job_role FROM campaigns WHERE org
 $sel_campaign = (int)($_GET['campaign_id'] ?? 0);
 $search       = trim($_GET['q'] ?? '');
 $active_status = $_GET['status'] ?? 'all';
+$sort = $_GET['sort'] ?? 'newest';
+$sort_sql = match ($sort) {
+    'oldest' => 'c.created_at ASC',
+    'score_desc' => 'ir.total_score IS NULL, ir.total_score DESC, c.created_at DESC',
+    'score_asc' => 'ir.total_score IS NULL, ir.total_score ASC, c.created_at DESC',
+    'name' => 'c.name ASC',
+    default => 'c.created_at DESC',
+};
 $per_page     = 10;
 $page         = max(1, (int)($_GET['page'] ?? 1));
 
@@ -41,7 +49,7 @@ $candidates = db_fetch_all(
      FROM candidates c
      LEFT JOIN campaigns camp ON c.campaign_id=camp.id
      LEFT JOIN interview_results ir ON c.id=ir.candidate_id
-     WHERE $where ORDER BY c.created_at DESC LIMIT ? OFFSET ?",
+     WHERE $where ORDER BY $sort_sql LIMIT ? OFFSET ?",
     array_merge($params, [$per_page, $offset]), $types . 'ii'
 );
 ?>
@@ -181,9 +189,9 @@ $candidates = db_fetch_all(
       <button onclick="openAddModal()" class="btn-primary" style="padding:10px 20px;font-size:13px;white-space:nowrap">
         <i class="fa-solid fa-plus fa-sm"></i> Add Candidate
       </button>
-      <a href="export_candidates.php?<?= http_build_query(['campaign_id'=>$sel_campaign ?: null,'status'=>$active_status !== 'all' ? $active_status : null]) ?>"
+      <a href="export_candidates.php?<?= http_build_query(['campaign_id'=>$sel_campaign ?: null,'status'=>$active_status !== 'all' ? $active_status : null,'q'=>$search ?: null,'sort'=>$sort,'detailed'=>1]) ?>"
          class="btn-outline" style="padding:10px 16px;font-size:13px;white-space:nowrap;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#fff;text-decoration:none">
-        <i class="fa-solid fa-file-csv fa-sm"></i> Export
+        <i class="fa-solid fa-file-csv fa-sm"></i> Export Detailed
       </a>
     </div>
   </div>
@@ -222,8 +230,16 @@ $candidates = db_fetch_all(
     </option>
     <?php endforeach; ?>
   </select>
-  <?php if ($search || $sel_campaign): ?>
-  <a href="candidates.php" class="btn-outline" style="padding:9px 14px;font-size:13px">
+  <select class="filter-select" name="sort" onchange="this.form.submit()">
+    <option value="newest" <?= $sort === 'newest' ? 'selected' : '' ?>>Newest first</option>
+    <option value="oldest" <?= $sort === 'oldest' ? 'selected' : '' ?>>Oldest first</option>
+    <option value="score_desc" <?= $sort === 'score_desc' ? 'selected' : '' ?>>Highest score</option>
+    <option value="score_asc" <?= $sort === 'score_asc' ? 'selected' : '' ?>>Lowest score</option>
+    <option value="name" <?= $sort === 'name' ? 'selected' : '' ?>>Name A-Z</option>
+  </select>
+  <input type="hidden" name="status" value="<?= htmlspecialchars($active_status) ?>">
+  <?php if ($search || $sel_campaign || $sort !== 'newest' || $active_status !== 'all'): ?>
+  <a href="candidates" class="btn-outline" style="padding:9px 14px;font-size:13px">
     <i class="fa-solid fa-xmark fa-sm"></i> Clear
   </a>
   <?php endif; ?>
@@ -307,7 +323,7 @@ $avatarPalette = [
         <div class="cname-cell">
           <div class="cand-avatar" style="background:linear-gradient(<?= $grad ?>)"><?= htmlspecialchars($initials) ?></div>
           <div>
-            <a href="candidate_detail.php?id=<?= $c['id'] ?>" class="cname"><?= htmlspecialchars($c['name']) ?></a>
+            <a href="candidate_detail?id=<?= $c['id'] ?>" class="cname"><?= htmlspecialchars($c['name']) ?></a>
             <div class="cphone"><?= htmlspecialchars($c['phone'] ?? $c['email'] ?? '—') ?></div>
           </div>
         </div>
@@ -329,7 +345,7 @@ $avatarPalette = [
       <td style="font-size:12px;color:var(--gray);white-space:nowrap"><?= $c['created_at'] ? date('d M Y', strtotime($c['created_at'])) : '—' ?></td>
       <td>
         <div class="act-btns">
-          <a href="candidate_detail.php?id=<?= $c['id'] ?>" class="act-btn act-view" title="View">
+          <a href="candidate_detail?id=<?= $c['id'] ?>" class="act-btn act-view" title="View">
             <i class="fa-solid fa-eye"></i>
           </a>
           <?php if (!empty($c['phone'])): ?>

@@ -3,6 +3,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23080F1E'/%3E%3Cpath d='M16 41c10 7 25 6 33-5' fill='none' stroke='%2306B6D4' stroke-width='5' stroke-linecap='round'/%3E%3Cpath d='M14 31c11 7 27 6 36-6' fill='none' stroke='%236B21A8' stroke-width='5' stroke-linecap='round'/%3E%3Ccircle cx='22' cy='21' r='4' fill='%23fff'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#080F1E">
 <style>
 :root{
   --navy:#1E0A2E;--navy2:#2D1045;--navy3:#3D1A5C;
@@ -39,7 +41,7 @@ a{text-decoration:none;color:var(--blue)}
 .nav-logout:hover{color:#fff;border-color:var(--red);background:rgba(239,68,68,.12)}
 
 /* LAYOUT */
-.main-content{margin-top:66px;padding:28px;max-width:1500px;margin-left:auto;margin-right:auto;padding-top:90px}
+.main-content{margin-top:66px;padding:28px;max-width:1500px;margin-left:auto;margin-right:auto;padding-top:28px}
 .page-header{margin-bottom:24px}
 .page-header h2{font-size:24px;font-weight:800;color:var(--text);letter-spacing:-.5px}
 .page-header p{color:var(--gray2);font-size:14px;margin-top:4px}

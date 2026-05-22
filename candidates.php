@@ -249,21 +249,21 @@ $candidate_table_colspan = count($candidate_table_columns) + 1;
 .search-input:focus{outline:none;border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
 .filter-select{padding:9px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:13px;background:#F8FAFC;cursor:pointer;color:var(--text);transition:all .2s}
 .filter-select:focus{outline:none;border-color:var(--blue)}
-.dt-toolbar{display:flex;align-items:center;gap:12px;padding:14px 18px;background:#fff;border-bottom:1px solid #E2E8F0;flex-wrap:wrap}
+.dt-toolbar{display:grid;grid-template-columns:minmax(360px,auto) minmax(260px,1fr) auto;align-items:center;gap:10px 14px;padding:14px 18px;background:#fff;border-bottom:1px solid #E2E8F0}
 .dt-left,.dt-actions,.dt-search{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .dt-left{min-width:0}
-.dt-actions{justify-content:flex-end;margin-left:auto}
+.dt-actions{justify-content:flex-end}
 .dt-label{font-size:13px;font-weight:700;color:var(--text2);display:flex;align-items:center;gap:6px}
 .dt-select{padding:7px 10px;border:1.5px solid #E2E8F0;border-radius:9px;background:#F8FAFC;font-size:13px;font-weight:700;color:var(--text);outline:none}
 .dt-action{display:inline-flex;align-items:center;gap:6px;border:none;border-radius:9px;background:#2563EB;color:#fff;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer;text-decoration:none;box-shadow:0 4px 12px rgba(37,99,235,.18);transition:transform .12s,background .12s}
 .dt-action:hover{background:#1D4ED8;transform:translateY(-1px)}
-.dt-search{justify-content:flex-start}
+.dt-search{justify-content:center}
 .dt-search label{font-size:13px;font-weight:800;color:var(--text2)}
-.dt-search-input{width:240px;padding:8px 12px;border:1.5px solid #E2E8F0;border-radius:9px;background:#fff;font-size:13px;outline:none}
+.dt-search-input{width:min(100%,260px);padding:8px 12px;border:1.5px solid #E2E8F0;border-radius:9px;background:#fff;font-size:13px;outline:none}
 .dt-search-input:focus,.col-filter:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
 .columns-menu{position:relative}
 .columns-menu.open .dt-action{background:#1D4ED8;box-shadow:0 0 0 3px rgba(37,99,235,.14),0 4px 12px rgba(37,99,235,.18)}
-.columns-panel{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1px solid #E2E8F0;border-radius:14px;box-shadow:0 18px 60px rgba(15,23,42,.18);padding:12px;z-index:20;width:360px;max-width:calc(100vw - 40px);max-height:440px;overflow:auto}
+.columns-panel{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1px solid #E2E8F0;border-radius:14px;box-shadow:0 18px 60px rgba(15,23,42,.18);padding:12px;z-index:50;width:360px;max-width:calc(100vw - 40px);max-height:440px;overflow:auto}
 .columns-panel.active,.columns-menu.open .columns-panel{display:block}
 .columns-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 4px 10px;border-bottom:1px solid #E2E8F0;margin-bottom:8px}
 .columns-title{font-size:12px;font-weight:900;color:var(--text);letter-spacing:.2px}
@@ -380,7 +380,8 @@ $candidate_table_colspan = count($candidate_table_columns) + 1;
 @keyframes toastOut{to{opacity:0;transform:translateY(16px) scale(.96)}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
-@media(max-width:900px){.dt-actions{justify-content:flex-start;margin-left:0}.dt-search-input{width:100%}.columns-grid{grid-template-columns:1fr}}
+@media(max-width:1100px){.dt-toolbar{grid-template-columns:1fr}.dt-left,.dt-search,.dt-actions{justify-content:flex-start}.dt-search-input{width:260px}.columns-grid{grid-template-columns:1fr}}
+@media(max-width:560px){.dt-select,.dt-search-input{width:100%}.dt-label{width:100%}.dt-left,.dt-search,.dt-actions{width:100%}.dt-action{width:100%;justify-content:center}}
 </style>
 </head>
 <body>
@@ -555,7 +556,7 @@ $avatarPalette = [
           <?php elseif ($col['key'] === 'applied'): ?>
             <a class="sort-link" href="?<?= http_build_query(array_merge($_GET, ['sort' => $sort === 'newest' ? 'oldest' : 'newest', 'page' => 1])) ?>"><?= $label ?> <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i></a>
           <?php else: ?>
-            <?= $label ?> <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i>
+            <?= $label ?>
           <?php endif; ?>
         </th>
         <?php endforeach; ?>

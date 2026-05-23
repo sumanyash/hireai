@@ -63,12 +63,26 @@ $column_source_rows = db_fetch_all(
     $params,
     $types
 );
+function candidate_export_token(array $user): string {
+    $header = rtrim(strtr(base64_encode(json_encode(['alg' => 'HS256', 'typ' => 'JWT'])), '+/', '-_'), '=');
+    $payload = rtrim(strtr(base64_encode(json_encode([
+        'user_id' => (int)($user['user_id'] ?? 0),
+        'role' => (string)($user['role'] ?? ''),
+        'org_id' => (int)($user['org_id'] ?? 0),
+        'purpose' => 'candidate_export',
+        'exp' => time() + 900,
+    ])), '+/', '-_'), '=');
+    $sig = rtrim(strtr(base64_encode(hash_hmac('sha256', "$header.$payload", JWT_SECRET, true)), '+/', '-_'), '=');
+    return "$header.$payload.$sig";
+}
+
 $candidate_export_params = [
     'campaign_id' => $sel_campaign ?: null,
     'status' => $active_status !== 'all' ? $active_status : null,
     'q' => $search ?: null,
     'sort' => $sort,
     'detailed' => 1,
+    'export_token' => candidate_export_token($user),
 ];
 $candidate_export_url = 'export_candidates.php?' . http_build_query(array_filter(
     $candidate_export_params,

@@ -1,5 +1,20 @@
 <?php
-require_once __DIR__ . '/includes/auth_check.php';
+require_once __DIR__ . '/includes/functions.php';
+
+$export_user = null;
+$export_token = trim((string)($_GET['export_token'] ?? ''));
+if ($export_token !== '') {
+    $token_user = verify_jwt($export_token);
+    if ($token_user && ($token_user['purpose'] ?? '') === 'candidate_export') {
+        $export_user = $token_user;
+    }
+}
+
+if ($export_user) {
+    $user = $export_user;
+} else {
+    $user = require_auth();
+}
 
 $campaign_id = (int)($_GET['campaign_id'] ?? 0);
 $status = trim($_GET['status'] ?? '');

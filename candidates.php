@@ -200,10 +200,13 @@ $candidate_default_column_keys = array_values(array_map(fn($col) => $col['key'],
 .page-hero::after{content:'';position:absolute;bottom:-60px;left:20%;width:300px;height:300px;background:radial-gradient(circle,rgba(124,58,237,.15) 0%,transparent 70%);pointer-events:none}
 .hero-title{font-size:26px;font-weight:900;color:#fff;letter-spacing:-.5px;margin-bottom:4px}
 .hero-sub{font-size:13px;color:rgba(255,255,255,.5);margin-bottom:20px}
-.hero-stats{display:flex;gap:20px;flex-wrap:wrap}
-.hstat{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:10px 18px;text-align:center;backdrop-filter:blur(8px)}
+.hero-stats{display:flex;gap:12px;flex-wrap:wrap}
+.hstat{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:10px 16px;text-align:center;backdrop-filter:blur(8px);text-decoration:none;min-width:112px;transition:transform .14s,border-color .14s,background .14s}
+.hstat:hover{transform:translateY(-1px);background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.22)}
+.hstat.active{background:rgba(124,58,237,.22);border-color:rgba(168,85,247,.7);box-shadow:0 0 0 3px rgba(124,58,237,.16)}
 .hstat-num{font-size:22px;font-weight:900;color:#fff;line-height:1}
 .hstat-lbl{font-size:10px;color:rgba(255,255,255,.45);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.hstat.active .hstat-lbl{color:rgba(255,255,255,.78)}
 
 /* ── FILTERS ─────────────────────────────────────────────── */
 .filter-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;border-radius:16px;padding:14px 18px;box-shadow:0 1px 8px rgba(0,0,0,.06);border:1px solid rgba(0,0,0,.04);margin-bottom:20px}
@@ -244,17 +247,6 @@ $candidate_default_column_keys = array_values(array_map(fn($col) => $col['key'],
 .extra-col{max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--gray2);font-size:12px}
 .extra-col-wide{min-width:260px;white-space:normal;line-height:1.35}
 .path-pill{display:inline-block;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid #E2E8F0;background:#F8FAFC;border-radius:999px;padding:3px 8px;color:var(--gray2);font-size:11px}
-
-/* ── STATUS PILLS ────────────────────────────────────────── */
-.status-scroll{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;padding-bottom:4px}
-.status-scroll::-webkit-scrollbar{height:3px}
-.status-scroll::-webkit-scrollbar-thumb{background:#E2E8F0;border-radius:99px}
-.spill{padding:7px 16px;border-radius:99px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid transparent;white-space:nowrap;transition:all .2s;display:flex;align-items:center;gap:5px}
-.spill.active{border-color:var(--blue);background:var(--blue);color:#fff}
-.spill:not(.active){background:#F1F5F9;color:var(--gray2)}
-.spill:not(.active):hover{background:#E2E8F0}
-.spill-count{background:rgba(255,255,255,.3);padding:1px 6px;border-radius:99px;font-size:10px;font-weight:800}
-.spill:not(.active) .spill-count{background:rgba(0,0,0,.08)}
 
 /* ── TABLE ───────────────────────────────────────────────── */
 .cand-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
@@ -353,6 +345,28 @@ $candidate_default_column_keys = array_values(array_map(fn($col) => $col['key'],
 <div class="main-content">
 
 <!-- HERO -->
+<?php
+$statuses = [
+  'all' => 'All',
+  'pending' => 'Pending',
+  'outreach_sent' => 'Outreached',
+  'interview_started' => 'In Progress',
+  'interview_completed' => 'Completed',
+  'shortlisted' => 'Shortlisted',
+  'rejected' => 'Rejected',
+  'on_hold' => 'On Hold',
+];
+$heroStatusCards = [
+  ['all', 'All', $total, 'fa-users', '#93C5FD'],
+  ['pending', 'Pending', $status_counts['pending'] ?? 0, 'fa-clock', '#FCD34D'],
+  ['outreach_sent', 'Outreached', $status_counts['outreach_sent'] ?? 0, 'fa-paper-plane', '#93C5FD'],
+  ['interview_started', 'In Progress', $status_counts['interview_started'] ?? 0, 'fa-spinner', '#67E8F9'],
+  ['interview_completed', 'Completed', $status_counts['interview_completed'] ?? 0, 'fa-video', '#C4B5FD'],
+  ['shortlisted', 'Shortlisted', $status_counts['shortlisted'] ?? 0, 'fa-circle-check', '#6EE7B7'],
+  ['rejected', 'Rejected', $status_counts['rejected'] ?? 0, 'fa-circle-xmark', '#FCA5A5'],
+  ['on_hold', 'On Hold', $status_counts['on_hold'] ?? 0, 'fa-pause-circle', '#CBD5E1'],
+];
+?>
 <div class="page-hero animate-in">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
     <div>
@@ -370,22 +384,16 @@ $candidate_default_column_keys = array_values(array_map(fn($col) => $col['key'],
     </div>
   </div>
   <div class="hero-stats" style="margin-top:18px">
-    <?php
-    $hstats = [
-      ['Total',       $total,                              'fa-users',        '#93C5FD'],
-      ['Shortlisted', $status_counts['shortlisted'] ?? 0,  'fa-circle-check', '#6EE7B7'],
-      ['Completed',   $status_counts['interview_completed'] ?? 0, 'fa-video','#C4B5FD'],
-      ['Rejected',    $status_counts['rejected'] ?? 0,     'fa-circle-xmark', '#FCA5A5'],
-      ['Pending',     $status_counts['pending'] ?? 0,      'fa-clock',        '#FCD34D'],
-    ];
-    foreach ($hstats as [$lbl, $num, $icon, $color]): ?>
-    <div class="hstat">
+    <?php foreach ($heroStatusCards as [$statusKey, $lbl, $num, $icon, $color]):
+      $href = '?' . http_build_query(array_merge($_GET, ['status' => $statusKey]));
+    ?>
+    <a class="hstat <?= $active_status === $statusKey ? 'active' : '' ?>" href="<?= $href ?>">
       <div style="display:flex;align-items:center;gap:8px">
         <i class="fa-solid <?= $icon ?>" style="color:<?= $color ?>;font-size:16px;opacity:.9"></i>
         <div class="hstat-num"><?= $num ?></div>
       </div>
       <div class="hstat-lbl"><?= $lbl ?></div>
-    </div>
+    </a>
     <?php endforeach; ?>
   </div>
 </div>
@@ -395,25 +403,8 @@ $candidate_default_column_keys = array_values(array_map(fn($col) => $col['key'],
   <input type="hidden" name="status" value="<?= htmlspecialchars($active_status) ?>">
 </form>
 
-<!-- STATUS PILLS + TABLE (swapped on search) -->
-<div id="results-container">
-<?php
-$statuses = ['all'=>'All','pending'=>'Pending','outreach_sent'=>'Outreached','interview_started'=>'In Progress','interview_completed'=>'Completed','shortlisted'=>'Shortlisted','rejected'=>'Rejected','on_hold'=>'On Hold'];
-$active_status = $_GET['status'] ?? 'all';
-?>
-<div class="status-scroll animate-in">
-  <?php foreach ($statuses as $val => $lbl):
-    $cnt = $val === 'all' ? $total : ($status_counts[$val] ?? 0);
-    $href = '?' . http_build_query(array_merge($_GET, ['status' => $val]));
-    ?>
-  <a href="<?= $href ?>" class="spill <?= $active_status === $val ? 'active' : '' ?>"
-     style="text-decoration:none">
-    <?= $lbl ?><span class="spill-count"><?= $cnt ?></span>
-  </a>
-  <?php endforeach; ?>
-</div>
-
 <!-- TABLE -->
+<div id="results-container">
 <?php
 $avatarPalette = [
   'A'=>'135deg,#6366F1,#8B5CF6','B'=>'135deg,#3B82F6,#6366F1','C'=>'135deg,#0EA5E9,#3B82F6',

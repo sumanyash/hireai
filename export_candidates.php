@@ -4,9 +4,19 @@ require_once __DIR__ . '/includes/functions.php';
 $export_user = null;
 $export_token = trim((string)($_GET['export_token'] ?? ''));
 if ($export_token !== '') {
-    $token_user = verify_jwt($export_token);
-    if ($token_user && ($token_user['purpose'] ?? '') === 'candidate_export') {
-        $export_user = $token_user;
+    $decoded = base64_decode($export_token, true);
+    $parts = $decoded === false ? [] : explode(':', $decoded);
+    if (count($parts) === 4) {
+        [$org_id, $user_id, $exp, $sig] = $parts;
+        $payload = (int)$org_id . ':' . (int)$user_id . ':' . (int)$exp;
+        $expected = hash_hmac('sha256', $payload, JWT_SECRET);
+        if ((int)$exp >= time() && hash_equals($expected, $sig)) {
+            $export_user = [
+                'org_id' => (int)$org_id,
+                'user_id' => (int)$user_id,
+                'role' => 'export',
+            ];
+        }
     }
 }
 

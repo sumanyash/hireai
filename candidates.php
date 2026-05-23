@@ -64,16 +64,12 @@ $column_source_rows = db_fetch_all(
     $types
 );
 function candidate_export_token(array $user): string {
-    $header = rtrim(strtr(base64_encode(json_encode(['alg' => 'HS256', 'typ' => 'JWT'])), '+/', '-_'), '=');
-    $payload = rtrim(strtr(base64_encode(json_encode([
-        'user_id' => (int)($user['user_id'] ?? 0),
-        'role' => (string)($user['role'] ?? ''),
-        'org_id' => (int)($user['org_id'] ?? 0),
-        'purpose' => 'candidate_export',
-        'exp' => time() + 900,
-    ])), '+/', '-_'), '=');
-    $sig = rtrim(strtr(base64_encode(hash_hmac('sha256', "$header.$payload", JWT_SECRET, true)), '+/', '-_'), '=');
-    return "$header.$payload.$sig";
+    $org_id = (int)($user['org_id'] ?? 0);
+    $user_id = (int)($user['user_id'] ?? 0);
+    $exp = time() + 900;
+    $payload = $org_id . ':' . $user_id . ':' . $exp;
+    $sig = hash_hmac('sha256', $payload, JWT_SECRET);
+    return base64_encode($payload . ':' . $sig);
 }
 
 $candidate_export_params = [

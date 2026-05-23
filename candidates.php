@@ -4,11 +4,6 @@ $campaigns    = db_fetch_all("SELECT id, name, job_role FROM campaigns WHERE org
 $sel_campaign = (int)($_GET['campaign_id'] ?? 0);
 $search       = trim($_GET['q'] ?? '');
 $active_status = $_GET['status'] ?? 'all';
-$filter_candidate = trim($_GET['f_candidate'] ?? '');
-$filter_campaign  = trim($_GET['f_campaign'] ?? '');
-$filter_status    = trim($_GET['f_status'] ?? '');
-$filter_score     = trim($_GET['f_score'] ?? '');
-$filter_applied   = trim($_GET['f_applied'] ?? '');
 $sort = $_GET['sort'] ?? 'newest';
 $sort_sql = match ($sort) {
     'oldest' => 'c.created_at ASC',
@@ -19,7 +14,6 @@ $sort_sql = match ($sort) {
 };
 $per_page = (int)($_GET['per_page'] ?? 10);
 if (!in_array($per_page, [5, 10, 25, 50, 100], true)) $per_page = 10;
-$page         = max(1, (int)($_GET['page'] ?? 1));
 
 // Base WHERE (no status filter) — for counts & pills
 $bwhere  = "c.org_id=?";
@@ -31,32 +25,6 @@ if ($search) {
     $bwhere .= " AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR camp.name LIKE ? OR c.status LIKE ?)";
     $bparams[] = $like; $bparams[] = $like; $bparams[] = $like; $bparams[] = $like; $bparams[] = $like; $btypes .= 'sssss';
 }
-if ($filter_candidate !== '') {
-    $like = "%$filter_candidate%";
-    $bwhere .= " AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)";
-    $bparams[] = $like; $bparams[] = $like; $bparams[] = $like; $btypes .= 'sss';
-}
-if ($filter_campaign !== '') {
-    $like = "%$filter_campaign%";
-    $bwhere .= " AND camp.name LIKE ?";
-    $bparams[] = $like; $btypes .= 's';
-}
-if ($filter_status !== '') {
-    $like = "%$filter_status%";
-    $bwhere .= " AND c.status LIKE ?";
-    $bparams[] = $like; $btypes .= 's';
-}
-if ($filter_score !== '') {
-    $like = "%$filter_score%";
-    $bwhere .= " AND CAST(ir.total_score AS CHAR) LIKE ?";
-    $bparams[] = $like; $btypes .= 's';
-}
-if ($filter_applied !== '') {
-    $like = "%$filter_applied%";
-    $bwhere .= " AND (DATE(c.created_at) LIKE ? OR DATE_FORMAT(c.created_at, '%d %b %Y') LIKE ?)";
-    $bparams[] = $like; $bparams[] = $like; $btypes .= 'ss';
-}
-
 // Status counts across all statuses (no status filter)
 $count_rows = db_fetch_all(
     "SELECT c.status
@@ -77,28 +45,15 @@ $params = $bparams;
 $types  = $btypes;
 if ($active_status !== 'all') { $where .= " AND c.status=?"; $params[] = $active_status; $types .= 's'; }
 
-$count_row = db_fetch_one(
-    "SELECT COUNT(*) cnt
-     FROM candidates c
-     LEFT JOIN campaigns camp ON c.campaign_id=camp.id
-     LEFT JOIN interview_results ir ON c.id=ir.candidate_id
-     WHERE $where",
-    $params,
-    $types
-);
-$total_filtered = (int)($count_row['cnt'] ?? 0);
-$total_pages    = max(1, (int)ceil($total_filtered / $per_page));
-$page           = min($page, $total_pages);
-$offset         = ($page - 1) * $per_page;
-
 $candidates = db_fetch_all(
     "SELECT c.*, camp.name campaign_name, camp.job_role, ir.total_score, ir.max_score, ir.pass_fail, ir.ai_summary, ir.id result_id
      FROM candidates c
      LEFT JOIN campaigns camp ON c.campaign_id=camp.id
      LEFT JOIN interview_results ir ON c.id=ir.candidate_id
-     WHERE $where ORDER BY $sort_sql LIMIT ? OFFSET ?",
-    array_merge($params, [$per_page, $offset]), $types . 'ii'
+     WHERE $where ORDER BY $sort_sql",
+    $params, $types
 );
+$total_filtered = count($candidates);
 $column_source_rows = db_fetch_all(
     "SELECT c.application_answers_json
      FROM candidates c
@@ -113,11 +68,6 @@ $candidate_export_params = [
     'status' => $active_status !== 'all' ? $active_status : null,
     'q' => $search ?: null,
     'sort' => $sort,
-    'f_candidate' => $filter_candidate ?: null,
-    'f_campaign' => $filter_campaign ?: null,
-    'f_status' => $filter_status ?: null,
-    'f_score' => $filter_score ?: null,
-    'f_applied' => $filter_applied ?: null,
     'detailed' => 1,
 ];
 
@@ -154,8 +104,8 @@ function candidate_short_value($value): string {
 }
 
 $candidate_export_base_columns = [
+    ['key' => 'candidate', 'label' => 'Name', 'table_label' => 'Candidate', 'value' => fn($row) => $row['name'] ?? ''],
     ['key' => 'id', 'label' => 'ID', 'value' => fn($row) => $row['id'] ?? ''],
-    ['key' => 'candidate', 'label' => 'Name', 'value' => fn($row) => $row['name'] ?? ''],
     ['key' => 'phone', 'label' => 'Phone', 'value' => fn($row) => $row['phone'] ?? ''],
     ['key' => 'email', 'label' => 'Email', 'value' => fn($row) => $row['email'] ?? ''],
     ['key' => 'city', 'label' => 'City', 'value' => fn($row) => $row['city'] ?? ''],
@@ -165,8 +115,8 @@ $candidate_export_base_columns = [
     ['key' => 'source', 'label' => 'Source', 'value' => fn($row) => $row['source'] ?? ''],
     ['key' => 'referred_by_name', 'label' => 'Referral Name', 'value' => fn($row) => $row['referred_by_name'] ?? ''],
     ['key' => 'referred_medium', 'label' => 'Referral Medium', 'value' => fn($row) => $row['referred_medium'] ?? ''],
-    ['key' => 'campaign', 'label' => 'Campaign', 'value' => fn($row) => $row['campaign_name'] ?? ''],
     ['key' => 'job_role', 'label' => 'Role', 'value' => fn($row) => $row['job_role'] ?? ''],
+    ['key' => 'campaign', 'label' => 'Campaign', 'value' => fn($row) => $row['campaign_name'] ?? ''],
     ['key' => 'status', 'label' => 'Status', 'value' => fn($row) => $row['status'] ?? ''],
     ['key' => 'score', 'label' => 'Score', 'value' => fn($row) => $row['total_score'] ?? ''],
     ['key' => 'max_score', 'label' => 'Max Score', 'value' => fn($row) => $row['max_score'] ?? ''],
@@ -198,16 +148,24 @@ foreach ($column_source_rows as $row) {
     }
 }
 
-$default_visible_columns = ['candidate', 'campaign', 'status', 'score', 'applied'];
+$default_visible_columns = ['candidate', 'phone', 'city', 'source', 'campaign', 'status', 'score', 'applied'];
+$core_columns = ['candidate', 'campaign', 'status', 'score', 'applied'];
+$candidate_filterable_columns = [
+    'candidate', 'id', 'phone', 'email', 'city', 'experience_years', 'current_ctc', 'expected_ctc',
+    'source', 'referred_by_name', 'referred_medium', 'job_role', 'campaign', 'status', 'pass_fail',
+    'applied', 'updated_at'
+];
 $candidate_table_columns = [];
 foreach ($candidate_export_base_columns as $column) {
     $candidate_table_columns[] = [
         'key' => $column['key'],
-        'label' => $column['key'] === 'candidate' ? 'Candidate' : $column['label'],
+        'label' => $column['table_label'] ?? $column['label'],
         'export_label' => $column['label'],
         'visible' => in_array($column['key'], $default_visible_columns, true),
-        'base' => in_array($column['key'], $default_visible_columns, true),
+        'base' => in_array($column['key'], $core_columns, true),
         'export' => true,
+        'toggleable' => true,
+        'filterable' => in_array($column['key'], $candidate_filterable_columns, true),
     ];
 }
 foreach ($dynamic_candidate_columns as $fieldKey => $meta) {
@@ -219,10 +177,16 @@ foreach ($dynamic_candidate_columns as $fieldKey => $meta) {
         'visible' => false,
         'dynamic' => true,
         'export' => true,
+        'toggleable' => true,
+        'filterable' => true,
     ];
 }
-$candidate_table_columns[] = ['key' => 'action', 'label' => 'Action', 'export_label' => 'Action', 'visible' => true, 'base' => true, 'export' => false];
+$candidate_table_columns[] = ['key' => 'action', 'label' => 'Action', 'export_label' => 'Action', 'visible' => true, 'base' => true, 'export' => false, 'toggleable' => false, 'filterable' => false];
 $candidate_table_colspan = count($candidate_table_columns) + 1;
+$candidate_all_column_keys = array_values(array_map(fn($col) => $col['key'], array_filter($candidate_table_columns, fn($col) => !empty($col['toggleable']))));
+$candidate_export_column_keys = array_values(array_map(fn($col) => $col['key'], array_filter($candidate_table_columns, fn($col) => !empty($col['export']) && !empty($col['toggleable']))));
+$candidate_core_column_keys = array_values(array_map(fn($col) => $col['key'], array_filter($candidate_table_columns, fn($col) => !empty($col['base']) && !empty($col['toggleable']))));
+$candidate_default_column_keys = array_values(array_map(fn($col) => $col['key'], array_filter($candidate_table_columns, fn($col) => !empty($col['visible']) && !empty($col['toggleable']))));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -467,7 +431,7 @@ $avatarPalette = [
   <div class="dt-toolbar">
     <div class="dt-left">
       <label class="dt-label">Show
-        <select class="dt-select" name="per_page" form="candidateFilterForm" onchange="document.getElementById('candidateFilterForm').submit()">
+        <select class="dt-select" id="perPageSelect" data-initial-per-page="<?= $per_page ?>">
           <?php foreach ([5,10,25,50,100] as $n): ?>
           <option value="<?= $n ?>" <?= $per_page === $n ? 'selected' : '' ?>><?= $n ?></option>
           <?php endforeach; ?>
@@ -492,9 +456,9 @@ $avatarPalette = [
     </div>
     <div class="dt-search">
       <label for="search-q">Search</label>
-      <input class="dt-search-input" type="text" name="q" id="search-q" form="candidateFilterForm" value="<?= htmlspecialchars($search) ?>" placeholder="Name, phone, email..." autocomplete="off">
-      <?php if ($search || $sel_campaign || $sort !== 'newest' || $active_status !== 'all' || $filter_candidate || $filter_campaign || $filter_status || $filter_score || $filter_applied || $per_page !== 10): ?>
-      <a href="candidates" class="btn-outline" style="padding:8px 12px;font-size:12px">Clear</a>
+      <input class="dt-search-input" type="text" id="search-q" value="<?= htmlspecialchars($search) ?>" placeholder="Name, phone, email..." autocomplete="off">
+      <?php if ($search || $sel_campaign || $sort !== 'newest' || $active_status !== 'all' || $per_page !== 10): ?>
+      <a href="candidates" class="btn-outline" onclick="localStorage.removeItem('hireai_candidate_table_state_v2')" style="padding:8px 12px;font-size:12px">Clear</a>
       <?php endif; ?>
     </div>
     <div class="dt-actions">
@@ -515,6 +479,7 @@ $avatarPalette = [
           <input class="columns-search" type="text" id="columnsSearch" placeholder="Find column..." oninput="filterColumnOptions(this.value)">
           <div class="columns-grid" id="columnsGrid">
           <?php foreach ($candidate_table_columns as $col):
+            if (empty($col['toggleable'])) continue;
             $colKey = htmlspecialchars($col['key']);
             $checked = !empty($col['visible']) ? 'checked' : '';
             $core = !empty($col['base']) ? '1' : '0';
@@ -523,7 +488,7 @@ $avatarPalette = [
             $optionSearch = strtolower($col['label'] . ' ' . $exportLabel . ' ' . $col['key']);
           ?>
             <label data-column-option="<?= htmlspecialchars($optionSearch) ?>">
-              <input type="checkbox" data-col-key="<?= $colKey ?>" data-core="<?= $core ?>" data-export="<?= $exportCol ?>" <?= $checked ?> onchange="toggleColumn(this)">
+              <input type="checkbox" data-column-toggle data-column-key="<?= $colKey ?>" data-core="<?= $core ?>" data-export="<?= $exportCol ?>" <?= $checked ?>>
               <span class="column-label">
                 <strong><?= htmlspecialchars($col['label']) ?></strong>
                 <?php if ($exportLabel !== (string)$col['label']): ?>
@@ -541,14 +506,14 @@ $avatarPalette = [
   <table class="cand-table">
     <thead>
       <tr>
-        <th style="width:36px;text-align:center"><input type="checkbox" id="select-all-cands" title="Select All" style="cursor:pointer;width:16px;height:16px"></th>
+        <th data-column="_select" style="width:36px;text-align:center"><input type="checkbox" id="select-all-cands" title="Select All" style="cursor:pointer;width:16px;height:16px"></th>
         <?php foreach ($candidate_table_columns as $col):
           $hiddenClass = empty($col['visible']) ? ' col-hidden-default' : '';
           $colKey = htmlspecialchars($col['key']);
           $label = htmlspecialchars($col['label']);
           $style = $col['key'] === 'action' ? ' style="width:120px"' : '';
         ?>
-        <th class="<?= $hiddenClass ?>" data-col-key="<?= $colKey ?>"<?= $style ?>>
+        <th class="<?= $hiddenClass ?>" data-column="<?= $colKey ?>"<?= $style ?>>
           <?php if ($col['key'] === 'candidate'): ?>
             <a class="sort-link" href="?<?= http_build_query(array_merge($_GET, ['sort' => $sort === 'name' ? 'newest' : 'name', 'page' => 1])) ?>"><?= $label ?> <i class="fa-solid fa-arrow-up-wide-short sort-icon"></i></a>
           <?php elseif ($col['key'] === 'score'): ?>
@@ -562,18 +527,16 @@ $avatarPalette = [
         <?php endforeach; ?>
       </tr>
       <tr class="filter-row">
-        <th></th>
+        <th data-column="_select"></th>
         <?php foreach ($candidate_table_columns as $col):
           $hiddenClass = empty($col['visible']) ? ' col-hidden-default' : '';
           $colKey = htmlspecialchars($col['key']);
           $filterHtml = '';
-          if ($col['key'] === 'candidate') $filterHtml = '<input class="col-filter" name="f_candidate" form="candidateFilterForm" value="' . htmlspecialchars($filter_candidate) . '" placeholder="Search Candidate">';
-          if ($col['key'] === 'campaign') $filterHtml = '<input class="col-filter" name="f_campaign" form="candidateFilterForm" value="' . htmlspecialchars($filter_campaign) . '" placeholder="Search Campaign">';
-          if ($col['key'] === 'status') $filterHtml = '<input class="col-filter" name="f_status" form="candidateFilterForm" value="' . htmlspecialchars($filter_status) . '" placeholder="Search Status">';
-          if ($col['key'] === 'score') $filterHtml = '<input class="col-filter" name="f_score" form="candidateFilterForm" value="' . htmlspecialchars($filter_score) . '" placeholder="Search Score">';
-          if ($col['key'] === 'applied') $filterHtml = '<input class="col-filter" name="f_applied" form="candidateFilterForm" value="' . htmlspecialchars($filter_applied) . '" placeholder="Search Date">';
+          if (!empty($col['filterable'])) {
+              $filterHtml = '<input class="col-filter" data-filter-column="' . $colKey . '" placeholder="Search ' . htmlspecialchars($col['label']) . '" autocomplete="off">';
+          }
         ?>
-        <th class="<?= $hiddenClass ?>" data-col-key="<?= $colKey ?>"><?= $filterHtml ?></th>
+        <th class="<?= $hiddenClass ?>" data-column="<?= $colKey ?>"><?= $filterHtml ?></th>
         <?php endforeach; ?>
       </tr>
     </thead>
@@ -602,8 +565,8 @@ $avatarPalette = [
       $pf = $c['pass_fail'] ?? null;
       $delay = min($i * 40, 400);
     ?>
-    <tr style="animation-delay:<?= $delay ?>ms">
-      <td style="width:36px;text-align:center;padding:12px 8px">
+    <tr data-table-row style="animation-delay:<?= $delay ?>ms">
+      <td data-column="_select" style="width:36px;text-align:center;padding:12px 8px">
         <input type="checkbox" class="cand-chk" value="<?= $c['id'] ?>" style="cursor:pointer;width:16px;height:16px">
       </td>
       <?php foreach ($candidate_table_columns as $col):
@@ -611,7 +574,7 @@ $avatarPalette = [
         $hiddenClass = empty($col['visible']) ? ' col-hidden-default' : '';
       ?>
       <?php if ($col['key'] === 'candidate'): ?>
-      <td class="<?= $hiddenClass ?>" data-col-key="<?= $colKey ?>">
+      <td class="<?= $hiddenClass ?>" data-column="<?= $colKey ?>" data-filter-value="<?= htmlspecialchars(trim(($c['name'] ?? '') . ' ' . ($c['phone'] ?? '') . ' ' . ($c['email'] ?? ''))) ?>">
         <div class="cname-cell">
           <div class="cand-avatar" style="background:linear-gradient(<?= $grad ?>)"><?= htmlspecialchars($initials) ?></div>
           <div>
@@ -621,13 +584,13 @@ $avatarPalette = [
         </div>
       </td>
       <?php elseif ($col['key'] === 'campaign'): ?>
-      <td class="<?= $hiddenClass ?>" data-col-key="<?= $colKey ?>" style="font-size:12px;color:var(--gray2);max-width:180px">
+      <td class="<?= $hiddenClass ?>" data-column="<?= $colKey ?>" data-filter-value="<?= htmlspecialchars($c['campaign_name'] ?? '') ?>" style="font-size:12px;color:var(--gray2);max-width:180px">
         <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><?= htmlspecialchars($c['campaign_name'] ?? '—') ?></div>
       </td>
       <?php elseif ($col['key'] === 'status'): ?>
-      <td class="<?= $hiddenClass ?>" data-col-key="<?= $colKey ?>"><span class="badge badge-<?= $c['status'] ?>"><?= ucfirst(str_replace('_', ' ', $c['status'])) ?></span></td>
+      <td class="<?= $hiddenClass ?>" data-column="<?= $colKey ?>" data-filter-value="<?= htmlspecialchars($c['status'] ?? '') ?>"><span class="badge badge-<?= $c['status'] ?>"><?= ucfirst(str_replace('_', ' ', $c['status'])) ?></span></td>
       <?php elseif ($col['key'] === 'score'): ?>
-      <td class="<?= $hiddenClass ?>" data-col-key="<?= $colKey ?>">
+      <td class="<?= $hiddenClass ?>" data-column="<?= $colKey ?>" data-filter-value="<?= htmlspecialchars((string)($score ?? '')) ?>">
         <?php if ($score !== null): ?>
         <span class="score-pill <?= $pf === 'pass' ? 'score-pass' : 'score-fail' ?>">
           <i class="fa-solid fa-<?= $pf === 'pass' ? 'circle-check' : 'circle-xmark' ?> fa-xs"></i>
@@ -638,9 +601,9 @@ $avatarPalette = [
         <?php endif; ?>
       </td>
       <?php elseif ($col['key'] === 'applied'): ?>
-      <td class="<?= $hiddenClass ?>" data-col-key="<?= $colKey ?>" style="font-size:12px;color:var(--gray);white-space:nowrap"><?= $c['created_at'] ? date('d M Y', strtotime($c['created_at'])) : '—' ?></td>
+      <td class="<?= $hiddenClass ?>" data-column="<?= $colKey ?>" data-filter-value="<?= htmlspecialchars(($c['created_at'] ?? '') . ' ' . ($c['created_at'] ? date('d M Y', strtotime($c['created_at'])) : '')) ?>" style="font-size:12px;color:var(--gray);white-space:nowrap"><?= $c['created_at'] ? date('d M Y', strtotime($c['created_at'])) : '—' ?></td>
       <?php elseif ($col['key'] === 'action'): ?>
-      <td class="<?= $hiddenClass ?>" data-col-key="<?= $colKey ?>">
+      <td class="<?= $hiddenClass ?>" data-column="<?= $colKey ?>">
         <div class="act-btns">
           <a href="candidate_detail?id=<?= $c['id'] ?>" class="act-btn act-view" title="View">
             <i class="fa-solid fa-eye"></i>
@@ -667,7 +630,7 @@ $avatarPalette = [
         $isWide = in_array($col['key'], ['ai_summary'], true) || !empty($col['dynamic']);
         $displayValue = candidate_short_value($plainValue);
       ?>
-      <td class="extra-col<?= $isWide ? ' extra-col-wide' : '' ?><?= $hiddenClass ?>" data-col-key="<?= $colKey ?>" title="<?= htmlspecialchars($displayValue) ?>">
+      <td class="extra-col<?= $isWide ? ' extra-col-wide' : '' ?><?= $hiddenClass ?>" data-column="<?= $colKey ?>" data-filter-value="<?= htmlspecialchars($displayValue) ?>" title="<?= htmlspecialchars($displayValue) ?>">
         <?php if (in_array($col['key'], ['resume_path', 'photo_path'], true) && $displayValue !== '—'): ?>
           <span class="path-pill"><?= htmlspecialchars($displayValue) ?></span>
         <?php else: ?>
@@ -682,39 +645,10 @@ $avatarPalette = [
   </table>
   </div>
 
-  <!-- PAGINATION -->
-  <?php if ($total_pages > 1 || $total_filtered > 0): ?>
-  <div class="pagination">
-    <div class="pg-info">
-      Showing <?= $offset + 1 ?>–<?= min($offset + $per_page, $total_filtered) ?> of <?= $total_filtered ?> candidates
-    </div>
-    <div class="pg-btns">
-      <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page - 1])) ?>"
-         class="pg-btn <?= $page <= 1 ? 'disabled' : '' ?>">
-        <i class="fa-solid fa-chevron-left fa-xs"></i> Prev
-      </a>
-      <?php
-      $range_start = max(1, $page - 2);
-      $range_end   = min($total_pages, $page + 2);
-      if ($range_start > 1): ?>
-        <a href="?<?= http_build_query(array_merge($_GET, ['page' => 1])) ?>" class="pg-btn">1</a>
-        <?php if ($range_start > 2): ?><span class="pg-ellipsis">…</span><?php endif; ?>
-      <?php endif;
-      for ($p = $range_start; $p <= $range_end; $p++): ?>
-        <a href="?<?= http_build_query(array_merge($_GET, ['page' => $p])) ?>"
-           class="pg-btn <?= $p === $page ? 'active' : '' ?>"><?= $p ?></a>
-      <?php endfor;
-      if ($range_end < $total_pages): ?>
-        <?php if ($range_end < $total_pages - 1): ?><span class="pg-ellipsis">…</span><?php endif; ?>
-        <a href="?<?= http_build_query(array_merge($_GET, ['page' => $total_pages])) ?>" class="pg-btn"><?= $total_pages ?></a>
-      <?php endif; ?>
-      <a href="?<?= http_build_query(array_merge($_GET, ['page' => $page + 1])) ?>"
-         class="pg-btn <?= $page >= $total_pages ? 'disabled' : '' ?>">
-        Next <i class="fa-solid fa-chevron-right fa-xs"></i>
-      </a>
-    </div>
+  <div class="pagination" id="candidatePagination">
+    <div class="pg-info" id="candidatePageInfo">Showing 0 candidates</div>
+    <div class="pg-btns" id="candidatePageButtons"></div>
   </div>
-  <?php endif; ?>
 </div>
 </div><!-- /#results-container -->
 
@@ -1025,6 +959,12 @@ const bulkCandsCount = document.getElementById('bulk-cands-count');
 function getCheckedCands() {
   return [...document.querySelectorAll('.cand-chk:checked')];
 }
+function getVisibleCandChecks() {
+  return [...document.querySelectorAll('tbody tr[data-table-row]')]
+    .filter(row => row.style.display !== 'none')
+    .map(row => row.querySelector('.cand-chk'))
+    .filter(Boolean);
+}
 function updateCandBulkBar() {
   const checked = getCheckedCands();
   if (checked.length > 0) {
@@ -1036,13 +976,14 @@ function updateCandBulkBar() {
 }
 if (selectAllCands) {
   selectAllCands.addEventListener('change', function() {
-    document.querySelectorAll('.cand-chk').forEach(c => c.checked = this.checked);
+    getVisibleCandChecks().forEach(c => c.checked = this.checked);
     updateCandBulkBar();
   });
 }
 document.querySelectorAll('.cand-chk').forEach(c => {
   c.addEventListener('change', function() {
-    if (selectAllCands) selectAllCands.checked = [...document.querySelectorAll('.cand-chk')].every(x => x.checked);
+    const visibleChecks = getVisibleCandChecks();
+    if (selectAllCands) selectAllCands.checked = visibleChecks.length > 0 && visibleChecks.every(x => x.checked);
     updateCandBulkBar();
   });
 });
@@ -1125,63 +1066,151 @@ function showToast(msg, type = 'success') {
   }, 3500);
 }
 
-// ── TABLE SEARCH / COLUMN FILTERS ────────────────────────────
-(function() {
-  const form = document.getElementById('candidateFilterForm');
-  const inputs = document.querySelectorAll('#search-q,.col-filter');
-  if (!form || !inputs.length) return;
-  let timer;
-  async function runSearch() {
-    const pageInput = document.createElement('input');
-    pageInput.type = 'hidden';
-    pageInput.name = 'page';
-    pageInput.value = '1';
-    form.appendChild(pageInput);
-    form.submit();
-  }
-  inputs.forEach(input => {
-    input.addEventListener('input', function() {
-      clearTimeout(timer);
-      timer = setTimeout(runSearch, 550);
-    });
-    input.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); runSearch(); }
-    });
+// ── CLIENT TABLE: COLUMNS + FILTERS + PAGINATION ──────────────
+const CANDIDATE_TABLE = {
+  storageKey: 'hireai_candidate_table_state_v2',
+  defaults: {
+    columns: <?= json_encode($candidate_default_column_keys) ?>,
+    core: <?= json_encode($candidate_core_column_keys) ?>,
+    export: <?= json_encode($candidate_export_column_keys) ?>,
+    all: <?= json_encode($candidate_all_column_keys) ?>,
+    perPage: <?= (int)$per_page ?>,
+    globalSearch: <?= json_encode($search) ?>,
+    filters: {},
+    page: 1
+  },
+  state: null
+};
+
+function safeSelector(value) {
+  return window.CSS && CSS.escape ? CSS.escape(value) : String(value).replace(/["\\]/g, '\\$&');
+}
+
+function normalText(value) {
+  return (value || '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function getColumnToggles() {
+  return [...document.querySelectorAll('#columnsPanel input[data-column-toggle]')];
+}
+
+function getSelectedColumns() {
+  return getColumnToggles().filter(box => box.checked).map(box => box.dataset.columnKey);
+}
+
+function loadCandidateTableState() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(CANDIDATE_TABLE.storageKey) || '{}') || {}; } catch(e) {}
+  const validColumns = new Set(CANDIDATE_TABLE.defaults.all);
+  const savedColumns = Array.isArray(saved.columns) ? saved.columns.filter(key => validColumns.has(key)) : [];
+  CANDIDATE_TABLE.state = {
+    columns: savedColumns.length ? savedColumns : [...CANDIDATE_TABLE.defaults.columns],
+    perPage: [5,10,25,50,100].includes(parseInt(saved.perPage, 10)) ? parseInt(saved.perPage, 10) : CANDIDATE_TABLE.defaults.perPage,
+    globalSearch: typeof saved.globalSearch === 'string' ? saved.globalSearch : CANDIDATE_TABLE.defaults.globalSearch,
+    filters: saved.filters && typeof saved.filters === 'object' ? saved.filters : {},
+    page: Number.isInteger(saved.page) && saved.page > 0 ? saved.page : 1
+  };
+}
+
+function saveCandidateTableState() {
+  try { localStorage.setItem(CANDIDATE_TABLE.storageKey, JSON.stringify(CANDIDATE_TABLE.state)); } catch(e) {}
+}
+
+function setColumnVisible(key, visible) {
+  document.querySelectorAll(`[data-column="${safeSelector(key)}"]`).forEach(el => {
+    el.classList.toggle('col-hidden-default', !visible);
+    el.style.display = visible ? '' : 'none';
   });
-})();
-
-function copyCandidateTable() {
-  const rows = [...document.querySelectorAll('.cand-table tr')].map(row =>
-    [...row.children]
-      .filter(cell => getComputedStyle(cell).display !== 'none')
-      .map(cell => cell.innerText.replace(/\s+/g, ' ').trim()).join('\t')
-  ).join('\n');
-  navigator.clipboard?.writeText(rows).then(
-    () => showToast('Candidate table copied', 'success'),
-    () => showToast('Copy failed', 'error')
-  );
 }
 
-function printCandidateTable() {
-  window.print();
+function applyColumnVisibility() {
+  const visible = new Set(CANDIDATE_TABLE.state.columns);
+  getColumnToggles().forEach(box => {
+    box.checked = visible.has(box.dataset.columnKey);
+    setColumnVisible(box.dataset.columnKey, box.checked);
+  });
+  setColumnVisible('action', true);
+  setColumnVisible('_select', true);
 }
 
-function getColumnsPanel() {
-  return document.getElementById('columnsPanel');
+function rowCellText(row, key) {
+  const cell = row.querySelector(`[data-column="${safeSelector(key)}"]`);
+  if (!cell) return '';
+  return normalText(cell.dataset.filterValue || cell.innerText || '');
 }
 
-function getColumnsMenu() {
-  return document.querySelector('.columns-menu');
+function rowMatchesFilters(row) {
+  const visible = new Set(CANDIDATE_TABLE.state.columns);
+  const global = normalText(CANDIDATE_TABLE.state.globalSearch);
+  if (global && !normalText(row.textContent).includes(global)) return false;
+
+  for (const [key, value] of Object.entries(CANDIDATE_TABLE.state.filters || {})) {
+    const q = normalText(value);
+    if (!q || !visible.has(key)) continue;
+    if (!rowCellText(row, key).includes(q)) return false;
+  }
+  return true;
 }
 
-function setColumnsPanelState(open) {
-  const panel = getColumnsPanel();
-  const menu = getColumnsMenu();
-  const btn = document.getElementById('columnsToggleBtn');
-  if (!panel || !menu) return;
-  panel.classList.toggle('active', open);
-  menu.classList.toggle('open', open);
-  if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+function getFilteredRows() {
+  return [...document.querySelectorAll('tbody tr[data-table-row]')].filter(rowMatchesFilters);
+}
+
+function renderPagination(filteredRows) {
+  const pageInfo = document.getElementById('candidatePageInfo');
+  const buttons = document.getElementById('candidatePageButtons');
+  const total = filteredRows.length;
+  const perPage = CANDIDATE_TABLE.state.perPage;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  CANDIDATE_TABLE.state.page = Math.min(Math.max(1, CANDIDATE_TABLE.state.page), totalPages);
+  const page = CANDIDATE_TABLE.state.page;
+  const start = total ? (page - 1) * perPage : 0;
+  const end = Math.min(start + perPage, total);
+
+  document.querySelectorAll('tbody tr[data-table-row]').forEach(row => row.style.display = 'none');
+  filteredRows.slice(start, end).forEach(row => row.style.display = '');
+
+  if (pageInfo) pageInfo.textContent = total ? `Showing ${start + 1}-${end} of ${total} candidates` : 'Showing 0 candidates';
+  if (!buttons) return;
+  buttons.innerHTML = '';
+
+  const addBtn = (label, targetPage, opts = {}) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pg-btn' + (opts.active ? ' active' : '') + (opts.disabled ? ' disabled' : '');
+    btn.innerHTML = label;
+    btn.disabled = !!opts.disabled;
+    btn.addEventListener('click', () => {
+      CANDIDATE_TABLE.state.page = targetPage;
+      saveCandidateTableState();
+      applyCandidateTable();
+    });
+    buttons.appendChild(btn);
+  };
+  addBtn('<i class="fa-solid fa-chevron-left fa-xs"></i> Prev', page - 1, {disabled: page <= 1});
+  const pages = new Set([1, totalPages, page - 1, page, page + 1].filter(p => p >= 1 && p <= totalPages));
+  let last = 0;
+  [...pages].sort((a,b) => a-b).forEach(p => {
+    if (p - last > 1) {
+      const ellipsis = document.createElement('span');
+      ellipsis.className = 'pg-ellipsis';
+      ellipsis.textContent = '...';
+      buttons.appendChild(ellipsis);
+    }
+    addBtn(String(p), p, {active: p === page});
+    last = p;
+  });
+  addBtn('Next <i class="fa-solid fa-chevron-right fa-xs"></i>', page + 1, {disabled: page >= totalPages});
+}
+
+function applyCandidateTable() {
+  applyColumnVisibility();
+  const filteredRows = getFilteredRows();
+  renderPagination(filteredRows);
+  const visibleChecks = getVisibleCandChecks();
+  if (selectAllCands) selectAllCands.checked = visibleChecks.length > 0 && visibleChecks.every(x => x.checked);
+  updateCandBulkBar();
+  saveCandidateTableState();
 }
 
 function toggleColumnsPanel(event) {
@@ -1189,72 +1218,83 @@ function toggleColumnsPanel(event) {
     event.preventDefault();
     event.stopPropagation();
   }
-  const panel = getColumnsPanel();
-  setColumnsPanelState(!panel?.classList.contains('active'));
+  const panel = document.getElementById('columnsPanel');
+  const menu = document.querySelector('.columns-menu');
+  const btn = document.getElementById('columnsToggleBtn');
+  const open = !panel?.classList.contains('active');
+  panel?.classList.toggle('active', open);
+  menu?.classList.toggle('open', open);
+  btn?.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
 function closeColumnsPanel() {
-  setColumnsPanelState(false);
-}
-
-function toggleColumn(box) {
-  const key = box?.dataset?.colKey;
-  if (!key) return;
-  const safeKey = window.CSS && CSS.escape ? CSS.escape(key) : key.replace(/"/g, '\\"');
-  document.querySelectorAll(`.cand-table [data-col-key="${safeKey}"]`).forEach(cell => {
-    cell.classList.toggle('col-hidden-default', !box.checked);
-    cell.style.display = box.checked ? '' : 'none';
-  });
-  saveColumnState();
+  document.getElementById('columnsPanel')?.classList.remove('active');
+  document.querySelector('.columns-menu')?.classList.remove('open');
+  document.getElementById('columnsToggleBtn')?.setAttribute('aria-expanded', 'false');
 }
 
 function setColumnPreset(mode) {
-  document.querySelectorAll('#columnsPanel input[data-col-key]').forEach(box => {
-    box.checked = mode === 'all' || (mode === 'export' && box.dataset.export === '1') || (mode === 'core' && box.dataset.core === '1');
-    toggleColumn(box);
-  });
-  saveColumnState();
+  const preset = CANDIDATE_TABLE.defaults[mode] || CANDIDATE_TABLE.defaults.core;
+  CANDIDATE_TABLE.state.columns = [...preset];
+  CANDIDATE_TABLE.state.page = 1;
+  applyCandidateTable();
 }
 
 function filterColumnOptions(term) {
-  const q = (term || '').trim().toLowerCase();
+  const q = normalText(term);
   document.querySelectorAll('#columnsGrid label[data-column-option]').forEach(label => {
     const haystack = label.dataset.columnOption || '';
     label.style.display = !q || haystack.includes(q) ? '' : 'none';
   });
 }
 
-document.getElementById('columnsPanel')?.addEventListener('click', e => e.stopPropagation());
-
-document.addEventListener('click', e => {
-  const menu = getColumnsMenu();
-  if (menu && !menu.contains(e.target)) closeColumnsPanel();
-});
-
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeColumnsPanel();
-});
-
-document.addEventListener('DOMContentLoaded', () => {
-  restoreColumnState();
-  document.querySelectorAll('#columnsPanel input[data-col-key]').forEach(toggleColumn);
-});
-
-function saveColumnState() {
-  const boxes = [...document.querySelectorAll('#columnsPanel input[data-col-key]')];
-  if (!boxes.length) return;
-  const selected = boxes.filter(box => box.checked).map(box => box.dataset.colKey);
-  try { localStorage.setItem('hireai_candidate_columns', JSON.stringify(selected)); } catch(e) {}
-}
-
-function restoreColumnState() {
-  let selected = null;
-  try { selected = JSON.parse(localStorage.getItem('hireai_candidate_columns') || 'null'); } catch(e) {}
-  if (!Array.isArray(selected)) return;
-  document.querySelectorAll('#columnsPanel input[data-col-key]').forEach(box => {
-    box.checked = selected.includes(box.dataset.colKey);
+function initCandidateTable() {
+  loadCandidateTableState();
+  const searchInput = document.getElementById('search-q');
+  const perPageSelect = document.getElementById('perPageSelect');
+  if (searchInput) {
+    searchInput.value = CANDIDATE_TABLE.state.globalSearch || '';
+    searchInput.addEventListener('input', () => {
+      CANDIDATE_TABLE.state.globalSearch = searchInput.value;
+      CANDIDATE_TABLE.state.page = 1;
+      applyCandidateTable();
+    });
+    searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+  }
+  if (perPageSelect) {
+    perPageSelect.value = String(CANDIDATE_TABLE.state.perPage);
+    perPageSelect.addEventListener('change', () => {
+      CANDIDATE_TABLE.state.perPage = parseInt(perPageSelect.value, 10) || 10;
+      CANDIDATE_TABLE.state.page = 1;
+      applyCandidateTable();
+    });
+  }
+  document.querySelectorAll('[data-filter-column]').forEach(input => {
+    const key = input.dataset.filterColumn;
+    input.value = CANDIDATE_TABLE.state.filters[key] || '';
+    input.addEventListener('input', () => {
+      CANDIDATE_TABLE.state.filters[key] = input.value;
+      CANDIDATE_TABLE.state.page = 1;
+      applyCandidateTable();
+    });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
   });
+  getColumnToggles().forEach(box => {
+    box.addEventListener('change', () => {
+      CANDIDATE_TABLE.state.columns = getSelectedColumns();
+      CANDIDATE_TABLE.state.page = 1;
+      applyCandidateTable();
+    });
+  });
+  document.getElementById('columnsPanel')?.addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('click', e => {
+    const menu = document.querySelector('.columns-menu');
+    if (menu && !menu.contains(e.target)) closeColumnsPanel();
+  });
+  applyCandidateTable();
 }
+
+document.addEventListener('DOMContentLoaded', initCandidateTable);
 
 // ── BULK STATUS UPDATE ────────────────────────────────────────
 async function bulkStatus(status) {
@@ -1300,6 +1340,7 @@ async function bulkWhatsApp() {
 // ── KEYBOARD ──────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    closeColumnsPanel();
     document.getElementById('addModal').classList.remove('active');
     document.getElementById('delModal').classList.remove('active');
   }

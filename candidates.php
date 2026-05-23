@@ -819,24 +819,13 @@ const SESSION_TOKEN = '<?= $_SESSION['token'] ?? '' ?>';
 if (SESSION_TOKEN) localStorage.setItem('hireai_token', SESSION_TOKEN);
 
 async function downloadCandidateExport(url) {
-  const token = SESSION_TOKEN || localStorage.getItem('hireai_token') || '';
   showToast('Preparing export...', 'info');
   try {
     let response = await fetch(url, {
       method: 'GET',
       credentials: 'same-origin',
-      cache: 'no-store',
-      headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+      cache: 'no-store'
     });
-
-    if (response.status === 401 && token) {
-      localStorage.removeItem('hireai_token');
-      response = await fetch(url, {
-        method: 'GET',
-        credentials: 'same-origin',
-        cache: 'no-store'
-      });
-    }
 
     if (response.status === 401) {
       throw new Error('Session expired. Please refresh/login again.');

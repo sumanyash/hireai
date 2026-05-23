@@ -3,7 +3,7 @@ require_once __DIR__ . '/includes/auth_check.php';
 
 $action      = $_GET['action'] ?? 'list';
 $campaign_id = (int)($_GET['id'] ?? 0);
-$can_manage_campaigns = ($user['role'] ?? '') !== 'super_admin';
+$can_manage_campaigns = in_array(($user['role'] ?? ''), ['super_admin', 'admin'], true);
 $campaign_write_actions = [
     'new','save','edit','edit_save','add_question','edit_question','delete_question',
     'add_application_field','add_application_template','delete_application_field',

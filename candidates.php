@@ -805,15 +805,24 @@ const SESSION_TOKEN = '<?= $_SESSION['token'] ?? '' ?>';
 if (SESSION_TOKEN) localStorage.setItem('hireai_token', SESSION_TOKEN);
 
 async function downloadCandidateExport(url) {
-  const token = localStorage.getItem('hireai_token') || SESSION_TOKEN || '';
+  const token = SESSION_TOKEN || localStorage.getItem('hireai_token') || '';
   showToast('Preparing export...', 'info');
   try {
-    const response = await fetch(url, {
+    let response = await fetch(url, {
       method: 'GET',
       credentials: 'same-origin',
       cache: 'no-store',
       headers: token ? { 'Authorization': 'Bearer ' + token } : {}
     });
+
+    if ((response.redirected || response.status === 401) && token) {
+      localStorage.removeItem('hireai_token');
+      response = await fetch(url, {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store'
+      });
+    }
 
     if (response.redirected || response.status === 401) {
       throw new Error('Session expired. Please refresh/login again.');

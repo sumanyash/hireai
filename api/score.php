@@ -29,6 +29,25 @@ function has_gradable_answer($answer){
   if($text!=='' && !str_starts_with($text,'[Voice answer recorded but upload failed:'))return true;
   return trim((string)($answer['audio_url']??''))!=='';
 }
+function transcribe_voice_groq(string $audio_url, string $groq_key): ?string {
+  $local = str_replace(BASE_URL . '/', rtrim($_SERVER['DOCUMENT_ROOT'] ?? '/var/www/hire', '/') . '/', $audio_url);
+  if (!is_readable($local)) $local = '/var/www/hire/' . ltrim(parse_url($audio_url, PHP_URL_PATH), '/');
+  if (!is_readable($local)) return null;
+  $ch = curl_init('https://api.groq.com/openai/v1/audio/transcriptions');
+  curl_setopt_array($ch, [
+    CURLOPT_POST => true,
+    CURLOPT_POSTFIELDS => ['file' => new CURLFile($local, 'audio/webm', basename($local)), 'model' => 'whisper-large-v3-turbo', 'response_format' => 'text'],
+    CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $groq_key],
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_TIMEOUT => 45,
+    CURLOPT_SSL_VERIFYPEER => false,
+  ]);
+  $resp = curl_exec($ch);
+  $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+  curl_close($ch);
+  $text = trim((string)$resp);
+  return ($code === 200 && $text !== '') ? $text : null;
+}
 function parse_score_json($content){
   $content=preg_replace('/```json|```/','',(string)$content);
   $content=trim($content);
@@ -106,6 +125,22 @@ function call_gemini_scoring($prompt,$api_key,$model){
   $result=parse_score_json($content);
   if(!is_array($result)||!isset($result['scores'])||!is_array($result['scores']))return [null,'Gemini returned invalid JSON: '.substr((string)$content,0,300)];
   return [$result,null];
+}
+// Transcribe voice-only answers via Groq Whisper before scoring
+$groq_key_for_transcribe=defined('GROQ_API_KEY')?GROQ_API_KEY:'';
+if($groq_key_for_transcribe){
+  foreach($questions as $q){
+    $qid=(int)$q['id'];
+    $ans=$answer_by_question[$qid]??null;
+    if(!$ans)continue;
+    if(clean_answer_text($ans)!==''||trim((string)($ans['audio_url']??''))==='')continue;
+    $transcript=transcribe_voice_groq((string)$ans['audio_url'],$groq_key_for_transcribe);
+    if($transcript){
+      $answer_by_question[$qid]['text_answer']=$transcript;
+      db_execute("UPDATE interview_answers SET text_answer=? WHERE id=?",[$transcript,(int)$ans['id']],'si');
+      log_s("Transcribed voice answer for Q$qid: ".substr($transcript,0,80));
+    }
+  }
 }
 $qa='';
 foreach($questions as $idx=>$q){

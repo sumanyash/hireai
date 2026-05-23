@@ -41,7 +41,7 @@ a{text-decoration:none;color:var(--blue)}
 .nav-logout:hover{color:#fff;border-color:var(--red);background:rgba(239,68,68,.12)}
 
 /* LAYOUT */
-.main-content{margin-top:66px;padding:28px;max-width:1500px;margin-left:auto;margin-right:auto;padding-top:28px}
+.main-content{margin-top:66px;padding:14px 28px 28px;max-width:1500px;margin-left:auto;margin-right:auto}
 .page-header{margin-bottom:24px}
 .page-header h2{font-size:24px;font-weight:800;color:var(--text);letter-spacing:-.5px}
 .page-header p{color:var(--gray2);font-size:14px;margin-top:4px}
@@ -137,7 +137,7 @@ textarea.form-control{resize:vertical;min-height:80px}
   .nav-links a{flex:0 0 auto;padding:7px 10px;font-size:12px}
   .nav-user{display:none}
   .nav-logout{padding:7px 10px;font-size:12px}
-  .main-content{padding:14px;padding-top:128px}
+  .main-content{padding:10px 14px 24px;padding-top:80px}
   .page-header{display:block!important}
   .page-header>div,.page-header>a,.page-header button{margin-bottom:8px}
   .card{padding:16px;border-radius:12px;overflow-x:auto}
@@ -166,3 +166,13 @@ textarea.form-control{resize:vertical;min-height:80px}
 .animate-in:nth-child(8){animation-delay:.32s}
 .skeleton{background:linear-gradient(90deg,#F1F5F9 25%,#E2E8F0 50%,#F1F5F9 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:6px}
 </style>
+<script>
+// Stop all other audio/video when one starts playing
+document.addEventListener('play', function(e) {
+  if (e.target.tagName === 'VIDEO' || e.target.tagName === 'AUDIO') {
+    document.querySelectorAll('video, audio').forEach(function(el) {
+      if (el !== e.target) { el.pause(); }
+    });
+  }
+}, true);
+</script>

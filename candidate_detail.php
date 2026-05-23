@@ -450,6 +450,19 @@ $toast         = $_GET['toast'] ?? '';
       <button onclick="scheduleReminder()" class="ha-btn ha-btn-ghost" title="Set reminder">
         <i class="fa-solid fa-bell fa-xs"></i>
       </button>
+      <?php
+        $hasVoiceNoTranscript = false;
+        foreach ($answers as $ans) {
+            if (trim((string)($ans['audio_url'] ?? '')) !== '' && trim((string)($ans['text_answer'] ?? '')) === '') {
+                $hasVoiceNoTranscript = true; break;
+            }
+        }
+      ?>
+      <?php if ($hasVoiceNoTranscript): ?>
+      <button onclick="rescoreCandidate()" class="ha-btn" style="background:linear-gradient(135deg,#7C3AED,#6366F1);color:#fff;border-color:transparent" title="Transcribe voice answers and re-score">
+        <i class="fa-solid fa-microphone fa-xs"></i> Score Voice
+      </button>
+      <?php endif; ?>
       <a href="export_candidate.php?id=<?= $c['id'] ?>" target="_blank" class="ha-btn ha-btn-ghost" title="Export PDF">
         <i class="fa-solid fa-file-export fa-xs"></i>
       </a>
@@ -669,7 +682,7 @@ $toast         = $_GET['toast'] ?? '';
   if ($rawCopy > 0) $flagDefs[] = ['Copy / Paste Activity',  'Paste shortcuts triggered — may have used external reference material.', 'high',   'fa-paste',          $rawCopy];
   if ($rawFace > 0) $flagDefs[] = ['Face / Lighting Issues', 'Camera detected poor visibility or low light conditions.',               'medium', 'fa-face-frown',      $rawFace];
   ?>
-  <div class="card animate-in">
+  <div class="card animate-in" id="integritySection">
     <div class="card-header">
       <h3><i class="fa-solid fa-shield-halved" style="color:var(--orange)"></i> Integrity</h3>
       <?php if ($riskLevel !== 'clean'): ?>
@@ -785,6 +798,30 @@ $toast         = $_GET['toast'] ?? '';
 
 <!-- ═══ RIGHT MAIN ═══ -->
 <div>
+
+  <?php
+  // Integrity quick-banner — shown above tabs for instant visibility
+  $quickTotal = (int)($cheat['total_flags'] ?? ($quickTabSwitches + $quickCopyPaste));
+  $realFlags  = $quickTabSwitches + $quickCopyPaste;
+  if ($realFlags > 0):
+    $bColor = $quickCopyPaste > 0 ? '#FEF2F2' : '#FFFBEB';
+    $bBorder= $quickCopyPaste > 0 ? '#FECACA' : '#FDE68A';
+    $bText  = $quickCopyPaste > 0 ? '#991B1B'  : '#92400E';
+    $bIcon  = $quickCopyPaste > 0 ? 'fa-triangle-exclamation' : 'fa-eye';
+  ?>
+  <div style="background:<?= $bColor ?>;border:1px solid <?= $bBorder ?>;border-radius:12px;padding:10px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="document.getElementById('integritySection').scrollIntoView({behavior:'smooth'})">
+    <i class="fa-solid <?= $bIcon ?>" style="color:<?= $bText ?>;font-size:16px;flex-shrink:0"></i>
+    <div style="flex:1;min-width:0">
+      <span style="font-size:13px;font-weight:700;color:<?= $bText ?>">Integrity Flags Detected</span>
+      <span style="font-size:12px;color:<?= $bText ?>;opacity:.8;margin-left:6px">
+        <?= $quickTabSwitches > 0 ? $quickTabSwitches . ' tab switch' . ($quickTabSwitches > 1 ? 'es' : '') : '' ?>
+        <?= ($quickTabSwitches > 0 && $quickCopyPaste > 0) ? ' · ' : '' ?>
+        <?= $quickCopyPaste > 0 ? $quickCopyPaste . ' paste event' . ($quickCopyPaste > 1 ? 's' : '') : '' ?>
+      </span>
+    </div>
+    <span style="font-size:11px;color:<?= $bText ?>;opacity:.6">Click to view ↓</span>
+  </div>
+  <?php endif; ?>
 
   <!-- TABS -->
   <div class="tabs animate-in">
@@ -1544,6 +1581,25 @@ function fixWebmDuration(video) {
     video.removeEventListener('timeupdate', handler);
     video.currentTime = 0;
   }, { once: true });
+}
+
+async function rescoreCandidate() {
+  const btn = document.querySelector('[onclick="rescoreCandidate()"]');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin fa-xs"></i> Scoring…'; }
+  try {
+    const r = await fetch(`/api/score.php?candidate_id=<?= $id ?>&campaign_id=<?= $c['campaign_id'] ?>`);
+    const d = await r.json();
+    if (d.success || d.scored !== undefined) {
+      showToast('Voice answers transcribed and scored! Reloading…', 'success');
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      showToast(d.error || 'Scoring failed — check logs', 'error');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-microphone fa-xs"></i> Score Voice'; }
+    }
+  } catch(e) {
+    showToast('Network error', 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-microphone fa-xs"></i> Score Voice'; }
+  }
 }
 
 function copyLink() {

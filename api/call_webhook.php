@@ -3,15 +3,6 @@
 require_once __DIR__ . '/../includes/functions.php';
 header('Content-Type: application/json');
 
-// Optional secret check — set CALL_WEBHOOK_SECRET in .env, then configure
-// the push URL as: https://hire.clouddialer.in/api/call_webhook.php?secret=YOUR_SECRET
-$secret = CALL_WEBHOOK_SECRET;
-if ($secret !== '' && ($_GET['secret'] ?? '') !== $secret) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Unauthorized']);
-    exit;
-}
-
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['error' => 'POST required']);
@@ -20,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $raw  = file_get_contents('php://input');
 $data = json_decode($raw, true);
-if (!$data) {
+if ($data === null) {
     http_response_code(400);
     echo json_encode(['error' => 'Invalid JSON']);
     exit;
@@ -107,7 +98,7 @@ db_execute(
      $transcript, $summary, $sentiment,
      $score, $grade, $rec,
      $reasoning, $strengths, $improve, $raw],
-    'iiiissi sssissssss'
+    'iiississsissssss'
 );
 
 // ── Auto-update candidate status based on recommendation ──────

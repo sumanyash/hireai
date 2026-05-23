@@ -91,14 +91,53 @@ $rows = db_fetch_all(
     $params, $types
 );
 
+function export_clean_value($value): string {
+    if (is_array($value)) {
+        $value = implode(', ', array_filter(array_map('strval', $value), fn($v) => trim($v) !== ''));
+    }
+    return trim((string)$value);
+}
+
+function export_is_internal_field(string $fieldKey, string $label): bool {
+    $fieldKey = trim($fieldKey);
+    $label = trim($label);
+    if ($fieldKey === '' || $label === '') return true;
+    if (preg_match('/^field_?\d+$/i', $fieldKey) && preg_match('/^field[\s_]*\d+$/i', $label)) return true;
+    if (str_starts_with($fieldKey, '_') && $fieldKey === $label) return true;
+    return false;
+}
+
+function export_application_answers(array $row): array {
+    $answers = json_decode((string)($row['application_answers_json'] ?? ''), true);
+    if (!is_array($answers)) return [];
+
+    $out = [];
+    foreach ($answers as $key => $answer) {
+        if (is_array($answer)) {
+            $fieldKey = trim((string)($answer['key'] ?? (is_string($key) ? $key : '')));
+            $label = trim((string)($answer['label'] ?? $fieldKey));
+            $value = $answer['value'] ?? '';
+        } else {
+            $fieldKey = is_string($key) ? trim($key) : '';
+            $label = $fieldKey;
+            $value = $answer;
+        }
+
+        if (export_is_internal_field($fieldKey, $label)) continue;
+        $out[$fieldKey] = [
+            'label' => $label,
+            'value' => export_clean_value($value),
+        ];
+    }
+    return $out;
+}
+
 $dynamicKeys = [];
 if ($detailed) {
     foreach ($rows as $row) {
-        $answers = json_decode((string)($row['application_answers_json'] ?? ''), true);
-        if (!is_array($answers)) continue;
-        foreach ($answers as $key => $value) {
-            $label = is_string($key) ? $key : 'field_' . $key;
-            $dynamicKeys[$label] = true;
+        foreach (export_application_answers($row) as $fieldKey => $answer) {
+            if ($answer['value'] === '') continue;
+            $dynamicKeys[$fieldKey] = $answer['label'];
         }
     }
 }
@@ -113,8 +152,9 @@ $baseHeaders = [
     'Referral Name','Referral Medium','Campaign','Role','Status','Score','Max Score',
     'Pass/Fail','AI Summary','Resume','Photo','Applied At','Updated At'
 ];
-$answerHeaders = array_keys($dynamicKeys);
+$answerHeaders = array_values($dynamicKeys);
 fputcsv($out, array_merge($baseHeaders, $detailed ? $answerHeaders : []));
+$answerKeys = array_keys($dynamicKeys);
 
 foreach ($rows as $row) {
     $line = [
@@ -125,12 +165,9 @@ foreach ($rows as $row) {
         $row['resume_path'] ?? '', $row['photo_path'] ?? '', $row['created_at'], $row['updated_at'] ?? '',
     ];
     if ($detailed) {
-        $answers = json_decode((string)($row['application_answers_json'] ?? ''), true);
-        if (!is_array($answers)) $answers = [];
-        foreach ($answerHeaders as $key) {
-            $value = $answers[$key] ?? '';
-            if (is_array($value)) $value = implode(', ', array_map('strval', $value));
-            $line[] = $value;
+        $answers = export_application_answers($row);
+        foreach ($answerKeys as $key) {
+            $line[] = $answers[$key]['value'] ?? '';
         }
     }
     fputcsv($out, $line);

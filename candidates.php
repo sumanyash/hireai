@@ -70,6 +70,10 @@ $candidate_export_params = [
     'sort' => $sort,
     'detailed' => 1,
 ];
+$candidate_export_url = 'export_candidates.php?' . http_build_query(array_filter(
+    $candidate_export_params,
+    fn($value) => $value !== null && $value !== ''
+));
 
 function candidate_col_key(string $key): string {
     $key = strtolower(preg_replace('/[^a-zA-Z0-9_]+/', '_', $key));
@@ -377,7 +381,8 @@ $heroStatusCards = [
       <button onclick="openAddModal()" class="btn-primary" style="padding:10px 20px;font-size:13px;white-space:nowrap">
         <i class="fa-solid fa-plus fa-sm"></i> Add Candidate
       </button>
-      <a href="export_candidates.php?<?= http_build_query($candidate_export_params) ?>"
+      <a href="<?= htmlspecialchars($candidate_export_url) ?>"
+         onclick="event.preventDefault(); downloadCandidateExport(this.href)"
          class="btn-outline" style="padding:10px 16px;font-size:13px;white-space:nowrap;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.2);color:#fff;text-decoration:none">
         <i class="fa-solid fa-file-csv fa-sm"></i> Export Detailed
       </a>
@@ -798,6 +803,42 @@ Ravi Kumar, , ravi@email.com"></textarea>
 <script>
 const SESSION_TOKEN = '<?= $_SESSION['token'] ?? '' ?>';
 if (SESSION_TOKEN) localStorage.setItem('hireai_token', SESSION_TOKEN);
+
+async function downloadCandidateExport(url) {
+  const token = localStorage.getItem('hireai_token') || SESSION_TOKEN || '';
+  showToast('Preparing export...', 'info');
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+    });
+
+    if (response.redirected || response.status === 401) {
+      throw new Error('Session expired. Please refresh/login again.');
+    }
+    if (!response.ok) {
+      throw new Error('Server returned HTTP ' + response.status);
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^"]+)"?/i);
+    const filename = match ? match[1] : 'hireai_candidates_detailed.csv';
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+    showToast('Export downloaded', 'success');
+  } catch (e) {
+    showToast('Export failed: ' + (e.message || 'Please try again'), 'error');
+  }
+}
 
 // ── ADD MODAL ─────────────────────────────────────────────────
 function openAddModal() { document.getElementById('addModal').classList.add('active'); }

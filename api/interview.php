@@ -7,7 +7,7 @@ if($action==='get_agents'&&$method==='GET'){
   $user=verify_jwt();if(!$user)json_response(['error'=>'Unauthorized'],401);
   if(!EL_API_KEY)json_response(['agents'=>[],'warning'=>'ElevenLabs API key is not configured']);
   $ch=curl_init('https://api.elevenlabs.io/v1/convai/agents?page_size=50');
-  curl_setopt_array($ch,[CURLOPT_HTTPGET=>true,CURLOPT_HTTPHEADER=>['xi-api-key: '.EL_API_KEY],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>15,CURLOPT_SSL_VERIFYPEER=>false]);
+  curl_setopt_array($ch,[CURLOPT_HTTPGET=>true,CURLOPT_HTTPHEADER=>['xi-api-key: '.EL_API_KEY],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>15,CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2]);
   $resp=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
   if($code!==200)json_response(['error'=>'EL error: '.$resp],500);
   $data=json_decode($resp,true);$agents=[];
@@ -57,10 +57,13 @@ if($action==='save_answer'&&$method==='POST'){
   $body=json_decode(file_get_contents('php://input'),true)??[];
   $token=$body['token']??'';$sid=(int)($body['session_id']??0);$ans=$body['answer']??[];$clog=$body['cheat_log']??[];
   if(!$token)json_response(['error'=>'Token required'],400);
-  $c=db_fetch_one("SELECT * FROM candidates WHERE unique_token=?",[$token],'s');
-  if(!$c)json_response(['error'=>'Invalid token'],404);
+  $ownership=verify_session_ownership(null,$token,$sid);
+  if(!$ownership)json_response(['error'=>'Forbidden'],403);
+  $c=$ownership['candidate'];
+  $question_id=(int)($ans['question_id']??0);
+  if(!verify_question_belongs_to_session($question_id,$ownership['session']))json_response(['error'=>'Forbidden'],403);
   db_execute("INSERT INTO interview_answers (session_id,candidate_id,question_id,text_answer,audio_url,answer_mode,time_taken,copy_count,cheat_flags,created_at) VALUES (?,?,?,?,?,?,?,?,?,NOW())",
-    [$sid,$c['id'],(int)($ans['question_id']??0),$ans['text_answer']??'',$ans['audio_url']??'',$ans['answer_mode']??'text',(int)($ans['time_taken']??0),(int)($ans['copy_count']??0),json_encode($clog)],
+    [$sid,$c['id'],$question_id,$ans['text_answer']??'',$ans['audio_url']??'',$ans['answer_mode']??'text',(int)($ans['time_taken']??0),(int)($ans['copy_count']??0),json_encode($clog)],
     'iiisssiis');
   json_response(['status'=>'saved']);
 }
@@ -69,6 +72,8 @@ if($action==='complete_interview'&&$method==='POST'){
   $body=json_decode(file_get_contents('php://input'),true)??[];
   $token=$body['token']??'';$sid=(int)($body['session_id']??0);$answers=$body['answers']??[];$cheat=$body['cheat_summary']??[];
   if(!$token)json_response(['error'=>'Token required'],400);
+  $ownership=verify_session_ownership(null,$token,$sid);
+  if(!$ownership)json_response(['error'=>'Forbidden'],403);
   $c=db_fetch_one("SELECT c.*,camp.passing_score,camp.el_agent_id,camp.name as campaign_name,camp.job_role FROM candidates c JOIN campaigns camp ON c.campaign_id=camp.id WHERE c.unique_token=?",[$token],'s');
   if(!$c)json_response(['error'=>'Invalid token'],404);
   db_execute("UPDATE interview_sessions SET completed_at=NOW(),status='completed',cheat_summary=? WHERE id=?",
@@ -88,7 +93,9 @@ if($action==='complete_interview'&&$method==='POST'){
 }
 
 if($method==='POST'&&($action==='webhook'||$action==='')){
-  $body=json_decode(file_get_contents('php://input'),true)??[];
+  $raw=file_get_contents('php://input');
+  verify_hmac_signature($raw, defined('INTERVIEW_WEBHOOK_SECRET') ? INTERVIEW_WEBHOOK_SECRET : (getenv('INTERVIEW_WEBHOOK_SECRET') ?: ''));
+  $body=json_decode($raw,true)??[];
   $event=$body['type']??$body['event_type']??'';$conv_id=$body['conversation_id']??$body['call_id']??'';
   if(in_array($event,['conversation_ended','call_ended','post_call_transcription_complete'])){
     $tr_raw=$body['transcript']??$body['conversation']??$body['messages']??[];
@@ -142,7 +149,7 @@ function trigger_el_outbound_call($c, $agent_id) {
     CURLOPT_HTTPHEADER    => ['Content-Type: application/json', 'xi-api-key: ' . EL_API_KEY],
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_TIMEOUT       => 30,
-    CURLOPT_SSL_VERIFYPEER => false,
+    CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2,
   ]);
   $resp = curl_exec($ch);
   $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);

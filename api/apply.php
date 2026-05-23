@@ -131,6 +131,10 @@ function sync_candidate_application($campaign, $candidate_id, $payload) {
         error_log('[apply sync] Pending non-URL integration endpoint for campaign ' . ($campaign['id'] ?? ''));
         return ['status' => 'pending_endpoint'];
     }
+    if (!validate_integration_endpoint($endpoint)) {
+        error_log('[apply sync] Blocked unsafe integration endpoint for campaign ' . ($campaign['id'] ?? '') . ' endpoint=' . $endpoint);
+        return ['status' => 'blocked'];
+    }
     $body = json_encode([
         'source' => 'hireai',
         'integration_type' => $type,
@@ -147,7 +151,7 @@ function sync_candidate_application($campaign, $candidate_id, $payload) {
         CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 8,
-        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2,
     ]);
     $resp = curl_exec($ch);
     $err = curl_error($ch);

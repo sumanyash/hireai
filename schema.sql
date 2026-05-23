@@ -329,9 +329,15 @@ CREATE TABLE IF NOT EXISTS credit_usage (
 -- ─── SEED DATA ───────────────────────────────
 INSERT IGNORE INTO organizations (id, name) VALUES (1, 'Avyukta Intellicall');
 
--- Password: Admin@123
+/*
+DEV ONLY:
+Do not enable this default Super Admin seed in production. Production deployments
+must create an admin with a strong password through the admin panel or a secure
+one-time provisioning process.
+
 INSERT IGNORE INTO users (id, org_id, name, email, password_hash, role) VALUES
 (1, 1, 'Super Admin', 'admin@hireai.in', '$2y$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'super_admin');
+*/
 
 -- Campaign 1: AI Developer
 INSERT IGNORE INTO campaigns (id, org_id, created_by, name, job_role, description, el_agent_id, passing_score, num_questions, status) VALUES

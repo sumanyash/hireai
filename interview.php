@@ -947,6 +947,7 @@ async function nextQuestion(allowBlank = false) {
     const fd   = new FormData();
     fd.append('audio', blob, 'q' + (currentQ + 1) + '_' + TOKEN + '.webm');
     fd.append('token', TOKEN);
+    fd.append('session_id', sessionId || '');
     fd.append('question_no', currentQ + 1);
     try {
       const r = await fetch('api/upload_audio.php', { method: 'POST', body: fd });

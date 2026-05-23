@@ -2,6 +2,8 @@
 // api/call_webhook.php — receives post-call results from Avya AI panel
 require_once __DIR__ . '/../includes/functions.php';
 header('Content-Type: application/json');
+$raw = file_get_contents('php://input');
+verify_hmac_signature($raw, defined('CALL_WEBHOOK_SECRET') ? CALL_WEBHOOK_SECRET : (getenv('CALL_WEBHOOK_SECRET') ?: ''));
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -9,7 +11,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$raw  = file_get_contents('php://input');
 $data = json_decode($raw, true);
 if ($data === null) {
     http_response_code(400);
@@ -47,12 +48,11 @@ if ($phone10 !== '') {
 if (!$candidate && !empty($data['call_id'])) {
     $call_id = (string)$data['call_id'];
     $row = db_fetch_one(
-        "SELECT ol.candidate_id, c.*, camp.id campaign_id, camp.org_id
-         FROM outreach_log ol
-         JOIN candidates c ON ol.candidate_id = c.id
+        "SELECT c.*, camp.id campaign_id, camp.org_id
+         FROM candidates c
          JOIN campaigns camp ON c.campaign_id = camp.id
-         WHERE ol.channel = 'call' ORDER BY ol.sent_at DESC LIMIT 1",
-        [], ''
+         WHERE c.call_id=? ORDER BY c.created_at DESC LIMIT 1",
+        [$call_id], 's'
     );
     if ($row) $candidate = $row;
 }

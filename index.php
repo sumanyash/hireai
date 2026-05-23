@@ -39,6 +39,7 @@ if (time() < $locked_until) {
     $user     = db_fetch_one("SELECT * FROM users WHERE email=? AND is_active=1", [$email], 's');
     if ($user && password_verify($password, $user['password_hash'])) {
         unset($_SESSION['login_attempts'], $_SESSION['login_locked_until']);
+        session_regenerate_id(true);
         $token = make_jwt($user['id'], $user['role'], $user['org_id']);
         $_SESSION['token'] = $token;
         $_SESSION['user']  = $user;

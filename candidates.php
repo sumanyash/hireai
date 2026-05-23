@@ -829,7 +829,7 @@ async function downloadCandidateExport(url) {
       headers: token ? { 'Authorization': 'Bearer ' + token } : {}
     });
 
-    if ((response.redirected || response.status === 401) && token) {
+    if (response.status === 401 && token) {
       localStorage.removeItem('hireai_token');
       response = await fetch(url, {
         method: 'GET',
@@ -838,11 +838,16 @@ async function downloadCandidateExport(url) {
       });
     }
 
-    if (response.redirected || response.status === 401) {
+    if (response.status === 401) {
       throw new Error('Session expired. Please refresh/login again.');
     }
     if (!response.ok) {
       throw new Error('Server returned HTTP ' + response.status);
+    }
+    const contentType = response.headers.get('Content-Type') || '';
+    const finalUrl = response.url || '';
+    if (contentType.includes('text/html') || finalUrl.includes('/index')) {
+      throw new Error('Export returned login page. Please refresh/login again.');
     }
 
     const blob = await response.blob();

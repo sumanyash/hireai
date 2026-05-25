@@ -15,6 +15,7 @@ $route_map = [
     'outreach' => 'outreach.php',
     'credits' => 'credits.php',
     'admins' => 'admins.php',
+    'audit_logs' => 'audit_logs.php',
     'logout' => 'logout.php',
     'video_view' => 'video_view.php',
 ];

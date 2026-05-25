@@ -16,6 +16,7 @@ $nav_role_key = strtolower(str_replace([' ', '-'], '_', trim((string)($user['rol
     <a href="/credits" class="<?= $current==='credits.php'?'active':'' ?>"><i class="fa-solid fa-coins fa-sm"></i> Credits</a>
     <?php if ($nav_role_key === 'super_admin'): ?>
     <a href="/admins" class="<?= $current==='admins.php'?'active':'' ?>"><i class="fa-solid fa-user-shield fa-sm"></i> Admins</a>
+    <a href="/audit_logs" class="<?= $current==='audit_logs.php'?'active':'' ?>"><i class="fa-solid fa-shield-halved fa-sm"></i> Audit Logs</a>
     <?php endif; ?>
   </div>
   <div class="nav-right">

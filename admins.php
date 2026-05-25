@@ -115,23 +115,6 @@ $admin_stats = db_fetch_one(
     [$user['org_id']],
     'i'
 ) ?: ['total'=>0,'active'=>0,'disabled'=>0,'super_admins'=>0];
-$audit_page = pagination_page('audit_page');
-$audit_per_page = pagination_per_page('audit_per_page', 10);
-$audit_total_row = db_fetch_one("SELECT COUNT(*) cnt FROM audit_logs WHERE org_id=?", [$user['org_id']], 'i');
-$audit_total = (int)($audit_total_row['cnt'] ?? 0);
-$audit_total_pages = max(1, (int)ceil($audit_total / $audit_per_page));
-$audit_page = min($audit_page, $audit_total_pages);
-$audit_offset = ($audit_page - 1) * $audit_per_page;
-$audit_logs = db_fetch_all(
-    "SELECT al.*, COALESCE(u.name, 'System') actor_name, u.email actor_email
-     FROM audit_logs al
-     LEFT JOIN users u ON u.id=al.user_id
-     WHERE al.org_id=?
-     ORDER BY al.created_at DESC
-     LIMIT ? OFFSET ?",
-    [$user['org_id'], $audit_per_page, $audit_offset],
-    'iii'
-);
 $csrf   = csrf_token();
 
 $role_colors = [
@@ -173,9 +156,6 @@ $role_colors = [
   .row-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .reset-box{margin-top:8px;padding:10px;border:1px solid #E2E8F0;border-radius:10px;background:#F8FAFC;display:none}
   .reset-box.active{display:block}
-  .audit-table td{vertical-align:top}
-  .audit-action{font-weight:800;color:#4338CA}
-  .audit-details{max-width:420px;color:#64748B;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   @media(max-width:900px){.admin-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.mini-input,.mini-select{min-width:120px}}
 </style>
 </head>
@@ -336,34 +316,6 @@ $role_colors = [
     </div>
   </div>
 
-  <div class="card" style="margin-top:18px">
-    <div class="card-header">
-      <h3><i class="fa-solid fa-shield-halved" style="color:#7C3AED"></i> Audit Logs <span style="color:#94A3B8;font-size:13px;font-weight:500">(<?= $audit_total ?>)</span></h3>
-    </div>
-    <div class="pager-top">Show <?= pagination_per_page_select('audit_per_page', 'audit_page', $audit_per_page) ?> entries</div>
-    <table class="table audit-table">
-      <thead>
-        <tr><th>Time</th><th>Actor</th><th>Action</th><th>Entity</th><th>Details</th></tr>
-      </thead>
-      <tbody>
-        <?php if (empty($audit_logs)): ?>
-        <tr><td colspan="5" style="text-align:center;color:#94A3B8;padding:24px">No audit activity yet.</td></tr>
-        <?php else: foreach ($audit_logs as $log): ?>
-        <tr>
-          <td style="font-size:12px;color:#64748B"><?= htmlspecialchars(date('d M Y, H:i', strtotime($log['created_at']))) ?></td>
-          <td>
-            <strong><?= htmlspecialchars($log['actor_name']) ?></strong>
-            <?php if (!empty($log['actor_email'])): ?><div style="font-size:11px;color:#94A3B8"><?= htmlspecialchars($log['actor_email']) ?></div><?php endif; ?>
-          </td>
-          <td><span class="audit-action"><?= htmlspecialchars(str_replace('_', ' ', $log['action'])) ?></span></td>
-          <td style="font-size:12px;color:#64748B"><?= htmlspecialchars($log['entity_type']) ?> #<?= htmlspecialchars((string)($log['entity_id'] ?? '')) ?></td>
-          <td><div class="audit-details" title="<?= htmlspecialchars((string)($log['details'] ?? '')) ?>"><?= htmlspecialchars((string)($log['details'] ?? '')) ?></div></td>
-        </tr>
-        <?php endforeach; endif; ?>
-      </tbody>
-    </table>
-    <?= pagination_html('audit_page', $audit_page, $audit_total_pages, $audit_total, $audit_per_page) ?>
-  </div>
 </div>
 <?php include __DIR__ . '/includes/footer.php'; ?>
 <script>

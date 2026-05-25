@@ -14,12 +14,22 @@ if (!$can_manage_campaigns && in_array($action, $campaign_write_actions, true)) 
     header("Location: campaigns.php?msg=admin_campaigns_only");
     exit;
 }
-if ($_SERVER['REQUEST_METHOD'] !== 'POST' && in_array($action, ['save','edit_save'], true)) {
-    $target = $action === 'edit_save' && $campaign_id
-        ? "campaigns.php?action=edit&id=$campaign_id&msg=invalid_method"
-        : "campaigns.php?action=new&msg=invalid_method";
-    header("Location: $target");
-    exit;
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    $post_only_targets = [
+        'save' => "campaigns.php?action=new&msg=invalid_method",
+        'edit_save' => $campaign_id ? "campaigns.php?action=edit&id=$campaign_id&msg=invalid_method" : "campaigns.php?msg=invalid_method",
+        'add_question' => $campaign_id ? "campaigns.php?action=questions&id=$campaign_id&msg=invalid_method" : "campaigns.php?msg=invalid_method",
+        'edit_question' => $campaign_id ? "campaigns.php?action=questions&id=$campaign_id&msg=invalid_method" : "campaigns.php?msg=invalid_method",
+        'add_application_field' => $campaign_id ? "campaigns.php?action=apply_form&id=$campaign_id&msg=invalid_method" : "campaigns.php?msg=invalid_method",
+        'add_application_template' => $campaign_id ? "campaigns.php?action=apply_form&id=$campaign_id&msg=invalid_method" : "campaigns.php?msg=invalid_method",
+        'bulk_delete_application_fields' => $campaign_id ? "campaigns.php?action=apply_form&id=$campaign_id&msg=invalid_method" : "campaigns.php?msg=invalid_method",
+        'activate' => $campaign_id ? "campaigns.php?action=questions&id=$campaign_id&msg=invalid_method" : "campaigns.php?msg=invalid_method",
+        'bulk_delete_campaigns' => "campaigns.php?msg=invalid_method",
+    ];
+    if (isset($post_only_targets[$action])) {
+        header("Location: " . $post_only_targets[$action]);
+        exit;
+    }
 }
 
 function normalize_json_text($value) {
@@ -921,7 +931,12 @@ if ($editing_question && !empty($editing_question['options_json'])) {
   </div>
 
   <?php if (!empty($_GET['msg']) && $_GET['msg'] !== 'setup_incomplete'): ?>
-    <?php $question_errors = ['options_required' => 'Add choices for MCQ/rating questions before saving.']; ?>
+    <?php
+      $question_errors = [
+          'options_required' => 'Add choices for MCQ/rating questions before saving.',
+          'invalid_method' => 'Use the Add Interview Question form below to save a question.',
+      ];
+    ?>
     <div class="alert <?= isset($question_errors[$_GET['msg']]) ? 'alert-error' : 'alert-success' ?>">
       <?= isset($question_errors[$_GET['msg']]) ? '⚠️ ' . $question_errors[$_GET['msg']] : '✅ ' . htmlspecialchars(str_replace('_',' ',$_GET['msg'])) . '!' ?>
     </div>

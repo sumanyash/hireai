@@ -236,6 +236,7 @@ $candidate_default_column_keys = array_values(array_map(fn($col) => $col['key'],
 .dt-actions{justify-content:flex-end}
 .dt-label{font-size:13px;font-weight:700;color:var(--text2);display:flex;align-items:center;gap:6px}
 .dt-select{padding:7px 10px;border:1.5px solid #E2E8F0;border-radius:9px;background:#F8FAFC;font-size:13px;font-weight:700;color:var(--text);outline:none}
+.dt-page-chip{display:inline-flex;align-items:center;height:34px;padding:0 10px;border-radius:999px;background:#F8FAFC;border:1px solid #E2E8F0;color:var(--gray2);font-size:11px;font-weight:800;white-space:nowrap}
 .dt-action{display:inline-flex;align-items:center;gap:6px;border:none;border-radius:9px;background:#2563EB;color:#fff;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer;text-decoration:none;box-shadow:0 4px 12px rgba(37,99,235,.18);transition:transform .12s,background .12s}
 .dt-action:hover{background:#1D4ED8;transform:translateY(-1px)}
 .dt-search{justify-content:center}
@@ -300,8 +301,8 @@ $candidate_default_column_keys = array_values(array_map(fn($col) => $col['key'],
 .empty-icon{font-size:48px;opacity:.2;margin-bottom:12px}
 
 /* ── PAGINATION ──────────────────────────────────────────── */
-.pagination{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-top:1px solid #F1F5F9;flex-wrap:wrap;gap:10px}
-.pg-info{font-size:12px;color:var(--gray);font-weight:600}
+.pagination{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-top:1px solid #F1F5F9;flex-wrap:wrap;gap:10px;background:#fff}
+.pg-info{font-size:12px;color:var(--text2);font-weight:800}
 .pg-btns{display:flex;gap:4px;align-items:center}
 .pg-btn{display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:9px;font-size:12px;font-weight:700;text-decoration:none;color:var(--text2);border:1.5px solid #E2E8F0;background:#fff;transition:all .15s;cursor:pointer}
 .pg-btn:hover{background:#F8FAFC;border-color:#CBD5E1}
@@ -444,6 +445,7 @@ $avatarPalette = [
         </select>
         entries
       </label>
+      <span class="dt-page-chip" id="candidateTopPageInfo">Showing 0 candidates</span>
       <select class="dt-select" name="campaign_id" form="candidateFilterForm" onchange="document.getElementById('candidateFilterForm').submit()" title="Campaign filter">
         <option value="">All Campaigns</option>
         <?php foreach ($campaigns as $camp): ?>
@@ -1112,6 +1114,8 @@ function showToast(msg, type = 'success') {
 }
 
 // ── CLIENT TABLE: COLUMNS + FILTERS + PAGINATION ──────────────
+const CANDIDATE_URL_PER_PAGE = <?= array_key_exists('per_page', $_GET) ? (int)$per_page : 'null' ?>;
+const CANDIDATE_URL_PAGE = <?= array_key_exists('page', $_GET) ? max(1, (int)$_GET['page']) : 'null' ?>;
 const CANDIDATE_TABLE = {
   storageKey: 'hireai_candidate_table_state_v2',
   defaults: {
@@ -1148,12 +1152,14 @@ function loadCandidateTableState() {
   try { saved = JSON.parse(localStorage.getItem(CANDIDATE_TABLE.storageKey) || '{}') || {}; } catch(e) {}
   const validColumns = new Set(CANDIDATE_TABLE.defaults.all);
   const savedColumns = Array.isArray(saved.columns) ? saved.columns.filter(key => validColumns.has(key)) : [];
+  const urlPerPage = [5,10,25,50,100].includes(parseInt(CANDIDATE_URL_PER_PAGE, 10)) ? parseInt(CANDIDATE_URL_PER_PAGE, 10) : null;
+  const urlPage = Number.isInteger(CANDIDATE_URL_PAGE) && CANDIDATE_URL_PAGE > 0 ? CANDIDATE_URL_PAGE : null;
   CANDIDATE_TABLE.state = {
     columns: savedColumns.length ? savedColumns : [...CANDIDATE_TABLE.defaults.columns],
-    perPage: [5,10,25,50,100].includes(parseInt(saved.perPage, 10)) ? parseInt(saved.perPage, 10) : CANDIDATE_TABLE.defaults.perPage,
+    perPage: urlPerPage || CANDIDATE_TABLE.defaults.perPage,
     globalSearch: typeof saved.globalSearch === 'string' ? saved.globalSearch : CANDIDATE_TABLE.defaults.globalSearch,
     filters: saved.filters && typeof saved.filters === 'object' ? saved.filters : {},
-    page: Number.isInteger(saved.page) && saved.page > 0 ? saved.page : 1
+    page: urlPage || (Number.isInteger(saved.page) && saved.page > 0 ? saved.page : 1)
   };
 }
 
@@ -1201,8 +1207,17 @@ function getFilteredRows() {
   return [...document.querySelectorAll('tbody tr[data-table-row]')].filter(rowMatchesFilters);
 }
 
+function syncCandidatePaginationUrl() {
+  if (!window.history || !window.history.replaceState) return;
+  const url = new URL(window.location.href);
+  url.searchParams.set('per_page', CANDIDATE_TABLE.state.perPage);
+  url.searchParams.set('page', CANDIDATE_TABLE.state.page);
+  window.history.replaceState({}, '', url);
+}
+
 function renderPagination(filteredRows) {
   const pageInfo = document.getElementById('candidatePageInfo');
+  const topPageInfo = document.getElementById('candidateTopPageInfo');
   const buttons = document.getElementById('candidatePageButtons');
   const total = filteredRows.length;
   const perPage = CANDIDATE_TABLE.state.perPage;
@@ -1215,7 +1230,10 @@ function renderPagination(filteredRows) {
   document.querySelectorAll('tbody tr[data-table-row]').forEach(row => row.style.display = 'none');
   filteredRows.slice(start, end).forEach(row => row.style.display = '');
 
-  if (pageInfo) pageInfo.textContent = total ? `Showing ${start + 1}-${end} of ${total} candidates` : 'Showing 0 candidates';
+  const infoText = total ? `Showing ${start + 1}-${end} of ${total} candidates` : 'Showing 0 candidates';
+  if (pageInfo) pageInfo.textContent = infoText;
+  if (topPageInfo) topPageInfo.textContent = infoText;
+  syncCandidatePaginationUrl();
   if (!buttons) return;
   buttons.innerHTML = '';
 

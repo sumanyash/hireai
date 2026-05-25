@@ -165,6 +165,19 @@ textarea.form-control{resize:vertical;min-height:80px}
 .animate-in:nth-child(7){animation-delay:.28s}
 .animate-in:nth-child(8){animation-delay:.32s}
 .skeleton{background:linear-gradient(90deg,#F1F5F9 25%,#E2E8F0 50%,#F1F5F9 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:6px}
+
+/* PAGINATION */
+.pager-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;font-size:13px;font-weight:700;color:var(--text2)}
+.pager-select{padding:7px 10px;border:1.5px solid var(--light);border-radius:9px;background:#fff;color:var(--text);font-size:13px;font-weight:700;outline:none}
+.pager-select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(107,33,168,.1)}
+.pager-wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 16px;border-top:1px solid #F1F5F9;background:#fff;border-radius:0 0 var(--radius) var(--radius)}
+.pager-summary{font-size:12px;color:var(--gray2);font-weight:600}
+.pager-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.pager-btn{min-width:34px;height:34px;padding:0 10px;border:1.5px solid var(--light);border-radius:9px;background:#fff;color:var(--text2);font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;transition:all .15s}
+.pager-btn:hover{border-color:var(--blue);color:var(--blue);background:#FAF5FF}
+.pager-btn.active{background:linear-gradient(135deg,var(--blue),var(--blue2));border-color:var(--blue);color:#fff;box-shadow:0 4px 14px rgba(107,33,168,.22)}
+.pager-btn.disabled{opacity:.45;pointer-events:none}
+.pager-ellipsis{color:var(--gray);font-size:12px;font-weight:800;padding:0 3px}
 </style>
 <script>
 // Stop all other audio/video when one starts playing

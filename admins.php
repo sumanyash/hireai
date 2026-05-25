@@ -45,7 +45,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Location: admins.php?msg=created'); exit;
 }
 
-$admins = db_fetch_all("SELECT id,name,email,role,is_active,created_at FROM users WHERE org_id=? ORDER BY created_at DESC", [$user['org_id']], 'i');
+$admin_page = pagination_page('admin_page');
+$admin_per_page = pagination_per_page('admin_per_page', 10);
+$admin_total_row = db_fetch_one("SELECT COUNT(*) cnt FROM users WHERE org_id=?", [$user['org_id']], 'i');
+$admin_total = (int)($admin_total_row['cnt'] ?? 0);
+$admin_total_pages = max(1, (int)ceil($admin_total / $admin_per_page));
+$admin_page = min($admin_page, $admin_total_pages);
+$admin_offset = ($admin_page - 1) * $admin_per_page;
+$admins = db_fetch_all(
+    "SELECT id,name,email,role,is_active,created_at FROM users WHERE org_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+    [$user['org_id'], $admin_per_page, $admin_offset],
+    'iii'
+);
 $csrf   = csrf_token();
 
 $role_colors = [
@@ -130,7 +141,8 @@ $role_colors = [
 
     <!-- EXISTING LOGINS -->
     <div class="card">
-      <div class="card-header"><h3>Existing Logins <span style="color:#94A3B8;font-size:13px;font-weight:500">(<?= count($admins) ?>)</span></h3></div>
+      <div class="card-header"><h3>Existing Logins <span style="color:#94A3B8;font-size:13px;font-weight:500">(<?= $admin_total ?>)</span></h3></div>
+      <div class="pager-top">Show <?= pagination_per_page_select('admin_per_page', 'admin_page', $admin_per_page) ?> entries</div>
       <table class="table">
         <thead>
           <tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Since</th><th></th></tr>
@@ -167,6 +179,7 @@ $role_colors = [
           <?php endforeach; ?>
         </tbody>
       </table>
+      <?= pagination_html('admin_page', $admin_page, $admin_total_pages, $admin_total, $admin_per_page) ?>
     </div>
   </div>
 </div>

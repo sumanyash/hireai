@@ -123,3 +123,63 @@ function validate_integration_endpoint(string $endpoint): bool {
     }
     return !is_blocked_integration_host($parts['host']);
 }
+
+function pagination_page(string $key = 'page'): int {
+    return max(1, (int)($_GET[$key] ?? 1));
+}
+
+function pagination_per_page(string $key = 'per_page', int $default = 10, array $allowed = [5, 10, 25, 50, 100]): int {
+    $value = (int)($_GET[$key] ?? $default);
+    return in_array($value, $allowed, true) ? $value : $default;
+}
+
+function pagination_url(array $overrides = []): string {
+    $query = array_merge($_GET, $overrides);
+    foreach ($query as $key => $value) {
+        if ($value === null || $value === '') unset($query[$key]);
+    }
+    $qs = http_build_query($query);
+    return $qs ? '?' . $qs : strtok($_SERVER['REQUEST_URI'] ?? '', '?');
+}
+
+function pagination_per_page_select(string $per_page_key, string $page_key, int $current, array $allowed = [5, 10, 25, 50, 100]): string {
+    $html = '<select class="pager-select" onchange="window.location.href=this.value">';
+    foreach ($allowed as $option) {
+        $selected = $option === $current ? ' selected' : '';
+        $url = htmlspecialchars(pagination_url([$per_page_key => $option, $page_key => 1]), ENT_QUOTES, 'UTF-8');
+        $html .= '<option value="' . $url . '"' . $selected . '>' . (int)$option . '</option>';
+    }
+    return $html . '</select>';
+}
+
+function pagination_html(string $page_key, int $page, int $total_pages, int $total, int $per_page): string {
+    $total_pages = max(1, $total_pages);
+    $page = max(1, min($page, $total_pages));
+    $from = $total > 0 ? (($page - 1) * $per_page) + 1 : 0;
+    $to = min($total, $page * $per_page);
+    $html = '<div class="pager-wrap">';
+    $html .= '<div class="pager-summary">Showing <strong>' . $from . '</strong> to <strong>' . $to . '</strong> of <strong>' . (int)$total . '</strong></div>';
+    if ($total_pages > 1) {
+        $html .= '<div class="pager-actions">';
+        $prev_url = htmlspecialchars(pagination_url([$page_key => max(1, $page - 1)]), ENT_QUOTES, 'UTF-8');
+        $next_url = htmlspecialchars(pagination_url([$page_key => min($total_pages, $page + 1)]), ENT_QUOTES, 'UTF-8');
+        $html .= '<a class="pager-btn' . ($page <= 1 ? ' disabled' : '') . '" href="' . $prev_url . '">Previous</a>';
+        $start = max(1, $page - 2);
+        $end = min($total_pages, $page + 2);
+        if ($start > 1) {
+            $html .= '<a class="pager-btn" href="' . htmlspecialchars(pagination_url([$page_key => 1]), ENT_QUOTES, 'UTF-8') . '">1</a>';
+            if ($start > 2) $html .= '<span class="pager-ellipsis">...</span>';
+        }
+        for ($i = $start; $i <= $end; $i++) {
+            $url = htmlspecialchars(pagination_url([$page_key => $i]), ENT_QUOTES, 'UTF-8');
+            $html .= '<a class="pager-btn' . ($i === $page ? ' active' : '') . '" href="' . $url . '">' . $i . '</a>';
+        }
+        if ($end < $total_pages) {
+            if ($end < $total_pages - 1) $html .= '<span class="pager-ellipsis">...</span>';
+            $html .= '<a class="pager-btn" href="' . htmlspecialchars(pagination_url([$page_key => $total_pages]), ENT_QUOTES, 'UTF-8') . '">' . $total_pages . '</a>';
+        }
+        $html .= '<a class="pager-btn' . ($page >= $total_pages ? ' disabled' : '') . '" href="' . $next_url . '">Next</a>';
+        $html .= '</div>';
+    }
+    return $html . '</div>';
+}

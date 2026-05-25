@@ -2,7 +2,23 @@
 require_once __DIR__ . '/includes/auth_check.php';
 
 $summary = ensure_credit_wallet($user['org_id']);
-$transactions = db_fetch_all("SELECT * FROM credit_transactions WHERE org_id=? ORDER BY created_at DESC LIMIT 25", [$user['org_id']], 'i');
+$tx_page = pagination_page('tx_page');
+$tx_per_page = pagination_per_page('tx_per_page', 10);
+$tx_total = (int)((db_fetch_one("SELECT COUNT(*) cnt FROM credit_transactions WHERE org_id=?", [$user['org_id']], 'i') ?: ['cnt' => 0])['cnt']);
+$tx_total_pages = max(1, (int)ceil($tx_total / $tx_per_page));
+$tx_page = min($tx_page, $tx_total_pages);
+$tx_offset = ($tx_page - 1) * $tx_per_page;
+$transactions = db_fetch_all(
+    "SELECT * FROM credit_transactions WHERE org_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+    [$user['org_id'], $tx_per_page, $tx_offset],
+    'iii'
+);
+$usage_page = pagination_page('usage_page');
+$usage_per_page = pagination_per_page('usage_per_page', 10);
+$usage_total = (int)((db_fetch_one("SELECT COUNT(*) cnt FROM credit_usage WHERE org_id=?", [$user['org_id']], 'i') ?: ['cnt' => 0])['cnt']);
+$usage_total_pages = max(1, (int)ceil($usage_total / $usage_per_page));
+$usage_page = min($usage_page, $usage_total_pages);
+$usage_offset = ($usage_page - 1) * $usage_per_page;
 $usage = db_fetch_all(
     "SELECT cu.*, c.name candidate_name, camp.name campaign_name
      FROM credit_usage cu
@@ -10,8 +26,8 @@ $usage = db_fetch_all(
      LEFT JOIN campaigns camp ON cu.campaign_id=camp.id
      WHERE cu.org_id=?
      ORDER BY cu.created_at DESC
-     LIMIT 30",
-    [$user['org_id']], 'i'
+     LIMIT ? OFFSET ?",
+    [$user['org_id'], $usage_per_page, $usage_offset], 'iii'
 );
 $channels = [
     'whatsapp' => ['WhatsApp', 'fa-brands fa-whatsapp', '#16A34A', (int)$summary['whatsapp_credits']],
@@ -160,6 +176,7 @@ foreach ($channels as $key => $meta) {
   <div>
     <div class="card animate-in">
       <div class="card-header"><h3><i class="fa-solid fa-clock-rotate-left" style="color:var(--blue)"></i> Payment History</h3></div>
+      <div class="pager-top">Show <?= pagination_per_page_select('tx_per_page', 'tx_page', $tx_per_page) ?> payments</div>
       <table class="mini-table">
         <thead><tr><th>Date</th><th>Provider</th><th>Amount</th><th>Credits</th><th>Status</th></tr></thead>
         <tbody>
@@ -176,10 +193,12 @@ foreach ($channels as $key => $meta) {
         <?php endif; ?>
         </tbody>
       </table>
+      <?= pagination_html('tx_page', $tx_page, $tx_total_pages, $tx_total, $tx_per_page) ?>
     </div>
 
     <div class="card animate-in">
       <div class="card-header"><h3><i class="fa-solid fa-chart-simple" style="color:var(--purple)"></i> Credit Usage</h3></div>
+      <div class="pager-top">Show <?= pagination_per_page_select('usage_per_page', 'usage_page', $usage_per_page) ?> usage rows</div>
       <table class="mini-table">
         <thead><tr><th>Date</th><th>Channel</th><th>Candidate</th><th>Reason</th><th>Balance</th></tr></thead>
         <tbody>
@@ -197,6 +216,7 @@ foreach ($channels as $key => $meta) {
         <?php endif; ?>
         </tbody>
       </table>
+      <?= pagination_html('usage_page', $usage_page, $usage_total_pages, $usage_total, $usage_per_page) ?>
     </div>
   </div>
 </div>

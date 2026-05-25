@@ -469,6 +469,13 @@ if ($action === 'bulk_delete_campaigns') {
 }
 
 // ─── DATA ────────────────────────────────────────────────────────
+$campaign_list_page = pagination_page('campaign_page');
+$campaign_list_per_page = pagination_per_page('campaign_per_page', 10);
+$campaign_total_row = db_fetch_one("SELECT COUNT(*) cnt FROM campaigns WHERE org_id=?", [$user['org_id']], 'i');
+$campaign_total = (int)($campaign_total_row['cnt'] ?? 0);
+$campaign_total_pages = max(1, (int)ceil($campaign_total / $campaign_list_per_page));
+$campaign_list_page = min($campaign_list_page, $campaign_total_pages);
+$campaign_list_offset = ($campaign_list_page - 1) * $campaign_list_per_page;
 $campaigns = db_fetch_all(
     "SELECT ca.*, u.name AS creator_name,
             COUNT(DISTINCT c.id) as total_cands,
@@ -481,12 +488,25 @@ $campaigns = db_fetch_all(
      LEFT JOIN questions q ON q.campaign_id=ca.id
      WHERE ca.org_id=?
      GROUP BY ca.id
-     ORDER BY ca.created_at DESC",
-    [$user['org_id']], 'i'
+     ORDER BY ca.created_at DESC
+     LIMIT ? OFFSET ?",
+    [$user['org_id'], $campaign_list_per_page, $campaign_list_offset], 'iii'
 );
 $campaign  = $campaign_id ? db_fetch_one("SELECT ca.*, u.name AS creator_name, u.email AS creator_email FROM campaigns ca LEFT JOIN users u ON ca.created_by=u.id WHERE ca.id=? AND ca.org_id=?", [$campaign_id,$user['org_id']], 'ii') : null;
 $questions = $campaign_id ? db_fetch_all("SELECT * FROM questions WHERE campaign_id=? ORDER BY order_no", [$campaign_id], 'i') : [];
 $application_fields = $campaign_id ? db_fetch_all("SELECT * FROM application_fields WHERE campaign_id=? AND is_active=1 ORDER BY order_no,id", [$campaign_id], 'i') : [];
+$question_page = pagination_page('question_page');
+$question_per_page = pagination_per_page('question_per_page', 10);
+$question_total = count($questions);
+$question_total_pages = max(1, (int)ceil($question_total / $question_per_page));
+$question_page = min($question_page, $question_total_pages);
+$question_page_rows = array_slice($questions, ($question_page - 1) * $question_per_page, $question_per_page);
+$field_page = pagination_page('field_page');
+$field_per_page = pagination_per_page('field_per_page', 10);
+$field_total = count($application_fields);
+$field_total_pages = max(1, (int)ceil($field_total / $field_per_page));
+$field_page = min($field_page, $field_total_pages);
+$application_field_page_rows = array_slice($application_fields, ($field_page - 1) * $field_per_page, $field_per_page);
 $setup_state = $campaign ? campaign_setup_state($campaign, $questions, $application_fields) : null;
 $edit_qid = (int)($_GET['edit_qid'] ?? 0);
 $editing_question = $edit_qid ? db_fetch_one("SELECT * FROM questions WHERE id=? AND campaign_id=?", [$edit_qid,$campaign_id], 'ii') : null;
@@ -526,6 +546,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
     <div class="alert alert-success">✅ Campaign <?= htmlspecialchars(str_replace('_',' ',$_GET['msg'])) ?>!</div>
   <?php endif; ?>
   <div class="card campaign-table-wrap">
+    <div class="pager-top">Show <?= pagination_per_page_select('campaign_per_page', 'campaign_page', $campaign_list_per_page) ?> campaigns</div>
     <table class="table">
       <thead><tr>
         <?php if ($can_manage_campaigns): ?><th style="width:36px"><input type="checkbox" id="select-all-camps" title="Select All" style="cursor:pointer;width:16px;height:16px"></th><?php endif; ?>
@@ -571,6 +592,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
         <?php endif; ?>
       </tbody>
     </table>
+    <?= pagination_html('campaign_page', $campaign_list_page, $campaign_total_pages, $campaign_total, $campaign_list_per_page) ?>
   </div>
 
   <!-- Bulk Delete Bar -->
@@ -874,10 +896,11 @@ if ($editing_question && !empty($editing_question['options_json'])) {
         <?= $total_weight==100 ? '✅' : '⚠️ Must be 100%' ?>
       </span>
     </div>
+    <div class="pager-top">Show <?= pagination_per_page_select('question_per_page', 'question_page', $question_per_page) ?> questions</div>
     <table class="table">
       <thead><tr><th>#</th><th>Type</th><th>Weight</th><th>Max Marks</th><th>Question</th><th>Logic</th><th></th></tr></thead>
       <tbody>
-        <?php foreach ($questions as $q): ?>
+        <?php foreach ($question_page_rows as $q): ?>
         <tr>
           <td><?= $q['order_no'] ?></td>
           <td><span class="badge badge-draft"><?= htmlspecialchars(str_replace('_', ' ', $q['question_type'] ?? 'textarea')) ?></span></td>
@@ -895,6 +918,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
         <?php endforeach; ?>
       </tbody>
     </table>
+    <?= pagination_html('question_page', $question_page, $question_total_pages, $question_total, $question_per_page) ?>
   </div>
   <?php endif; ?>
 
@@ -1113,6 +1137,9 @@ if ($editing_question && !empty($editing_question['options_json'])) {
           <div class="canvas-meta"><?= count($application_fields) ?> fields</div>
         </div>
       </div>
+      <?php if (!empty($application_fields)): ?>
+      <div class="pager-top" style="padding:12px 18px 0">Show <?= pagination_per_page_select('field_per_page', 'field_page', $field_per_page) ?> fields</div>
+      <?php endif; ?>
       <form method="POST" action="campaigns.php?action=bulk_delete_application_fields&id=<?= $campaign_id ?>" onsubmit="return confirmBulkFieldDelete()">
         <?= csrf_input() ?>
         <div class="bulk-field-actions" id="bulkFieldActions">
@@ -1121,7 +1148,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
         </div>
       <div class="field-list">
       <?php if (!empty($application_fields)): ?>
-        <?php foreach ($application_fields as $f): $opts = json_decode($f['options_json'] ?? '[]', true) ?: []; ?>
+        <?php foreach ($application_field_page_rows as $f): $opts = json_decode($f['options_json'] ?? '[]', true) ?: []; ?>
         <div class="field-tile">
           <input type="checkbox" class="field-select" name="field_ids[]" value="<?= (int)$f['id'] ?>" onchange="updateBulkFieldActions()">
           <div class="field-order"><?= (int)$f['order_no'] ?></div>
@@ -1146,6 +1173,9 @@ if ($editing_question && !empty($editing_question['options_json'])) {
       <?php endif; ?>
       </div>
       </form>
+      <?php if (!empty($application_fields)): ?>
+      <?= pagination_html('field_page', $field_page, $field_total_pages, $field_total, $field_per_page) ?>
+      <?php endif; ?>
     </div>
 
     <div class="builder-panel">

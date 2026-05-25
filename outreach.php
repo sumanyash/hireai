@@ -8,25 +8,47 @@ $campaigns = db_fetch_all(
 $sel_camp = (int)($_GET['campaign_id'] ?? 0);
 
 // Candidate list with outreach status when campaign selected
+$camp = null;
 $candidates = [];
 $stats = ['total'=>0,'sent'=>0,'pending'=>0];
+$outreach_page = pagination_page('outreach_page');
+$outreach_per_page = pagination_per_page('outreach_per_page', 10);
+$outreach_total_pages = 1;
 if ($sel_camp) {
     $camp = db_fetch_one("SELECT * FROM campaigns WHERE id=? AND org_id=?", [$sel_camp, $user['org_id']], 'ii');
     if ($camp) {
+        $stats['total'] = (int)((db_fetch_one(
+            "SELECT COUNT(*) cnt FROM candidates WHERE campaign_id=? AND org_id=?",
+            [$sel_camp, $user['org_id']],
+            'ii'
+        ) ?: ['cnt' => 0])['cnt']);
+        $stats['sent'] = (int)((db_fetch_one(
+            "SELECT COUNT(*) cnt FROM candidates c
+             WHERE c.campaign_id=? AND c.org_id=?
+             AND (SELECT status FROM outreach_log WHERE candidate_id=c.id AND channel='whatsapp' ORDER BY sent_at DESC LIMIT 1)='sent'",
+            [$sel_camp, $user['org_id']],
+            'ii'
+        ) ?: ['cnt' => 0])['cnt']);
+        $stats['pending'] = (int)((db_fetch_one(
+            "SELECT COUNT(*) cnt FROM candidates c
+             WHERE c.campaign_id=? AND c.org_id=?
+             AND COALESCE((SELECT status FROM outreach_log WHERE candidate_id=c.id AND channel='whatsapp' ORDER BY sent_at DESC LIMIT 1),'') IN ('','failed')",
+            [$sel_camp, $user['org_id']],
+            'ii'
+        ) ?: ['cnt' => 0])['cnt']);
+        $outreach_total_pages = max(1, (int)ceil($stats['total'] / $outreach_per_page));
+        $outreach_page = min($outreach_page, $outreach_total_pages);
+        $outreach_offset = ($outreach_page - 1) * $outreach_per_page;
         $candidates = db_fetch_all(
             "SELECT c.id, c.name, c.phone, c.status, c.created_at,
                     (SELECT status FROM outreach_log WHERE candidate_id=c.id AND channel='whatsapp' ORDER BY sent_at DESC LIMIT 1) last_wa_status,
                     (SELECT sent_at FROM outreach_log WHERE candidate_id=c.id AND channel='whatsapp' ORDER BY sent_at DESC LIMIT 1) last_wa_at
              FROM candidates c
              WHERE c.campaign_id=? AND c.org_id=?
-             ORDER BY c.created_at DESC",
-            [$sel_camp, $user['org_id']], 'ii'
+             ORDER BY c.created_at DESC
+             LIMIT ? OFFSET ?",
+            [$sel_camp, $user['org_id'], $outreach_per_page, $outreach_offset], 'iiii'
         );
-        $stats['total'] = count($candidates);
-        foreach ($candidates as $c) {
-            if ($c['last_wa_status'] === 'sent') $stats['sent']++;
-            elseif (!$c['last_wa_status'] || $c['last_wa_status'] === 'failed') $stats['pending']++;
-        }
     }
 }
 
@@ -112,7 +134,7 @@ $preview_msg  = "🎯 *Interview Invitation — $preview_camp*\n\nHi $preview_na
       <!-- Candidate Table -->
       <div class="card" style="padding:0;overflow:hidden">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid #F1F5F9">
-          <div style="font-size:14px;font-weight:700;color:var(--text)"><?= count($candidates) ?> candidates</div>
+          <div style="font-size:14px;font-weight:700;color:var(--text)"><?= $stats['total'] ?> candidates</div>
           <div style="display:flex;gap:8px">
             <button onclick="selectAllOut(true)" class="btn-sm" style="font-size:12px;padding:5px 10px">Select All</button>
             <button onclick="selectAllOut(false)" class="btn-sm" style="font-size:12px;padding:5px 10px">Clear</button>
@@ -122,6 +144,7 @@ $preview_msg  = "🎯 *Interview Invitation — $preview_camp*\n\nHi $preview_na
             <?php endif; ?>
           </div>
         </div>
+        <div class="pager-top" style="padding:12px 18px 0">Show <?= pagination_per_page_select('outreach_per_page', 'outreach_page', $outreach_per_page) ?> candidates</div>
         <table class="outreach-table" style="width:100%;border-collapse:collapse">
           <thead>
             <tr>
@@ -160,6 +183,7 @@ $preview_msg  = "🎯 *Interview Invitation — $preview_camp*\n\nHi $preview_na
             <?php endif; ?>
           </tbody>
         </table>
+        <?= pagination_html('outreach_page', $outreach_page, $outreach_total_pages, $stats['total'], $outreach_per_page) ?>
       </div>
       <?php elseif (!$sel_camp): ?>
       <div class="card" style="text-align:center;padding:40px;color:var(--gray)">

@@ -14,6 +14,13 @@ if (!$can_manage_campaigns && in_array($action, $campaign_write_actions, true)) 
     header("Location: campaigns.php?msg=admin_campaigns_only");
     exit;
 }
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' && in_array($action, ['save','edit_save'], true)) {
+    $target = $action === 'edit_save' && $campaign_id
+        ? "campaigns.php?action=edit&id=$campaign_id&msg=invalid_method"
+        : "campaigns.php?action=new&msg=invalid_method";
+    header("Location: $target");
+    exit;
+}
 
 function normalize_json_text($value) {
     $value = trim((string)$value);
@@ -715,21 +722,22 @@ if ($editing_question && !empty($editing_question['options_json'])) {
   <?php if (!empty($_GET['msg'])): ?>
     <?php
       $form_msg = (string)$_GET['msg'];
-      $form_errors = ['start_date_past','end_before_start','required_missing','create_failed'];
+      $form_errors = ['start_date_past','end_before_start','required_missing','create_failed','invalid_method'];
       $form_messages = [
           'start_date_past' => 'Start date cannot be in the past. Please choose today or a future date.',
           'end_before_start' => 'End date must be after the start date.',
           'duplicate_campaign' => 'A campaign with the same name and job role already exists.',
           'required_missing' => 'Campaign name and job role are required.',
           'create_failed' => 'Campaign could not be saved. Please contact support or check server error logs.',
+          'invalid_method' => 'Please use the New Campaign form to save campaign details.',
       ];
     ?>
-    <div class="alert <?= in_array($_GET['msg'], ['start_date_past','end_before_start','required_missing','create_failed'], true) ? 'alert-error' : 'alert-success' ?>">
+    <div class="alert <?= in_array($form_msg, $form_errors, true) ? 'alert-error' : 'alert-success' ?>">
       <?= htmlspecialchars($form_messages[$form_msg] ?? str_replace('_', ' ', $form_msg)) ?>
     </div>
   <?php endif; ?>
   <div class="card" style="max-width:720px">
-    <form method="POST" action="campaigns.php?action=<?= $is_edit ? 'edit_save' : 'save' ?><?= $is_edit ? '&id='.$campaign_id : '' ?>">
+    <form method="POST" action="/campaigns?action=<?= $is_edit ? 'edit_save' : 'save' ?><?= $is_edit ? '&id='.$campaign_id : '' ?>">
       <?= csrf_input() ?>
       <div class="alert alert-info" style="margin-bottom:18px">
         <i class="fa-solid fa-user-shield"></i>

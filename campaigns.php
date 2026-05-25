@@ -154,6 +154,37 @@ function campaign_duplicate_exists($org_id, $name, $job_role, $exclude_id = 0) {
     return (bool)db_fetch_one($sql . " LIMIT 1", $params, $types);
 }
 
+function campaign_table_columns() {
+    static $columns = null;
+    if ($columns !== null) return $columns;
+    $columns = [];
+    foreach (db_fetch_all("SHOW COLUMNS FROM campaigns") as $row) {
+        if (!empty($row['Field'])) $columns[$row['Field']] = true;
+    }
+    return $columns;
+}
+
+function campaign_insert_safe(array $values) {
+    $available = campaign_table_columns();
+    $columns = [];
+    $params = [];
+    $types = '';
+    foreach ($values as $column => [$value, $type]) {
+        if (!isset($available[$column])) continue;
+        $columns[] = $column;
+        $params[] = $value;
+        $types .= $type;
+    }
+    if (empty($columns)) return false;
+    $placeholders = implode(',', array_fill(0, count($columns), '?'));
+    $sql = "INSERT INTO campaigns (" . implode(',', $columns) . ") VALUES ($placeholders)";
+    $id = db_insert($sql, $params, $types);
+    if (!$id) {
+        error_log('[campaigns] Campaign insert failed: ' . get_db()->error);
+    }
+    return $id;
+}
+
 function legacy_application_template_fields() {
     return [
         ['Salutation','salutation','dropdown','Select salutation','Personal Information', "Mr.\nMs.\nMrs.\nDr."],
@@ -205,24 +236,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'save') {
         $today = date('Y-m-d');
         $share_token = bin2hex(random_bytes(12));
+        $name = trim((string)($_POST['name'] ?? ''));
+        $job_role = trim((string)($_POST['job_role'] ?? ''));
+        $description = trim((string)($_POST['description'] ?? ''));
         $start_date = trim($_POST['start_date'] ?? '') ?: null;
         $end_date = trim($_POST['end_date'] ?? '') ?: null;
+        $passing_score = max(0, min(100, (int)($_POST['passing_score'] ?? 70)));
+        $num_questions = max(1, min(20, (int)($_POST['num_questions'] ?? 6)));
+        $language = $_POST['language'] ?? 'english';
+        if (!in_array($language, ['english','hinglish','hindi'], true)) $language = 'english';
         if ($start_date && $start_date < $today) {
             header("Location: campaigns.php?action=new&msg=start_date_past"); exit;
         }
         if ($start_date && $end_date && $end_date < $start_date) {
             header("Location: campaigns.php?action=new&msg=end_before_start"); exit;
         }
-        if (campaign_duplicate_exists($user['org_id'], $_POST['name'] ?? '', $_POST['job_role'] ?? '')) {
+        if ($name === '' || $job_role === '') {
+            header("Location: campaigns.php?action=new&msg=required_missing"); exit;
+        }
+        if (campaign_duplicate_exists($user['org_id'], $name, $job_role)) {
             header("Location: campaigns.php?action=new&msg=duplicate_campaign"); exit;
         }
         $integration_type = $_POST['integration_type'] ?? 'none';
         if (!in_array($integration_type, ['none','crm','google_sheet'], true)) $integration_type = 'none';
-        $id = db_insert(
-            "INSERT INTO campaigns (org_id,created_by,name,job_role,description,share_token,start_date,end_date,integration_type,integration_endpoint,el_agent_id,passing_score,num_questions,language,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'draft')",
-            [$user['org_id'],$user['user_id'],$_POST['name'],$_POST['job_role'],$_POST['description'],$share_token,$start_date,$end_date,$integration_type,trim($_POST['integration_endpoint'] ?? ''),trim($_POST['el_agent_id'] ?? ''),(int)$_POST['passing_score'],(int)$_POST['num_questions'],$_POST['language']],
-            'iisssssssssiis'
-        );
+        $id = campaign_insert_safe([
+            'org_id' => [(int)$user['org_id'], 'i'],
+            'created_by' => [(int)$user['user_id'], 'i'],
+            'name' => [$name, 's'],
+            'job_role' => [$job_role, 's'],
+            'description' => [$description, 's'],
+            'share_token' => [$share_token, 's'],
+            'start_date' => [$start_date, 's'],
+            'end_date' => [$end_date, 's'],
+            'integration_type' => [$integration_type, 's'],
+            'integration_endpoint' => [trim($_POST['integration_endpoint'] ?? ''), 's'],
+            'el_agent_id' => [trim($_POST['el_agent_id'] ?? ''), 's'],
+            'passing_score' => [$passing_score, 'i'],
+            'num_questions' => [$num_questions, 'i'],
+            'language' => [$language, 's'],
+            'status' => ['draft', 's'],
+        ]);
+        if (!$id) {
+            header("Location: campaigns.php?action=new&msg=create_failed"); exit;
+        }
         audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $id, 'campaign_created');
         header("Location: campaigns.php?action=questions&id=$id&msg=created"); exit;
     }
@@ -657,8 +713,8 @@ if ($editing_question && !empty($editing_question['options_json'])) {
     <a href="campaigns.php" class="btn-sm">← Back</a>
   </div>
   <?php if (!empty($_GET['msg'])): ?>
-    <div class="alert <?= in_array($_GET['msg'], ['start_date_past','end_before_start'], true) ? 'alert-error' : 'alert-success' ?>">
-      <?= $_GET['msg'] === 'start_date_past' ? 'Start date cannot be in the past. Please choose today or a future date.' : ($_GET['msg'] === 'end_before_start' ? 'End date must be after the start date.' : ($_GET['msg'] === 'duplicate_campaign' ? 'A campaign with the same name and job role already exists.' : htmlspecialchars(str_replace('_',' ',$_GET['msg'])))) ?>
+    <div class="alert <?= in_array($_GET['msg'], ['start_date_past','end_before_start','required_missing','create_failed'], true) ? 'alert-error' : 'alert-success' ?>">
+      <?= $_GET['msg'] === 'start_date_past' ? 'Start date cannot be in the past. Please choose today or a future date.' : ($_GET['msg'] === 'end_before_start' ? 'End date must be after the start date.' : ($_GET['msg'] === 'duplicate_campaign' ? 'A campaign with the same name and job role already exists.' : ($_GET['msg'] === 'required_missing' ? 'Campaign name and job role are required.' : ($_GET['msg'] === 'create_failed' ? 'Campaign could not be saved. Please contact support or check server error logs.' : htmlspecialchars(str_replace('_',' ',$_GET['msg']))))) ?>
     </div>
   <?php endif; ?>
   <div class="card" style="max-width:720px">

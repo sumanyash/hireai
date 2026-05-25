@@ -713,8 +713,19 @@ if ($editing_question && !empty($editing_question['options_json'])) {
     <a href="campaigns.php" class="btn-sm">← Back</a>
   </div>
   <?php if (!empty($_GET['msg'])): ?>
+    <?php
+      $form_msg = (string)$_GET['msg'];
+      $form_errors = ['start_date_past','end_before_start','required_missing','create_failed'];
+      $form_messages = [
+          'start_date_past' => 'Start date cannot be in the past. Please choose today or a future date.',
+          'end_before_start' => 'End date must be after the start date.',
+          'duplicate_campaign' => 'A campaign with the same name and job role already exists.',
+          'required_missing' => 'Campaign name and job role are required.',
+          'create_failed' => 'Campaign could not be saved. Please contact support or check server error logs.',
+      ];
+    ?>
     <div class="alert <?= in_array($_GET['msg'], ['start_date_past','end_before_start','required_missing','create_failed'], true) ? 'alert-error' : 'alert-success' ?>">
-      <?= $_GET['msg'] === 'start_date_past' ? 'Start date cannot be in the past. Please choose today or a future date.' : ($_GET['msg'] === 'end_before_start' ? 'End date must be after the start date.' : ($_GET['msg'] === 'duplicate_campaign' ? 'A campaign with the same name and job role already exists.' : ($_GET['msg'] === 'required_missing' ? 'Campaign name and job role are required.' : ($_GET['msg'] === 'create_failed' ? 'Campaign could not be saved. Please contact support or check server error logs.' : htmlspecialchars(str_replace('_',' ',$_GET['msg']))))) ?>
+      <?= htmlspecialchars($form_messages[$form_msg] ?? str_replace('_', ' ', $form_msg)) ?>
     </div>
   <?php endif; ?>
   <div class="card" style="max-width:720px">

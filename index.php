@@ -18,7 +18,11 @@ $route_map = [
     'logout' => 'logout.php',
     'video_view' => 'video_view.php',
 ];
-if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($route_map[$request_path]) && !empty($_SESSION['token'])) {
+if (isset($route_map[$request_path])) {
+    if (empty($_SESSION['token'])) {
+        header('Location: ' . BASE_URL . '/index.php');
+        exit;
+    }
     $_SERVER['PHP_SELF'] = '/' . $route_map[$request_path];
     $_SERVER['SCRIPT_NAME'] = '/' . $route_map[$request_path];
     require __DIR__ . '/' . $route_map[$request_path];

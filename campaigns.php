@@ -18,12 +18,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     $post_only_targets = [
         'save' => "campaigns.php?action=new&msg=invalid_method",
         'edit_save' => $campaign_id ? "campaigns.php?action=edit&id=$campaign_id&msg=invalid_method" : "campaigns.php?msg=invalid_method",
-        'add_question' => $campaign_id ? "campaigns.php?action=questions&id=$campaign_id&msg=invalid_method" : "campaigns.php?msg=invalid_method",
-        'edit_question' => $campaign_id ? "campaigns.php?action=questions&id=$campaign_id&msg=invalid_method" : "campaigns.php?msg=invalid_method",
-        'add_application_field' => $campaign_id ? "campaigns.php?action=apply_form&id=$campaign_id&msg=invalid_method" : "campaigns.php?msg=invalid_method",
-        'add_application_template' => $campaign_id ? "campaigns.php?action=apply_form&id=$campaign_id&msg=invalid_method" : "campaigns.php?msg=invalid_method",
-        'bulk_delete_application_fields' => $campaign_id ? "campaigns.php?action=apply_form&id=$campaign_id&msg=invalid_method" : "campaigns.php?msg=invalid_method",
-        'activate' => $campaign_id ? "campaigns.php?action=questions&id=$campaign_id&msg=invalid_method" : "campaigns.php?msg=invalid_method",
+        'add_question' => $campaign_id ? "campaigns.php?action=questions&id=$campaign_id" : "campaigns.php",
+        'edit_question' => $campaign_id ? "campaigns.php?action=questions&id=$campaign_id" : "campaigns.php",
+        'add_application_field' => $campaign_id ? "campaigns.php?action=apply_form&id=$campaign_id" : "campaigns.php",
+        'add_application_template' => $campaign_id ? "campaigns.php?action=apply_form&id=$campaign_id" : "campaigns.php",
+        'bulk_delete_application_fields' => $campaign_id ? "campaigns.php?action=apply_form&id=$campaign_id" : "campaigns.php",
+        'activate' => $campaign_id ? "campaigns.php?action=questions&id=$campaign_id" : "campaigns.php",
         'bulk_delete_campaigns' => "campaigns.php?msg=invalid_method",
     ];
     if (isset($post_only_targets[$action])) {
@@ -934,7 +934,6 @@ if ($editing_question && !empty($editing_question['options_json'])) {
     <?php
       $question_errors = [
           'options_required' => 'Add choices for MCQ/rating questions before saving.',
-          'invalid_method' => 'Use the Add Interview Question form below to save a question.',
       ];
     ?>
     <div class="alert <?= isset($question_errors[$_GET['msg']]) ? 'alert-error' : 'alert-success' ?>">
@@ -1021,7 +1020,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
     <div class="simple-question-help">
       <strong>Simple mode:</strong> write the question, choose answer type, set marks, and add choices only for MCQ/rating. AI scores from the question and candidate answer.
     </div>
-    <form method="POST" action="campaigns.php?action=<?= $editing_question ? 'edit_question' : 'add_question' ?>&id=<?= $campaign_id ?>" onsubmit="return validateQuestionForm(this)">
+    <form method="POST" action="/campaigns?action=<?= $editing_question ? 'edit_question' : 'add_question' ?>&id=<?= $campaign_id ?>" onsubmit="return validateQuestionForm(this)">
       <?= csrf_input() ?>
       <?php if ($editing_question): ?><input type="hidden" name="question_id" value="<?= (int)$editing_question['id'] ?>"><?php endif; ?>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">

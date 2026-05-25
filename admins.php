@@ -1,7 +1,8 @@
 <?php
 require_once __DIR__ . '/includes/auth_check.php';
 
-if (($user['role'] ?? '') !== 'super_admin') {
+$user_role_key = strtolower(str_replace([' ', '-'], '_', trim((string)($user['role'] ?? ''))));
+if ($user_role_key !== 'super_admin') {
     http_response_code(403);
     exit('Only Super Admin can manage admin logins.');
 }
@@ -30,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email    = strtolower(trim($_POST['email'] ?? ''));
     $role     = $_POST['role'] ?? 'hr';
     $password = (string)($_POST['password'] ?? '');
-    if (!in_array($role, ['super_admin','hr','recruiter'], true)) $role = 'hr';
+    if (!in_array($role, ['super_admin','admin','hr','recruiter'], true)) $role = 'hr';
     if ($name === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($password) < 8) {
         header('Location: admins.php?msg=invalid'); exit;
     }
@@ -127,6 +128,7 @@ $role_colors = [
           <label class="form-label">Role</label>
           <select class="form-control" name="role">
             <option value="hr">HR Admin</option>
+            <option value="admin">Admin</option>
             <option value="recruiter">Recruiter</option>
             <option value="super_admin">Super Admin</option>
           </select>

@@ -3,7 +3,8 @@ require_once __DIR__ . '/includes/auth_check.php';
 
 $action      = $_GET['action'] ?? 'list';
 $campaign_id = (int)($_GET['id'] ?? 0);
-$can_manage_campaigns = in_array(($user['role'] ?? ''), ['super_admin', 'admin'], true);
+$user_role_key = strtolower(str_replace([' ', '-'], '_', trim((string)($user['role'] ?? ''))));
+$can_manage_campaigns = in_array($user_role_key, ['super_admin', 'admin'], true);
 $campaign_write_actions = [
     'new','save','edit','edit_save','add_question','edit_question','delete_question',
     'add_application_field','add_application_template','delete_application_field',
@@ -614,7 +615,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
     <?php endif; ?>
   </div>
   <?php if (($_GET['msg'] ?? '') === 'admin_campaigns_only'): ?>
-    <div class="alert alert-info"><i class="fa-solid fa-circle-info"></i> Campaign creation and changes are available for Admin users. Super Admin can review reports and manage admins.</div>
+    <div class="alert alert-info"><i class="fa-solid fa-circle-info"></i> Campaign creation and changes are available for Admin and Super Admin users.</div>
   <?php elseif (!empty($_GET['msg'])): ?>
     <div class="alert alert-success">✅ Campaign <?= htmlspecialchars(str_replace('_',' ',$_GET['msg'])) ?>!</div>
   <?php endif; ?>
@@ -648,7 +649,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
             <a href="campaigns.php?action=apply_form&id=<?= $c['id'] ?>" class="btn-sm" style="color:#B45309;border-color:#F59E0B55;background:#FEF3C7">Form Pending</a>
             <?php endif; ?>
             <?php if ($can_manage_campaigns && $c['status'] !== 'active'): ?>
-              <form method="POST" action="campaigns.php?action=activate&id=<?= $c['id'] ?>" style="display:inline">
+              <form method="POST" action="/campaigns?action=activate&id=<?= $c['id'] ?>" style="display:inline">
                 <?= csrf_input() ?>
                 <button type="submit" class="btn-green" style="padding:5px 12px;font-size:13px">▶ Activate</button>
               </form>
@@ -672,7 +673,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
   <?php if ($can_manage_campaigns): ?>
   <div id="bulk-bar" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:12px 24px;border-radius:12px;box-shadow:0 4px 24px #0006;display:none;align-items:center;gap:16px;z-index:999">
     <span id="bulk-count" style="font-weight:600">0 selected</span>
-    <form id="bulk-delete-form" method="POST" action="campaigns.php?action=bulk_delete_campaigns" style="display:inline">
+    <form id="bulk-delete-form" method="POST" action="/campaigns?action=bulk_delete_campaigns" style="display:inline">
       <?= csrf_input() ?>
       <input type="hidden" name="campaign_ids" id="bulk-ids">
       <button type="button" onclick="bulkDeleteCampaigns()" style="background:#ef4444;color:#fff;border:none;padding:8px 20px;border-radius:8px;font-weight:600;cursor:pointer">🗑 Delete Selected</button>
@@ -1229,7 +1230,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
       <?php if (!empty($application_fields)): ?>
       <div class="pager-top" style="padding:12px 18px 0">Show <?= pagination_per_page_select('field_per_page', 'field_page', $field_per_page) ?> fields</div>
       <?php endif; ?>
-      <form method="POST" action="campaigns.php?action=bulk_delete_application_fields&id=<?= $campaign_id ?>" onsubmit="return confirmBulkFieldDelete()">
+      <form method="POST" action="/campaigns?action=bulk_delete_application_fields&id=<?= $campaign_id ?>" onsubmit="return confirmBulkFieldDelete()">
         <?= csrf_input() ?>
         <div class="bulk-field-actions" id="bulkFieldActions">
           <span id="selectedFieldCount">0 fields selected</span>
@@ -1275,7 +1276,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
       <div class="default-template-cta">
         <div class="default-template-title"><i class="fa-solid fa-wand-magic-sparkles" style="color:#6D28D9"></i> Step 1: Add Complete Apply Form</div>
         <div class="default-template-copy">Start with the full original application form. After that, add or remove fields as per this campaign.</div>
-        <form method="POST" action="campaigns.php?action=add_application_template&id=<?= $campaign_id ?>" onsubmit="return confirm('Add the complete default application form to this campaign? Existing matching fields will be skipped.')">
+        <form method="POST" action="/campaigns?action=add_application_template&id=<?= $campaign_id ?>" onsubmit="return confirm('Add the complete default application form to this campaign? Existing matching fields will be skipped.')">
           <?= csrf_input() ?>
           <button type="submit" class="template-btn"><i class="fa-solid fa-circle-plus"></i> Add Complete Apply Form</button>
         </form>
@@ -1290,7 +1291,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
         <button type="button" class="quick-chip" onclick="presetField('LinkedIn Profile','linkedin','url','https://linkedin.com/in/...')"><i class="fa-brands fa-linkedin"></i> LinkedIn</button>
       </div>
       <div class="panel-body">
-        <form method="POST" action="campaigns.php?action=add_application_field&id=<?= $campaign_id ?>">
+        <form method="POST" action="/campaigns?action=add_application_field&id=<?= $campaign_id ?>">
           <?= csrf_input() ?>
           <div class="panel-grid-2">
             <div class="form-group">

@@ -1,6 +1,7 @@
 <?php require_once __DIR__ . '/includes/auth_check.php';
 $oid = $user['org_id'];
-$can_manage_campaigns = ($user['role'] ?? '') !== 'super_admin';
+$user_role_key = strtolower(str_replace([' ', '-'], '_', trim((string)($user['role'] ?? ''))));
+$can_manage_campaigns = in_array($user_role_key, ['super_admin', 'admin'], true);
 
 // ── AJAX: recent activity fragment ──────────────────────────────────────────
 if (($_GET['ajax'] ?? '') === 'recent') {
@@ -220,7 +221,7 @@ $greeting = $hour < 12 ? 'Good morning' : ($hour < 17 ? 'Good afternoon' : 'Good
   <div class="card animate-in">
     <div class="card-header"><h3><i class="fa-solid fa-rocket" style="color:var(--orange)"></i> Campaigns</h3><?php if ($can_manage_campaigns): ?><a href="campaigns?action=new" class="btn-primary-sm"><i class="fa-solid fa-plus fa-xs"></i> New</a><?php endif; ?></div>
     <?php if(empty($campaigns)):?>
-    <div style="text-align:center;padding:32px 0;color:var(--gray)"><i class="fa-solid fa-folder-open fa-3x" style="margin-bottom:12px;display:block;opacity:.3"></i><p style="font-weight:600;margin-bottom:12px">No campaigns yet</p><?php if ($can_manage_campaigns): ?><a href="campaigns?action=new" class="btn-primary">Create First Campaign</a><?php else: ?><span style="font-size:12px">Campaign creation is available for Admin users.</span><?php endif; ?></div>
+    <div style="text-align:center;padding:32px 0;color:var(--gray)"><i class="fa-solid fa-folder-open fa-3x" style="margin-bottom:12px;display:block;opacity:.3"></i><p style="font-weight:600;margin-bottom:12px">No campaigns yet</p><?php if ($can_manage_campaigns): ?><a href="campaigns?action=new" class="btn-primary">Create First Campaign</a><?php else: ?><span style="font-size:12px">Campaign creation is available for Admin and Super Admin users.</span><?php endif; ?></div>
     <?php else: foreach($campaigns as $c):$prog=$c['total_candidates']>0?round($c['done_count']/$c['total_candidates']*100):0;?>
     <div class="camp-item">
       <div style="flex:1;min-width:0">

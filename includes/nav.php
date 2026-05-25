@@ -1,4 +1,8 @@
-<?php $current = basename($_SERVER['PHP_SELF']); $initials = strtoupper(substr($user['name'] ?? 'A', 0, 1)); ?>
+<?php
+$current = basename($_SERVER['PHP_SELF']);
+$initials = strtoupper(substr($user['name'] ?? 'A', 0, 1));
+$nav_role_key = strtolower(str_replace([' ', '-'], '_', trim((string)($user['role'] ?? ''))));
+?>
 <nav class="navbar">
   <div class="nav-logo">
     <img src="https://www.avyukta.in/assets/images/logoo.png" alt="Avyukta" style="height:38px;width:auto;filter:brightness(0) invert(1);">
@@ -10,7 +14,7 @@
     <a href="/analytics" class="<?= $current==='analytics.php'?'active':'' ?>"><i class="fa-solid fa-chart-line fa-sm"></i> Analytics</a>
     <a href="/outreach" class="<?= $current==='outreach.php'?'active':'' ?>"><i class="fa-solid fa-paper-plane fa-sm"></i> Outreach</a>
     <a href="/credits" class="<?= $current==='credits.php'?'active':'' ?>"><i class="fa-solid fa-coins fa-sm"></i> Credits</a>
-    <?php if (($user['role'] ?? '') === 'super_admin'): ?>
+    <?php if ($nav_role_key === 'super_admin'): ?>
     <a href="/admins" class="<?= $current==='admins.php'?'active':'' ?>"><i class="fa-solid fa-user-shield fa-sm"></i> Admins</a>
     <?php endif; ?>
   </div>

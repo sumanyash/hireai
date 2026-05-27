@@ -105,7 +105,7 @@ function call_vertex_scoring($prompt,$json_path,$model){
   $sa=$sa_or_error;
   $project=defined('VERTEX_AI_PROJECT')&&VERTEX_AI_PROJECT?VERTEX_AI_PROJECT:($sa['project_id']??'');
   $location=defined('VERTEX_AI_LOCATION')&&VERTEX_AI_LOCATION?VERTEX_AI_LOCATION:'us-central1';
-  $vertex_model=defined('VERTEX_AI_MODEL')&&VERTEX_AI_MODEL?VERTEX_AI_MODEL:($model==='gemini-2.0-flash'?'gemini-2.0-flash-001':$model);
+  $vertex_model=defined('VERTEX_AI_MODEL')&&VERTEX_AI_MODEL?VERTEX_AI_MODEL:$model;
   if(!$project)return [null,'Vertex AI project is missing. Set VERTEX_AI_PROJECT or use service account JSON with project_id.'];
   $url='https://'.$location.'-aiplatform.googleapis.com/v1/projects/'.rawurlencode($project).'/locations/'.rawurlencode($location).'/publishers/google/models/'.rawurlencode($vertex_model).':generateContent';
   $payload=[

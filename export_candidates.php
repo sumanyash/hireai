@@ -9,7 +9,7 @@ if ($export_token !== '') {
     if (count($parts) === 4) {
         [$org_id, $user_id, $exp, $sig] = $parts;
         $payload = (int)$org_id . ':' . (int)$user_id . ':' . (int)$exp;
-        $expected = hash_hmac('sha256', $payload, JWT_SECRET);
+        $expected = hash_hmac('sha256', $payload, EXPORT_TOKEN_SECRET);
         if ((int)$exp >= time() && hash_equals($expected, $sig)) {
             $export_user = [
                 'org_id' => (int)$org_id,

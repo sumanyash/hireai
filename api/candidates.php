@@ -16,10 +16,6 @@ $method = $_SERVER['REQUEST_METHOD'];
 $input  = json_decode(file_get_contents('php://input'), true) ?? [];
 $action = $input['action'] ?? $_GET['action'] ?? '';
 
-function normalize_phone($phone) {
-    return preg_replace('/[^0-9]/', '', (string)$phone);
-}
-
 function valid_candidate_email($email) {
     $email = trim((string)$email);
     if ($email === '') return true;
@@ -67,23 +63,29 @@ function safe_candidate_reminder($candidate_id, $campaign_id) {
 function candidate_duplicate_exists($campaign_id, $phone, $email) {
     $phone = normalize_phone($phone);
     $email = strtolower(trim((string)$email));
-    $rows = db_fetch_all("SELECT id,phone,email FROM candidates WHERE campaign_id=?", [$campaign_id], 'i');
-    foreach ($rows as $row) {
-        if ($phone !== '' && normalize_phone($row['phone'] ?? '') === $phone) return true;
-        if ($email !== '' && strtolower(trim($row['email'] ?? '')) === $email) return true;
-    }
-    return false;
+    $conditions = [];
+    $params = [];
+    $types = '';
+    if ($phone !== '') { $conditions[] = "phone=?"; $params[] = $phone; $types .= 's'; }
+    if ($email !== '') { $conditions[] = "LOWER(email)=?"; $params[] = $email; $types .= 's'; }
+    if (empty($conditions)) return false;
+    $where = implode(' OR ', $conditions);
+    $row = db_fetch_one("SELECT id FROM candidates WHERE campaign_id=? AND ($where) LIMIT 1", array_merge([$campaign_id], $params), 'i' . $types);
+    return $row !== null;
 }
 
 function candidate_duplicate_exists_for_update($campaign_id, $candidate_id, $phone, $email) {
     $phone = normalize_phone($phone);
     $email = strtolower(trim((string)$email));
-    $rows = db_fetch_all("SELECT id,phone,email FROM candidates WHERE campaign_id=? AND id<>?", [$campaign_id, $candidate_id], 'ii');
-    foreach ($rows as $row) {
-        if ($phone !== '' && normalize_phone($row['phone'] ?? '') === $phone) return true;
-        if ($email !== '' && strtolower(trim($row['email'] ?? '')) === $email) return true;
-    }
-    return false;
+    $conditions = [];
+    $params = [];
+    $types = '';
+    if ($phone !== '') { $conditions[] = "phone=?"; $params[] = $phone; $types .= 's'; }
+    if ($email !== '') { $conditions[] = "LOWER(email)=?"; $params[] = $email; $types .= 's'; }
+    if (empty($conditions)) return false;
+    $where = implode(' OR ', $conditions);
+    $row = db_fetch_one("SELECT id FROM candidates WHERE campaign_id=? AND id<>? AND ($where) LIMIT 1", array_merge([$campaign_id, $candidate_id], $params), 'ii' . $types);
+    return $row !== null;
 }
 
 function normalize_candidate_row($row) {
@@ -277,19 +279,28 @@ if ($action === 'bulk_delete' && $method === 'POST') {
     $ids = array_filter($ids);
     if (empty($ids)) json_response(['error' => 'No candidate IDs provided'], 400);
     $deleted = 0;
+    $db = get_db();
     foreach ($ids as $cid) {
         $c = db_fetch_one("SELECT id FROM candidates WHERE id=? AND org_id=?", [$cid, $user['org_id']], 'ii');
         if (!$c) continue;
-        db_execute("DELETE FROM interview_answers WHERE candidate_id=?", [$cid], 'i');
-        db_execute("DELETE FROM interview_sessions WHERE candidate_id=?", [$cid], 'i');
-        db_execute("DELETE FROM interview_results WHERE candidate_id=?", [$cid], 'i');
-        db_execute("DELETE FROM scores WHERE candidate_id=?", [$cid], 'i');
-        db_execute("DELETE FROM outreach_log WHERE candidate_id=?", [$cid], 'i');
-        db_execute("DELETE FROM reminder_jobs WHERE candidate_id=?", [$cid], 'i');
-        db_execute("DELETE FROM recruiter_notes WHERE candidate_id=?", [$cid], 'i');
-        db_execute("DELETE FROM candidates WHERE id=? AND org_id=?", [$cid, $user['org_id']], 'ii');
-        audit_log($user['org_id'], $user['user_id'] ?? null, 'candidate', $cid, 'candidate_deleted');
-        $deleted++;
+        $db->begin_transaction();
+        try {
+            db_execute("DELETE FROM interview_answers WHERE candidate_id=?", [$cid], 'i');
+            db_execute("DELETE FROM interview_sessions WHERE candidate_id=?", [$cid], 'i');
+            db_execute("DELETE FROM interview_results WHERE candidate_id=?", [$cid], 'i');
+            db_execute("DELETE FROM scores WHERE candidate_id=?", [$cid], 'i');
+            db_execute("DELETE FROM outreach_log WHERE candidate_id=?", [$cid], 'i');
+            db_execute("DELETE FROM reminder_jobs WHERE candidate_id=?", [$cid], 'i');
+            db_execute("DELETE FROM recruiter_notes WHERE candidate_id=?", [$cid], 'i');
+            db_execute("DELETE FROM ai_call_results WHERE candidate_id=?", [$cid], 'i');
+            db_execute("DELETE FROM candidates WHERE id=? AND org_id=?", [$cid, $user['org_id']], 'ii');
+            $db->commit();
+            audit_log($user['org_id'], $user['user_id'] ?? null, 'candidate', $cid, 'candidate_deleted');
+            $deleted++;
+        } catch (Throwable $e) {
+            $db->rollback();
+            error_log('[bulk_delete] candidate ' . $cid . ': ' . $e->getMessage());
+        }
     }
     json_response(['success' => true, 'deleted' => $deleted]);
 }
@@ -300,15 +311,24 @@ if ($action === 'delete' && $method === 'POST') {
     $c = db_fetch_one("SELECT id FROM candidates WHERE id=? AND org_id=?", [$candidate_id, $user['org_id']], 'ii');
     if (!$c) json_response(['error' => 'Candidate not found'], 404);
 
-    // Cascade delete related data
-    db_execute("DELETE FROM interview_answers WHERE candidate_id=?", [$candidate_id], 'i');
-    db_execute("DELETE FROM interview_sessions WHERE candidate_id=?", [$candidate_id], 'i');
-    db_execute("DELETE FROM interview_results WHERE candidate_id=?", [$candidate_id], 'i');
-    db_execute("DELETE FROM scores WHERE candidate_id=?", [$candidate_id], 'i');
-    db_execute("DELETE FROM outreach_log WHERE candidate_id=?", [$candidate_id], 'i');
-    db_execute("DELETE FROM reminder_jobs WHERE candidate_id=?", [$candidate_id], 'i');
-    db_execute("DELETE FROM recruiter_notes WHERE candidate_id=?", [$candidate_id], 'i');
-    db_execute("DELETE FROM candidates WHERE id=? AND org_id=?", [$candidate_id, $user['org_id']], 'ii');
+    $db = get_db();
+    $db->begin_transaction();
+    try {
+        db_execute("DELETE FROM interview_answers WHERE candidate_id=?", [$candidate_id], 'i');
+        db_execute("DELETE FROM interview_sessions WHERE candidate_id=?", [$candidate_id], 'i');
+        db_execute("DELETE FROM interview_results WHERE candidate_id=?", [$candidate_id], 'i');
+        db_execute("DELETE FROM scores WHERE candidate_id=?", [$candidate_id], 'i');
+        db_execute("DELETE FROM outreach_log WHERE candidate_id=?", [$candidate_id], 'i');
+        db_execute("DELETE FROM reminder_jobs WHERE candidate_id=?", [$candidate_id], 'i');
+        db_execute("DELETE FROM recruiter_notes WHERE candidate_id=?", [$candidate_id], 'i');
+        db_execute("DELETE FROM ai_call_results WHERE candidate_id=?", [$candidate_id], 'i');
+        db_execute("DELETE FROM candidates WHERE id=? AND org_id=?", [$candidate_id, $user['org_id']], 'ii');
+        $db->commit();
+    } catch (Throwable $e) {
+        $db->rollback();
+        error_log('[delete candidate] ' . $e->getMessage());
+        json_response(['error' => 'Failed to delete candidate'], 500);
+    }
     audit_log($user['org_id'], $user['user_id'] ?? null, 'candidate', $candidate_id, 'candidate_deleted');
 
     json_response(['success' => true, 'message' => 'Candidate deleted successfully']);

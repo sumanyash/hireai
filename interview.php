@@ -18,11 +18,11 @@ $candidate = db_fetch_one(
 );
 
 if (!$candidate) { http_response_code(404); die('Invalid or expired interview link.'); }
-if (!empty($candidate['link_expires_at']) && strtotime($candidate['link_expires_at']) < time() && !in_array($candidate['status'], ['interview_completed','shortlisted','rejected'])) {
+if (!empty($candidate['link_expires_at']) && strtotime($candidate['link_expires_at']) < time() && !in_array($candidate['status'], ['interview_completed','shortlisted','rejected','on_hold'])) {
     http_response_code(410);
     die('This interview link has expired. Please contact the recruiter for a fresh link.');
 }
-$already_done = in_array($candidate['status'], ['interview_completed','shortlisted','rejected']);
+$already_done = in_array($candidate['status'], ['interview_completed','shortlisted','rejected','on_hold']);
 $questions = db_fetch_all("SELECT * FROM questions WHERE campaign_id=? ORDER BY order_no ASC", [$candidate['campaign_id']], 'i');
 if (!$already_done && empty($questions)) { die('No questions configured. Please contact the recruiter.'); }
 $total_q = count($questions);

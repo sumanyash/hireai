@@ -166,6 +166,7 @@ if ($action === 'custom_whatsapp_send') {
         $ok = ($result['code'] >= 200 && $result['code'] < 300);
         $ok ? $sent++ : $failed++;
         db_execute("INSERT INTO outreach_log (candidate_id,campaign_id,channel,status) VALUES (?,?,'whatsapp',?)", [$id, $c['campaign_id'], $ok ? 'sent' : 'failed'], 'iis');
+        if ($ok) db_execute("UPDATE candidates SET status='outreach_sent' WHERE id=? AND status='pending'", [$id], 'i');
         usleep(400000);
     }
     json_response(['success' => $failed === 0, 'sent' => $sent, 'failed' => $failed]);
@@ -189,7 +190,8 @@ if ($action === 'send_single') {
         'reason' => 'manual_interview_invite',
     ]);
     $status = ($result['code'] >= 200 && $result['code'] < 300) ? 'sent' : 'failed';
-    error_log("[outreach send_single] candidate_id=$candidate_id phone={$c['phone']} status=$status code={$result['code']}");
+    $phone_masked = substr($c['phone'], 0, 4) . '****' . substr($c['phone'], -2);
+    error_log("[outreach send_single] candidate_id=$candidate_id phone=$phone_masked status=$status code={$result['code']}");
     db_execute("INSERT INTO outreach_log (candidate_id,campaign_id,channel,status) VALUES (?,?,'whatsapp',?)", [$candidate_id, $c['campaign_id'], $status], 'iis');
     if ($status === 'sent') db_execute("UPDATE candidates SET status='outreach_sent' WHERE id=?", [$candidate_id], 'i');
     json_response(['status' => $status, 'message' => "WhatsApp $status to {$c['phone']}", 'provider' => $result]);

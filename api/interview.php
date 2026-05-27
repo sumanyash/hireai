@@ -87,8 +87,9 @@ if($action==='complete_interview'&&$method==='POST'){
     'campaign_id' => $c['campaign_id'],
     'reason' => 'interview_submission_confirmation',
   ]);
-  $log="/tmp/score_{$c['id']}.log";
-  exec("php ".escapeshellarg(__DIR__."/score.php")." {$c['id']} {$c['campaign_id']} > $log 2>&1 &");
+  $cid=(int)$c['id'];$cmp=(int)$c['campaign_id'];
+  $log=escapeshellarg("/tmp/score_{$cid}.log");
+  exec("php ".escapeshellarg(__DIR__."/score.php")." $cid $cmp > $log 2>&1 &");
   json_response(['status'=>'completed']);
 }
 

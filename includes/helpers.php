@@ -1,5 +1,9 @@
 <?php
 
+function normalize_phone(string $phone): string {
+    return preg_replace('/[^0-9]/', '', $phone);
+}
+
 function security_json_error(string $message, int $code = 403): void {
     http_response_code($code);
     header('Content-Type: application/json');

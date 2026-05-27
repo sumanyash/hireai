@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    role ENUM('super_admin','hr','recruiter') DEFAULT 'hr',
+    role ENUM('super_admin','admin','hr','recruiter') DEFAULT 'hr',
     is_active TINYINT DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -351,3 +351,61 @@ INSERT IGNORE INTO questions (campaign_id, parameter, parameter_label, weight, m
 (1,'ai_projects','AI Projects Done',20,20,'Describe one AI project you built from scratch. What was your role and the outcome?','Clear project, specific role, tech stack, quantifiable results',4),
 (1,'machine_learning','Machine Learning',20,20,'Explain overfitting in ML and how you would prevent it in a real project.','Correct definition, regularization/dropout/cross-validation, examples',5),
 (1,'api_db_integration','API & DB Integration (Python/SQL)',15,15,'How do you connect Python to MySQL and fetch data? Explain with an example.','mysql-connector/SQLAlchemy, connection, cursor, execute, fetchall',6);
+
+-- ─── AI CALL RESULTS (from Avya AI dialer webhook) ──────────────────────────
+CREATE TABLE IF NOT EXISTS ai_call_results (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    candidate_id INT NOT NULL,
+    campaign_id INT NULL,
+    org_id INT NULL,
+    call_id VARCHAR(255) NULL,
+    phone VARCHAR(30) NULL,
+    duration_sec INT DEFAULT 0,
+    transcript LONGTEXT NULL,
+    summary TEXT NULL,
+    sentiment VARCHAR(50) NULL,
+    interview_score INT NULL,
+    interview_grade VARCHAR(5) NULL,
+    interview_recommendation VARCHAR(100) NULL,
+    score_reasoning TEXT NULL,
+    strengths LONGTEXT NULL,
+    improvements LONGTEXT NULL,
+    raw_payload LONGTEXT NULL,
+    received_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_candidate (candidate_id),
+    KEY idx_call_id (call_id(191)),
+    KEY idx_phone (phone)
+);
+
+-- ─── MISSING INDEXES ─────────────────────────────────────────────────────────
+ALTER TABLE candidates
+  ADD INDEX IF NOT EXISTS idx_org_id (org_id),
+  ADD INDEX IF NOT EXISTS idx_campaign_id (campaign_id),
+  ADD INDEX IF NOT EXISTS idx_status (status),
+  ADD INDEX IF NOT EXISTS idx_phone (phone);
+
+ALTER TABLE scores
+  ADD INDEX IF NOT EXISTS idx_candidate_id (candidate_id),
+  ADD INDEX IF NOT EXISTS idx_campaign_id (campaign_id);
+
+ALTER TABLE interview_sessions
+  ADD INDEX IF NOT EXISTS idx_candidate_id (candidate_id);
+
+ALTER TABLE interview_answers
+  ADD INDEX IF NOT EXISTS idx_candidate_id (candidate_id),
+  ADD INDEX IF NOT EXISTS idx_session_id (session_id);
+
+ALTER TABLE outreach_log
+  ADD INDEX IF NOT EXISTS idx_candidate_id (candidate_id),
+  ADD INDEX IF NOT EXISTS idx_campaign_id (campaign_id);
+
+ALTER TABLE audit_logs
+  ADD INDEX IF NOT EXISTS idx_org_id (org_id),
+  ADD INDEX IF NOT EXISTS idx_entity (entity_type, entity_id);
+
+ALTER TABLE interview_results
+  ADD INDEX IF NOT EXISTS idx_campaign_id (campaign_id);
+
+ALTER TABLE reminder_jobs
+  ADD INDEX IF NOT EXISTS idx_candidate_id (candidate_id),
+  ADD INDEX IF NOT EXISTS idx_scheduled (scheduled_at);

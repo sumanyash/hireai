@@ -41,6 +41,7 @@ define('DIALER_CAMPAIGN_ID', (int)envv('DIALER_CAMPAIGN_ID', '0'));
 define('DIALER_API_URL', envv('DIALER_API_URL', 'https://dialer.clouddialer.in/api/public/call'));
 define('CALL_WEBHOOK_SECRET', envv('CALL_WEBHOOK_SECRET', ''));
 define('INTERVIEW_WEBHOOK_SECRET', envv('INTERVIEW_WEBHOOK_SECRET', ''));
+define('EXPORT_TOKEN_SECRET', envv('EXPORT_TOKEN_SECRET', JWT_SECRET));
 define('INTEGRATION_ALLOWED_DOMAINS', envv('INTEGRATION_ALLOWED_DOMAINS', ''));
 define('RAZORPAY_KEY_ID', envv('RAZORPAY_KEY_ID', ''));
 define('RAZORPAY_KEY_SECRET', envv('RAZORPAY_KEY_SECRET', ''));

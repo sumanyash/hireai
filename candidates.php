@@ -25,19 +25,19 @@ if ($search) {
     $bwhere .= " AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR camp.name LIKE ? OR c.status LIKE ?)";
     $bparams[] = $like; $bparams[] = $like; $bparams[] = $like; $bparams[] = $like; $bparams[] = $like; $btypes .= 'sssss';
 }
-// Status counts across all statuses (no status filter)
+// Status counts via GROUP BY — avoids loading all rows just for counts
 $count_rows = db_fetch_all(
-    "SELECT c.status
+    "SELECT c.status, COUNT(*) as cnt
      FROM candidates c
      LEFT JOIN campaigns camp ON c.campaign_id=camp.id
-     LEFT JOIN interview_results ir ON c.id=ir.candidate_id
-     WHERE $bwhere",
+     WHERE $bwhere
+     GROUP BY c.status",
     $bparams,
     $btypes
 );
-$total = count($count_rows);
+$total = 0;
 $status_counts = [];
-foreach ($count_rows as $r) $status_counts[$r['status']] = ($status_counts[$r['status']] ?? 0) + 1;
+foreach ($count_rows as $r) { $status_counts[$r['status']] = (int)$r['cnt']; $total += (int)$r['cnt']; }
 
 // Paginated query WITH status filter
 $where  = $bwhere;
@@ -54,21 +54,13 @@ $candidates = db_fetch_all(
     $params, $types
 );
 $total_filtered = count($candidates);
-$column_source_rows = db_fetch_all(
-    "SELECT c.application_answers_json
-     FROM candidates c
-     LEFT JOIN campaigns camp ON c.campaign_id=camp.id
-     LEFT JOIN interview_results ir ON c.id=ir.candidate_id
-     WHERE $where",
-    $params,
-    $types
-);
+$column_source_rows = $candidates;
 function candidate_export_token(array $user): string {
     $org_id = (int)($user['org_id'] ?? 0);
     $user_id = (int)($user['user_id'] ?? 0);
     $exp = time() + 900;
     $payload = $org_id . ':' . $user_id . ':' . $exp;
-    $sig = hash_hmac('sha256', $payload, JWT_SECRET);
+    $sig = hash_hmac('sha256', $payload, EXPORT_TOKEN_SECRET);
     return base64_encode($payload . ':' . $sig);
 }
 

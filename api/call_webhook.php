@@ -20,8 +20,8 @@ if ($data === null) {
 
 error_log("[call_webhook] received call_id=" . ($data['call_id'] ?? 'n/a') . " phone=" . ($data['phone'] ?? 'n/a'));
 
-// ── Normalise phone ───────────────────────────────────────────
-function normalize_phone(string $p): string {
+// ── Normalise phone — strips +91 prefix to get bare 10-digit number ──────────
+function normalize_phone_10(string $p): string {
     $p = preg_replace('/[^0-9]/', '', $p);
     if (strlen($p) === 12 && str_starts_with($p, '91')) return substr($p, 2);
     if (strlen($p) === 13 && str_starts_with($p, '091')) return substr($p, 3);
@@ -29,7 +29,7 @@ function normalize_phone(string $p): string {
 }
 
 $raw_phone = (string)($data['phone'] ?? '');
-$phone10   = normalize_phone($raw_phone);
+$phone10   = normalize_phone_10($raw_phone);
 
 // ── Match candidate ───────────────────────────────────────────
 // Try by phone (last 10 digits), ordered by most recent

@@ -2,8 +2,24 @@
 require_once __DIR__.'/../includes/config.php';
 require_once __DIR__.'/../includes/db.php';
 require_once __DIR__.'/../includes/functions.php';
-if(php_sapi_name()==='cli'){$candidate_id=(int)($argv[1]??0);$campaign_id=(int)($argv[2]??0);}
-else{header('Content-Type: application/json');$candidate_id=(int)($_GET['candidate_id']??0);$campaign_id=(int)($_GET['campaign_id']??0);}
+
+function log_s($m){echo '['.date('H:i:s')."] $m\n";}
+
+if(php_sapi_name()==='cli'){
+    $candidate_id=(int)($argv[1]??0);
+    $campaign_id=(int)($argv[2]??0);
+} else {
+    // HTTP access requires valid JWT auth
+    $http_user = verify_jwt();
+    if (!$http_user) {
+        http_response_code(401);
+        echo json_encode(['error'=>'Unauthorized']);
+        exit;
+    }
+    header('Content-Type: application/json');
+    $candidate_id=(int)($_GET['candidate_id']??0);
+    $campaign_id=(int)($_GET['campaign_id']??0);
+}
 $silent_mode=php_sapi_name()==='cli'&&(in_array('--silent',$argv??[],true)||getenv('HIREAI_SCORE_SILENT')==='1');
 if(!$candidate_id||!$campaign_id){log_s("Missing args");exit(1);}
 log_s("Scoring candidate $candidate_id campaign $campaign_id");
@@ -322,4 +338,3 @@ send_whatsapp($candidate['phone'],$wa, [
 ]);
 log_s("WhatsApp sent. Done.");
 if(php_sapi_name()!=='cli')echo json_encode(['status'=>'done','score'=>$total_score,'max'=>$max_total,'pass_fail'=>$pf]);
-function log_s($m){echo '['.date('H:i:s')."] $m\n";}

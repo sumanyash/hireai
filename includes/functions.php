@@ -72,45 +72,6 @@ function audit_log($org_id, $user_id, $entity_type, $entity_id, $action, $detail
 }
 
 function ensure_credit_wallet($org_id) {
-    static $credit_tables_ready = false;
-    if (!$credit_tables_ready) {
-        db_execute("CREATE TABLE IF NOT EXISTS credit_wallets (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            org_id INT NOT NULL UNIQUE,
-            whatsapp_credits INT NOT NULL DEFAULT 0,
-            sms_credits INT NOT NULL DEFAULT 0,
-            email_credits INT NOT NULL DEFAULT 0,
-            rcs_credits INT NOT NULL DEFAULT 0,
-            low_balance_threshold INT NOT NULL DEFAULT 100,
-            auto_recharge_enabled TINYINT NOT NULL DEFAULT 0,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )");
-        db_execute("CREATE TABLE IF NOT EXISTS credit_transactions (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            org_id INT NOT NULL,
-            user_id INT NULL,
-            provider ENUM('razorpay','paypal','payoneer','manual') NOT NULL DEFAULT 'manual',
-            provider_payment_id VARCHAR(180) NULL,
-            amount DECIMAL(10,2) NOT NULL DEFAULT 0,
-            currency VARCHAR(8) NOT NULL DEFAULT 'INR',
-            credits_json JSON NOT NULL,
-            status ENUM('pending','confirmed','failed') NOT NULL DEFAULT 'pending',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )");
-        db_execute("CREATE TABLE IF NOT EXISTS credit_usage (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            org_id INT NOT NULL,
-            candidate_id INT NULL,
-            campaign_id INT NULL,
-            channel ENUM('whatsapp','sms','email','rcs') NOT NULL,
-            credits_used INT NOT NULL DEFAULT 1,
-            balance_after INT NULL,
-            reason VARCHAR(120) NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )");
-        $credit_tables_ready = true;
-    }
     $org_id = (int)$org_id;
     if ($org_id <= 0) return null;
     $wallet = db_fetch_one("SELECT * FROM credit_wallets WHERE org_id=?", [$org_id], 'i');
@@ -153,8 +114,14 @@ function deduct_credit($org_id, $channel = 'whatsapp', $credits = 1, $candidate_
     if ($balance < $credits) {
         return ['success' => false, 'error' => 'Insufficient credits', 'balance' => $balance];
     }
-    $ok = db_execute("UPDATE credit_wallets SET $column=$column-? WHERE org_id=? AND $column>=?", [$credits, $org_id, $credits], 'iii');
-    if (!$ok) return ['success' => false, 'error' => 'Credit update failed', 'balance' => $balance];
+    $db = get_db();
+    $stmt = $db->prepare("UPDATE credit_wallets SET $column=$column-? WHERE org_id=? AND $column>=?");
+    if (!$stmt) return ['success' => false, 'error' => 'Credit update failed', 'balance' => $balance];
+    $stmt->bind_param('iii', $credits, $org_id, $credits);
+    $stmt->execute();
+    if ($db->affected_rows < 1) {
+        return ['success' => false, 'error' => 'Insufficient credits (concurrent request)', 'balance' => $balance];
+    }
     $after = max(0, $balance - $credits);
     db_insert(
         "INSERT INTO credit_usage (org_id,candidate_id,campaign_id,channel,credits_used,balance_after,reason) VALUES (?,?,?,?,?,?,?)",
@@ -241,7 +208,8 @@ function call_openai($prompt, $max_tokens = 400) {
     return $data['choices'][0]['message']['content'] ?? '';
 }
 
-function score_candidate($candidate_id, $campaign_id, $transcript) {
+// REMOVED: score_candidate() — use api/score.php instead
+/* function score_candidate($candidate_id, $campaign_id, $transcript) {
     $questions = db_fetch_all("SELECT * FROM questions WHERE campaign_id=? ORDER BY order_no", [$campaign_id], 'i');
     if (empty($questions)) return;
 
@@ -299,4 +267,4 @@ function score_candidate($candidate_id, $campaign_id, $transcript) {
             'reason' => 'legacy_interview_result_notification',
         ]);
     }
-}
+} */

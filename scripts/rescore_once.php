@@ -8,17 +8,19 @@ if (php_sapi_name() !== 'cli') {
     exit(1);
 }
 
-$opts = getopt('', ['all', 'campaign:', 'candidate:', 'limit:', 'delay:', 'retries:', 'dry-run']);
+$opts = getopt('', ['all', 'on-hold', 'campaign:', 'candidate:', 'limit:', 'delay:', 'retries:', 'dry-run']);
 $campaign_id = isset($opts['campaign']) ? (int)$opts['campaign'] : 0;
 $candidate_id = isset($opts['candidate']) ? (int)$opts['candidate'] : 0;
 $limit = isset($opts['limit']) ? max(1, (int)$opts['limit']) : 0;
 $delay = isset($opts['delay']) ? max(0, (int)$opts['delay']) : 25;
 $retries = isset($opts['retries']) ? max(0, (int)$opts['retries']) : 3;
 $dry_run = array_key_exists('dry-run', $opts);
+$on_hold_only = array_key_exists('on-hold', $opts);
 
-if (!$candidate_id && !$campaign_id && !array_key_exists('all', $opts)) {
+if (!$candidate_id && !$campaign_id && !array_key_exists('all', $opts) && !$on_hold_only) {
     echo "Usage:\n";
     echo "  php scripts/rescore_once.php --all\n";
+    echo "  php scripts/rescore_once.php --on-hold\n";
     echo "  php scripts/rescore_once.php --campaign=13\n";
     echo "  php scripts/rescore_once.php --candidate=112\n";
     echo "  php scripts/rescore_once.php --all --limit=20 --dry-run\n";
@@ -32,6 +34,9 @@ $where = "EXISTS (SELECT 1 FROM interview_answers ia WHERE ia.candidate_id = c.i
 $params = [];
 $types = '';
 
+if ($on_hold_only) {
+    $where .= " AND c.status='on_hold'";
+}
 if ($candidate_id) {
     $where .= " AND c.id=?";
     $params[] = $candidate_id;

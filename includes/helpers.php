@@ -124,6 +124,97 @@ function validate_integration_endpoint(string $endpoint): bool {
     return !is_blocked_integration_host($parts['host']);
 }
 
+function login_client_ip(): string {
+    $candidates = [
+        $_SERVER['HTTP_CF_CONNECTING_IP'] ?? '',
+        $_SERVER['HTTP_X_REAL_IP'] ?? '',
+        explode(',', (string)($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ''))[0] ?? '',
+        $_SERVER['REMOTE_ADDR'] ?? '',
+    ];
+    foreach ($candidates as $ip) {
+        $ip = trim((string)$ip);
+        if (filter_var($ip, FILTER_VALIDATE_IP)) return $ip;
+    }
+    return 'unknown';
+}
+
+function login_ip_lock_key(): string {
+    return hash('sha256', login_client_ip());
+}
+
+function login_lock_key(string $email = ''): string {
+    return hash('sha256', login_client_ip() . '|' . strtolower(trim($email)));
+}
+
+function login_lock_file(): string {
+    return sys_get_temp_dir() . '/hireai_login_locks.json';
+}
+
+function login_lock_mutate(callable $callback) {
+    $data = [];
+    $file = login_lock_file();
+    $fh = fopen($file, 'c+');
+    if (!$fh) return $callback($data);
+    flock($fh, LOCK_EX);
+    $raw = stream_get_contents($fh);
+    $data = json_decode($raw ?: '{}', true);
+    if (!is_array($data)) $data = [];
+    $now = time();
+    foreach ($data as $key => $row) {
+        if (($row['locked_until'] ?? 0) < $now && ($row['last_attempt'] ?? 0) < $now - 86400) unset($data[$key]);
+    }
+    $result = $callback($data);
+    ftruncate($fh, 0);
+    rewind($fh);
+    fwrite($fh, json_encode($data));
+    fflush($fh);
+    flock($fh, LOCK_UN);
+    fclose($fh);
+    return $result;
+}
+
+function login_lock_state(string $email = ''): array {
+    $keys = [login_ip_lock_key(), login_lock_key($email)];
+    return login_lock_mutate(function (&$data) use ($keys) {
+        $state = ['attempts' => 0, 'locked_until' => 0];
+        foreach ($keys as $key) {
+            $row = $data[$key] ?? [];
+            $state['attempts'] = max($state['attempts'], (int)($row['attempts'] ?? 0));
+            $state['locked_until'] = max($state['locked_until'], (int)($row['locked_until'] ?? 0));
+        }
+        return $state;
+    });
+}
+
+function login_lock_register_failure(string $email = ''): array {
+    $keys = [login_ip_lock_key(), login_lock_key($email)];
+    return login_lock_mutate(function (&$data) use ($keys) {
+        $now = time();
+        $max_attempts = 5;
+        $attempts = 0;
+        $locked_until = 0;
+        foreach ($keys as $key) {
+            $row = $data[$key] ?? ['attempts' => 0, 'locked_until' => 0, 'last_attempt' => 0];
+            if (($row['last_attempt'] ?? 0) < $now - 900 && ($row['locked_until'] ?? 0) < $now) $row['attempts'] = 0;
+            $row['attempts'] = (int)($row['attempts'] ?? 0) + 1;
+            $row['last_attempt'] = $now;
+            if ($row['attempts'] >= $max_attempts) $row['locked_until'] = $now + 900;
+            $data[$key] = $row;
+            $attempts = max($attempts, (int)$row['attempts']);
+            $locked_until = max($locked_until, (int)($row['locked_until'] ?? 0));
+        }
+        return ['attempts' => $attempts, 'locked_until' => $locked_until, 'left' => max(0, $max_attempts - $attempts)];
+    });
+}
+
+function login_lock_clear(string $email = ''): void {
+    $keys = [login_ip_lock_key(), login_lock_key($email)];
+    login_lock_mutate(function (&$data) use ($keys) {
+        foreach ($keys as $key) unset($data[$key]);
+        return null;
+    });
+}
+
 function pagination_page(string $key = 'page'): int {
     return max(1, (int)($_GET[$key] ?? 1));
 }

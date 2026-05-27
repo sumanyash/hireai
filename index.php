@@ -21,7 +21,7 @@ $route_map = [
 ];
 if (isset($route_map[$request_path])) {
     if (empty($_SESSION['token'])) {
-        header('Location: ' . BASE_URL . '/index.php');
+        header('Location: ' . BASE_URL . '/');
         exit;
     }
     $_SERVER['PHP_SELF'] = '/' . $route_map[$request_path];
@@ -30,20 +30,24 @@ if (isset($route_map[$request_path])) {
     exit;
 }
 
-// Session-based rate limiting
-$attempts     = $_SESSION['login_attempts'] ?? 0;
-$locked_until = $_SESSION['login_locked_until'] ?? 0;
+// Server-side/IP-wide rate limiting. This survives incognito and new browsers.
+$attempts     = 0;
+$locked_until = 0;
 $error = '';
+$posted_email = trim($_POST['email'] ?? '');
+$lock_state = login_lock_state($posted_email);
+$attempts = (int)($lock_state['attempts'] ?? 0);
+$locked_until = (int)($lock_state['locked_until'] ?? 0);
 
 if (time() < $locked_until) {
     $mins  = max(1, (int)ceil(($locked_until - time()) / 60));
     $error = "Too many failed attempts. Try again in $mins minute(s).";
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email    = trim($_POST['email'] ?? '');
+    $email    = $posted_email;
     $password = $_POST['password'] ?? '';
     $user     = db_fetch_one("SELECT * FROM users WHERE email=? AND is_active=1", [$email], 's');
     if ($user && password_verify($password, $user['password_hash'])) {
-        unset($_SESSION['login_attempts'], $_SESSION['login_locked_until']);
+        login_lock_clear($email);
         session_regenerate_id(true);
         $token = make_jwt($user['id'], $user['role'], $user['org_id']);
         $_SESSION['token'] = $token;
@@ -51,13 +55,13 @@ if (time() < $locked_until) {
         header('Location: ' . BASE_URL . '/dashboard');
         exit;
     }
-    $attempts++;
-    $_SESSION['login_attempts'] = $attempts;
-    if ($attempts >= 5) {
-        $_SESSION['login_locked_until'] = time() + 900;
+    $failure = login_lock_register_failure($email);
+    $attempts = (int)$failure['attempts'];
+    $locked_until = (int)$failure['locked_until'];
+    if ($locked_until > time()) {
         $error = 'Too many failed attempts. Account locked for 15 minutes.';
     } else {
-        $left  = 5 - $attempts;
+        $left  = (int)$failure['left'];
         $error = 'Invalid email or password.' . ($left <= 2 ? " $left attempt(s) left before lockout." : '');
     }
 }

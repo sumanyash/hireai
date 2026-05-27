@@ -40,7 +40,7 @@ function require_auth() {
         if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || !empty($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'],'application/json') !== false) {
             json_response(['error' => 'Unauthorized'], 401);
         }
-        header('Location: ' . BASE_URL . '/index.php');
+        header('Location: ' . BASE_URL . '/');
         exit;
     }
     return $user;

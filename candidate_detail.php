@@ -282,6 +282,16 @@ $toast         = $_GET['toast'] ?? '';
 .qa-save-bar{position:sticky;bottom:12px;z-index:6;background:rgba(255,255,255,.96);backdrop-filter:blur(8px);border:1.5px solid #E2E8F0;border-radius:16px;padding:12px;display:grid;grid-template-columns:1fr auto;gap:10px;box-shadow:0 10px 32px rgba(15,23,42,.12);margin-top:16px}
 @media(max-width:720px){.qa-head{flex-direction:column}.qa-score-box{width:100%;justify-content:space-between}.qa-save-bar{grid-template-columns:1fr}.floating-rec{left:12px;right:12px;bottom:12px;width:auto}}
 
+/* Q&A Sort Bar */
+.qa-sort-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:14px;padding:8px 12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px}
+.qa-sort-bar>span{font-size:11px;font-weight:700;color:var(--gray2);text-transform:uppercase;letter-spacing:.5px;margin-right:2px;white-space:nowrap}
+.qa-sort-btn{padding:4px 11px;border:1.5px solid #E2E8F0;border-radius:20px;background:#fff;font-size:11px;font-weight:700;color:var(--gray2);cursor:pointer;transition:all .18s}
+.qa-sort-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.qa-sort-btn:hover:not(.active){background:#EFF6FF;border-color:#BFDBFE;color:var(--accent)}
+/* Per-answer Analyze button */
+.qa-analyze-btn{display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:5px 12px;border:1.5px solid #DDD6FE;border-radius:8px;background:#F5F3FF;color:#7C3AED;font-size:12px;font-weight:700;cursor:pointer;transition:all .18s;white-space:nowrap}
+.qa-analyze-btn:hover:not(:disabled){background:#EDE9FE;border-color:#A78BFA}
+.qa-analyze-btn:disabled{opacity:.55;cursor:not-allowed}
 /* INLINE AUDIO — no new tab */
 .qa-audio-wrap{margin-top:10px;background:#EFF6FF;border-radius:10px;padding:10px 12px;border:1.5px solid #DBEAFE}
 .qa-audio-wrap audio{width:100%;height:34px;display:block;border-radius:6px;accent-color:#1D4ED8}
@@ -928,7 +938,15 @@ $toast         = $_GET['toast'] ?? '';
       <form method="POST">
       <?= csrf_input() ?>
       <?php endif; ?>
-      <?php if (!empty($answers)): foreach ($answers as $i => $a):
+      <?php if (!empty($answers)): ?>
+      <div class="qa-sort-bar">
+        <span>Sort:</span>
+        <button type="button" class="qa-sort-btn active" onclick="sortQA('order',this)"><i class="fa-solid fa-list-ol fa-xs"></i> Question #</button>
+        <button type="button" class="qa-sort-btn" onclick="sortQA('score_desc',this)"><i class="fa-solid fa-arrow-down-wide-short fa-xs"></i> Score High→Low</button>
+        <button type="button" class="qa-sort-btn" onclick="sortQA('score_asc',this)"><i class="fa-solid fa-arrow-up-wide-short fa-xs"></i> Score Low→High</button>
+      </div>
+      <div id="qa-list">
+      <?php foreach ($answers as $i => $a):
         $qText   = $a['question_text'] ?? 'Question ' . ($i + 1);
         $ansText = $a['text_answer'] ?? '';
         $hasAudio= !empty($a['audio_url']);
@@ -941,7 +959,7 @@ $toast         = $_GET['toast'] ?? '';
         $qaScoreVal = $qaScore ? (int)$qaScore['ai_score'] : 0;
         $qaMax = $qaScore ? (int)$qaScore['max_marks'] : (int)($a['max_marks'] ?? 0);
       ?>
-      <div class="qa-item">
+      <div class="qa-item" id="qa-item-<?= (int)($a['id'] ?? 0) ?>" data-order="<?= $i + 1 ?>" data-score="<?= $qaScoreVal ?>">
         <div class="qa-head">
           <div class="qa-q">
             <div class="q-num"><?= $a['question_number'] ?? ($i + 1) ?></div>
@@ -984,6 +1002,12 @@ $toast         = $_GET['toast'] ?? '';
               <i class="fa-solid fa-download fa-xs"></i> Download
             </a>
           </div>
+          <?php if (!$ansText || $isUploadFailureText): ?>
+          <button type="button" class="qa-analyze-btn" id="analyze-btn-<?= (int)($a['id'] ?? 0) ?>"
+            onclick="analyzeVoice(<?= (int)($a['id'] ?? 0) ?>, <?= $id ?>, <?= (int)($c['campaign_id'] ?? 0) ?>)">
+            <i class="fa-solid fa-wand-magic-sparkles fa-xs"></i> Analyze with AI
+          </button>
+          <?php endif; ?>
         </div>
         <?php endif; ?>
 
@@ -1014,6 +1038,7 @@ $toast         = $_GET['toast'] ?? '';
         <?php endif; ?>
       </div>
       <?php endforeach; ?>
+      </div><!-- #qa-list -->
       <div class="qa-save-bar">
         <input type="text" name="manual_reason" class="form-control" placeholder="Manual review note, e.g. voice answer reviewed with recording">
         <button type="submit" name="save_manual_scores" class="btn-primary" style="padding:10px 18px;white-space:nowrap">
@@ -1585,20 +1610,71 @@ function fixWebmDuration(video) {
 
 async function rescoreCandidate() {
   const btn = document.querySelector('[onclick="rescoreCandidate()"]');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin fa-xs"></i> Scoring…'; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin fa-xs"></i> Queuing…'; }
   try {
-    const r = await fetch(`/api/score.php?candidate_id=<?= $id ?>&campaign_id=<?= $c['campaign_id'] ?>`);
+    const r = await fetch(`/api/score.php?async=1&candidate_id=<?= $id ?>&campaign_id=<?= $c['campaign_id'] ?>`);
     const d = await r.json();
-    if (d.success || d.scored !== undefined) {
-      showToast('Voice answers transcribed and scored! Reloading…', 'success');
-      setTimeout(() => location.reload(), 1500);
+    if (d.status === 'queued') {
+      if (btn) { btn.innerHTML = '<i class="fa-solid fa-check fa-xs"></i> Queued'; }
+      showToast('Scoring started in background — reloading in 12s…', 'success');
+      setTimeout(() => location.reload(), 12000);
     } else {
-      showToast(d.error || 'Scoring failed — check logs', 'error');
+      showToast(d.error || 'Failed to queue scoring', 'error');
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-microphone fa-xs"></i> Score Voice'; }
     }
   } catch(e) {
-    showToast('Network error', 'error');
+    showToast('Network error — please retry', 'error');
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-microphone fa-xs"></i> Score Voice'; }
+  }
+}
+
+// ── SORT Q&A ─────────────────────────────────────────────────
+function sortQA(mode, btn) {
+  const list = document.getElementById('qa-list');
+  if (!list) return;
+  const items = Array.from(list.querySelectorAll(':scope > .qa-item'));
+  if (mode === 'order') {
+    items.sort((a, b) => parseInt(a.dataset.order || 0) - parseInt(b.dataset.order || 0));
+  } else if (mode === 'score_desc') {
+    items.sort((a, b) => parseInt(b.dataset.score || 0) - parseInt(a.dataset.score || 0));
+  } else if (mode === 'score_asc') {
+    items.sort((a, b) => parseInt(a.dataset.score || 0) - parseInt(b.dataset.score || 0));
+  }
+  items.forEach(item => list.appendChild(item));
+  document.querySelectorAll('.qa-sort-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+
+// ── PER-VOICE AI ANALYSIS ─────────────────────────────────────
+async function analyzeVoice(answerId, candidateId, campaignId) {
+  const btn = document.getElementById('analyze-btn-' + answerId);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin fa-xs"></i> Transcribing…'; }
+  try {
+    const r = await fetch(`/api/score.php?action=transcribe_one&answer_id=${answerId}&candidate_id=${candidateId}&campaign_id=${campaignId}`);
+    const d = await r.json();
+    if (d.success && d.transcript) {
+      const item = btn ? btn.closest('.qa-item') : null;
+      if (item) {
+        const qaA = item.querySelector('.qa-a');
+        if (qaA) {
+          qaA.style.background = '#F0FDF4';
+          qaA.style.borderColor = '#BBF7D0';
+          qaA.style.color = '#166534';
+          qaA.innerHTML = '<i class="fa-solid fa-check-circle fa-xs" style="margin-right:5px"></i><strong>Transcript:</strong> ' + d.transcript.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+        }
+      }
+      // Fire async background rescore — returns immediately, no browser timeout risk
+      fetch(`/api/score.php?async=1&candidate_id=${candidateId}&campaign_id=${campaignId}`).catch(() => {});
+      if (btn) { btn.innerHTML = '<i class="fa-solid fa-check fa-xs"></i> Transcript saved'; btn.style.background='#D1FAE5'; btn.style.color='#065F46'; btn.style.borderColor='#6EE7B7'; }
+      showToast('Transcript saved — AI scoring running in background. Reloading in 12s…', 'success');
+      setTimeout(() => location.reload(), 12000);
+    } else {
+      showToast(d.error || 'Transcription failed — check AI keys and audio file path', 'error');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles fa-xs"></i> Analyze with AI'; }
+    }
+  } catch(e) {
+    showToast('Connection took too long — please click Analyze again', 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles fa-xs"></i> Analyze with AI'; }
   }
 }
 

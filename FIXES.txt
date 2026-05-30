@@ -1,0 +1,281 @@
+HireAI — Bug Fixes & Improvements
+===================================
+Date: 2026-05-28
+Server: hire.clouddialer.in
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. CRITICAL — ElevenLabs Webhooks Always Returning 401
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: .env
+Fix:  Added missing INTERVIEW_WEBHOOK_SECRET and EXPORT_TOKEN_SECRET
+      constants. INTERVIEW_WEBHOOK_SECRET was not set, causing
+      verify_hmac_signature() to reject every ElevenLabs webhook
+      with 401. This was the root cause of 15 candidates stuck on_hold.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. CRITICAL — nginx Pointing at Wrong PHP-FPM Socket
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: /etc/nginx/sites-available/hire.clouddialer.in
+Fix:  Active nginx config was using php8.2-fpm.sock in PHPMyAdmin
+      block but php8.3-fpm.sock for main app (which doesn't exist
+      on this server). Standardised all fastcgi_pass directives to
+      php8.2-fpm.sock. Site had been returning 502 due to this.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. CRITICAL — api/score.php Unauthenticated via HTTP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: api/score.php
+Fix:  Any unauthenticated user could trigger AI scoring by hitting
+      GET /api/score.php?candidate_id=X&campaign_id=Y.
+      Added verify_jwt() check for HTTP access. CLI path (cron/exec)
+      still bypasses auth as required.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. SECURITY — .git Directory Accessible via HTTP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: /etc/nginx/sites-available/hire.clouddialer.in
+Fix:  Old nginx config only blocked /.htaccess. Added explicit
+      location ~ /\.git { deny all; return 404; } rule plus
+      general dot-file blocking for all hidden files/dirs.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. SECURITY — Sensitive Backup Files Publicly Served
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Files: candidates.phpORG, interview.phpORG, interview.php.bak3,
+       job.HTML (deleted)
+Fix:  Old backup files containing source code were publicly
+      downloadable. Added nginx block for .phpORG, .bak, .bak3,
+      .sh, .sql, .log, .HTML extensions. Deleted all orphaned
+      backup files from the web root.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. SECURITY — Shell Injection Risk in exec() Call
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: api/interview.php
+Fix:  The log path in exec() was not shell-escaped. IDs are now
+      cast to int and the log path is wrapped with escapeshellarg().
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. SECURITY — Export Token Using Wrong Secret
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Files: candidates.php, export_candidates.php
+Fix:  Export tokens were signed and verified with JWT_SECRET.
+      Now use the dedicated EXPORT_TOKEN_SECRET so a leaked
+      export token cannot be used to forge a JWT (and vice versa).
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+8. SECURITY — Phone Numbers Logged in Plain Text
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: api/outreach.php
+Fix:  error_log() in send_single was writing full phone numbers.
+      Now masked to first 4 + last 2 digits (e.g. 9876****90).
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+9. DATA INTEGRITY — Candidate Delete Has No Transaction
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: api/candidates.php
+Fix:  Both delete and bulk_delete ran 8 DELETEs with no transaction.
+      A crash midway would leave orphaned rows in related tables.
+      All deletes now wrapped in begin_transaction/commit/rollback.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+10. DATA INTEGRITY — ai_call_results Not Deleted on Candidate Delete
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: api/candidates.php
+Fix:  The delete cascade was missing ai_call_results. Deleting a
+      candidate left orphaned AI call result rows behind. Added
+      DELETE FROM ai_call_results WHERE candidate_id=? to both
+      delete and bulk_delete handlers.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+11. DATA INTEGRITY — deduct_credit() Race Condition
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: includes/functions.php
+Fix:  db_execute() returns true even when 0 rows are affected. Under
+      concurrent requests, two deductions could both pass the balance
+      check and both succeed. Rewrote to use $db->affected_rows after
+      a direct prepared statement with an atomic WHERE balance>=?.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+12. DATA INTEGRITY — on_hold Candidates Shown as "Link Expired"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: interview.php
+Fix:  on_hold was missing from both the link-expiry exclusion list
+      and the $already_done check. Candidates on hold would see
+      "link expired" instead of the completed screen, and a fresh
+      link would let them re-attempt the interview.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+13. DATA INTEGRITY — custom_whatsapp_send Not Updating Status
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: api/outreach.php
+Fix:  The custom_whatsapp_send action did not update candidate status
+      to outreach_sent on successful send. send_single and bulk_send
+      both did. Now consistent across all three send paths.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+14. PERFORMANCE — Duplicate Check Loading All Candidates into PHP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: api/candidates.php
+Fix:  candidate_duplicate_exists() and candidate_duplicate_exists_for_update()
+      fetched ALL candidates in the campaign then looped in PHP.
+      Replaced with a single indexed SQL query using WHERE phone=? OR
+      LOWER(email)=? LIMIT 1.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+15. PERFORMANCE — Status Counts Loading All Candidate Rows
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: candidates.php
+Fix:  The status pill counts (pending/shortlisted/rejected etc.)
+      were built by fetching every matching candidate row then
+      counting in PHP. Replaced with a single GROUP BY query.
+      Also eliminated a redundant third query for dynamic columns
+      by reusing the already-fetched $candidates array.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+16. PERFORMANCE — DDL Running on Every Request
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: includes/functions.php
+Fix:  ensure_credit_wallet() contained CREATE TABLE IF NOT EXISTS
+      statements that ran on every page load touching credits.
+      Removed the inline DDL (tables already exist from schema.sql).
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+17. DATABASE — Missing Indexes
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Applied to live DB + added to schema.sql:
+  candidates       — org_id, campaign_id, status, phone
+  scores           — candidate_id, campaign_id
+  interview_sessions — candidate_id
+  interview_answers  — candidate_id, session_id
+  outreach_log     — candidate_id, campaign_id
+  audit_logs       — org_id, (entity_type + entity_id)
+  interview_results — campaign_id
+  reminder_jobs    — candidate_id, scheduled_at
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+18. DATABASE — 'admin' Role Missing from ENUM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Table: users
+Fix:  PHP code in campaigns.php and admins.php referenced the
+      'admin' role but the ENUM was only ('super_admin','hr','recruiter').
+      Added 'admin' to the ENUM in both the live DB and schema.sql.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+19. SCHEMA — ai_call_results Table Missing from schema.sql
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: schema.sql
+Fix:  The ai_call_results table existed in the live DB and was
+      queried by candidate_detail.php but was never in schema.sql.
+      Added the full CREATE TABLE definition.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+20. CODE QUALITY — Duplicate log_s() Function Definition
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: api/score.php
+Fix:  log_s() was defined at the bottom of the file (line 341)
+      but called from line 9 onward. Moved definition to top and
+      removed the duplicate at the bottom.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+21. CODE QUALITY — Shared normalize_phone() Duplicated
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Files: includes/helpers.php, api/candidates.php, api/call_webhook.php
+Fix:  normalize_phone() was defined independently in two API files
+      with slightly different logic. Moved the canonical version to
+      helpers.php (included everywhere). Removed the duplicate in
+      candidates.php. Renamed call_webhook.php's version to
+      normalize_phone_10() since it has different semantics
+      (strips +91 prefix to return bare 10-digit number).
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+22. CODE QUALITY — Dead Code (Legacy OpenAI score_candidate)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: includes/functions.php
+Fix:  The old score_candidate() function using OpenAI was still
+      present but never called (scoring now done in api/score.php
+      via Gemini/Groq). Wrapped in a block comment to make clear
+      it is disabled.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+23. NGINX — Security Headers Added
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: /etc/nginx/sites-available/hire.clouddialer.in
+Fix:  Added missing HTTP security headers:
+        X-Frame-Options: SAMEORIGIN
+        X-Content-Type-Options: nosniff
+        X-XSS-Protection: 1; mode=block
+        Referrer-Policy: strict-origin-when-cross-origin
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+24. NGINX — Upload Directory PHP Execution Blocked
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: /etc/nginx/sites-available/hire.clouddialer.in
+Fix:  Added location block to deny execution of .php, .phtml,
+      .html, .svg, .js, .sh files under /uploads/. Previously
+      a malicious upload could potentially be executed.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+25. NGINX — client_max_body_size Mismatch
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+File: /etc/nginx/sites-available/hire.clouddialer.in
+Fix:  nginx allowed 150M uploads but PHP's upload_max_filesize
+      is 20M. Set nginx to 25M to match PHP limits with headroom
+      for multipart overhead.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+26. AUTOMATION — Nightly Rescore of on_hold Candidates
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Files: scripts/rescore_once.php, crontab
+Fix:  Added --on-hold flag to rescore_once.php to target only
+      candidates with status='on_hold'. Added cron at 2am daily:
+        php scripts/rescore_once.php --on-hold --delay=20
+      Output logged to /tmp/rescore_onhold.log.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+27. IMMEDIATE ACTION — Rescored 15 Stuck on_hold Candidates
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Result: 15/15 scored successfully (0 failed).
+        Scored via Groq LLaMA 3.3-70b (Gemini/Vertex AI returned
+        404 — separate issue with Vertex AI project credentials).
+        No WhatsApp notifications sent (silent mode).
+        Candidates now have statuses: shortlisted or rejected.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+KNOWN REMAINING ISSUE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Vertex AI (Gemini) returning 404:
+  Publisher Model gemini-2.0-flash-001 not found in project
+  symbolic-surf-471213-m4. Scoring falls back to Groq LLaMA
+  successfully, but Gemini is unavailable. To fix: update
+  GEMINI_MODEL in .env to a model version your project has
+  access to, or re-enable the Vertex AI API in Google Cloud
+  console for this project.

@@ -19,6 +19,37 @@ if(php_sapi_name()==='cli'){
     header('Content-Type: application/json');
     $candidate_id=(int)($_GET['candidate_id']??0);
     $campaign_id=(int)($_GET['campaign_id']??0);
+    if(($_GET['action']??'')==='transcribe_one'){
+        $answer_id=(int)($_GET['answer_id']??0);
+        if(!$answer_id||!$candidate_id){echo json_encode(['error'=>'Missing params']);exit;}
+        $cand=db_fetch_one("SELECT id FROM candidates WHERE id=? AND org_id=?",[$candidate_id,(int)$http_user['org_id']],'ii');
+        if(!$cand){http_response_code(403);echo json_encode(['error'=>'Forbidden']);exit;}
+        $ans=db_fetch_one("SELECT * FROM interview_answers WHERE id=? AND candidate_id=?",[$answer_id,$candidate_id],'ii');
+        if(!$ans){echo json_encode(['error'=>'Answer not found']);exit;}
+        $audio_url=(string)($ans['audio_url']??'');
+        if(!$audio_url){echo json_encode(['error'=>'No audio file for this answer']);exit;}
+        if(!(defined('GEMINI_API_KEY')&&GEMINI_API_KEY)&&!(defined('GROQ_API_KEY')&&GROQ_API_KEY)){
+            echo json_encode(['error'=>'No AI key configured — set GEMINI_API_KEY or GROQ_API_KEY in .env']);exit;
+        }
+        $transcript=transcribe_voice($audio_url);
+        if(!$transcript){echo json_encode(['error'=>'Transcription failed — audio file may be inaccessible or AI returned no text']);exit;}
+        db_execute("UPDATE interview_answers SET text_answer=? WHERE id=?",[$transcript,$answer_id],'si');
+        echo json_encode(['success'=>true,'transcript'=>$transcript,'answer_id'=>$answer_id]);
+        exit;
+    }
+    // async=1 : kick off background scoring, return immediately (avoids browser timeout)
+    if(($_GET['async']??'')==='1'){
+        if(!$candidate_id){echo json_encode(['error'=>'Missing params']);exit;}
+        // Always use the campaign_id stored in the DB for this candidate — never trust GET
+        $cand_chk=db_fetch_one("SELECT id,campaign_id FROM candidates WHERE id=? AND org_id=?",[$candidate_id,(int)$http_user['org_id']],'ii');
+        if(!$cand_chk){http_response_code(403);echo json_encode(['error'=>'Forbidden']);exit;}
+        $db_campaign_id=(int)$cand_chk['campaign_id'];
+        if(!$db_campaign_id){echo json_encode(['error'=>'Candidate has no associated campaign']);exit;}
+        $log_path=escapeshellarg("/tmp/score_{$candidate_id}.log");
+        exec("php ".escapeshellarg(__DIR__."/score.php")." ".escapeshellarg($candidate_id)." ".escapeshellarg($db_campaign_id)." > $log_path 2>&1 &");
+        echo json_encode(['status'=>'queued','candidate_id'=>$candidate_id]);
+        exit;
+    }
 }
 $silent_mode=php_sapi_name()==='cli'&&(in_array('--silent',$argv??[],true)||getenv('HIREAI_SCORE_SILENT')==='1');
 if(!$candidate_id||!$campaign_id){log_s("Missing args");exit(1);}
@@ -45,10 +76,52 @@ function has_gradable_answer($answer){
   if($text!=='' && !str_starts_with($text,'[Voice answer recorded but upload failed:'))return true;
   return trim((string)($answer['audio_url']??''))!=='';
 }
-function transcribe_voice_groq(string $audio_url, string $groq_key): ?string {
+function resolve_audio_local_path(string $audio_url): ?string {
   $local = str_replace(BASE_URL . '/', rtrim($_SERVER['DOCUMENT_ROOT'] ?? '/var/www/hire', '/') . '/', $audio_url);
-  if (!is_readable($local)) $local = '/var/www/hire/' . ltrim(parse_url($audio_url, PHP_URL_PATH), '/');
-  if (!is_readable($local)) return null;
+  if (is_readable($local)) return $local;
+  $local = '/var/www/hire/' . ltrim(parse_url($audio_url, PHP_URL_PATH), '/');
+  return is_readable($local) ? $local : null;
+}
+function transcribe_voice_gemini(string $audio_url, string $credential_path, string $model): ?string {
+  $local = resolve_audio_local_path($audio_url);
+  if (!$local) { log_s("Gemini transcribe: file not readable for $audio_url"); return null; }
+  $raw = file_get_contents($local);
+  if (!$raw) return null;
+  [$token, $sa_or_error] = google_service_account_token($credential_path);
+  if (!$token) { log_s("Gemini transcribe: token error — $sa_or_error"); return null; }
+  $sa = $sa_or_error;
+  $project = defined('VERTEX_AI_PROJECT') && VERTEX_AI_PROJECT ? VERTEX_AI_PROJECT : ($sa['project_id'] ?? '');
+  $location = defined('VERTEX_AI_LOCATION') && VERTEX_AI_LOCATION ? VERTEX_AI_LOCATION : 'us-central1';
+  $vmodel = defined('VERTEX_AI_MODEL') && VERTEX_AI_MODEL ? VERTEX_AI_MODEL : $model;
+  if (!$project) { log_s("Gemini transcribe: no project_id"); return null; }
+  $url = 'https://'.$location.'-aiplatform.googleapis.com/v1/projects/'.rawurlencode($project).'/locations/'.rawurlencode($location).'/publishers/google/models/'.rawurlencode($vmodel).':generateContent';
+  $payload = ['contents' => [['role' => 'user', 'parts' => [
+    ['inline_data' => ['mime_type' => 'audio/webm', 'data' => base64_encode($raw)]],
+    ['text' => 'Transcribe this audio interview answer exactly as spoken. Return only the transcript text with no labels or extra commentary.']
+  ]]]];
+  $ch = curl_init($url);
+  curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($payload), CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer '.$token], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60, CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2]);
+  $resp = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+  if ($code !== 200) { log_s("Gemini transcribe HTTP $code: ".substr((string)$resp, 0, 200)); return null; }
+  $data = json_decode($resp, true);
+  $text = trim((string)($data['candidates'][0]['content']['parts'][0]['text'] ?? ''));
+  return $text !== '' ? $text : null;
+}
+function transcribe_voice(string $audio_url): ?string {
+  $gemini_key = defined('GEMINI_API_KEY') && GEMINI_API_KEY ? GEMINI_API_KEY : '';
+  $gemini_model = defined('GEMINI_MODEL') && GEMINI_MODEL ? GEMINI_MODEL : 'gemini-2.0-flash';
+  if ($gemini_key) {
+    $t = transcribe_voice_gemini($audio_url, $gemini_key, $gemini_model);
+    if ($t) return $t;
+    log_s("Gemini transcription failed — trying Groq fallback");
+  }
+  $groq_key = defined('GROQ_API_KEY') ? GROQ_API_KEY : '';
+  if ($groq_key) return transcribe_voice_groq($audio_url, $groq_key);
+  return null;
+}
+function transcribe_voice_groq(string $audio_url, string $groq_key): ?string {
+  $local = resolve_audio_local_path($audio_url);
+  if (!$local) return null;
   $ch = curl_init('https://api.groq.com/openai/v1/audio/transcriptions');
   curl_setopt_array($ch, [
     CURLOPT_POST => true,
@@ -142,15 +215,15 @@ function call_gemini_scoring($prompt,$api_key,$model){
   if(!is_array($result)||!isset($result['scores'])||!is_array($result['scores']))return [null,'Gemini returned invalid JSON: '.substr((string)$content,0,300)];
   return [$result,null];
 }
-// Transcribe voice-only answers via Groq Whisper before scoring
-$groq_key_for_transcribe=defined('GROQ_API_KEY')?GROQ_API_KEY:'';
-if($groq_key_for_transcribe){
+// Transcribe voice-only answers — Gemini primary, Groq Whisper fallback
+$transcribe_available=(defined('GEMINI_API_KEY')&&GEMINI_API_KEY)||(defined('GROQ_API_KEY')&&GROQ_API_KEY);
+if($transcribe_available){
   foreach($questions as $q){
     $qid=(int)$q['id'];
     $ans=$answer_by_question[$qid]??null;
     if(!$ans)continue;
     if(clean_answer_text($ans)!==''||trim((string)($ans['audio_url']??''))==='')continue;
-    $transcript=transcribe_voice_groq((string)$ans['audio_url'],$groq_key_for_transcribe);
+    $transcript=transcribe_voice((string)$ans['audio_url']);
     if($transcript){
       $answer_by_question[$qid]['text_answer']=$transcript;
       db_execute("UPDATE interview_answers SET text_answer=? WHERE id=?",[$transcript,(int)$ans['id']],'si');

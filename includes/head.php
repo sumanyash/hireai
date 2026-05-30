@@ -25,7 +25,9 @@ a{text-decoration:none;color:var(--blue)}
 ::-webkit-scrollbar-thumb{background:#CBD5E1;border-radius:99px}
 
 /* NAVBAR */
-.navbar{background:rgba(8,15,30,.97);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);padding:0 28px;height:66px;display:flex;align-items:center;justify-content:space-between;position:fixed;top:0;left:0;right:0;z-index:1000;border-bottom:1px solid rgba(255,255,255,.07);box-shadow:0 4px 32px rgba(0,0,0,.4)}
+.navbar{background:rgba(8,15,30,.97);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);padding:0 32px;height:66px;display:flex;align-items:center;justify-content:space-between;position:fixed;top:0;left:0;right:0;z-index:1000;border-bottom:1px solid rgba(255,255,255,.07);box-shadow:0 4px 32px rgba(0,0,0,.4)}
+@media(min-width:1400px){.navbar{padding:0 48px}}
+@media(min-width:1800px){.navbar{padding:0 72px}}
 .nav-logo{display:flex;align-items:center;gap:10px}
 .nav-logo img{height:34px;width:auto;object-fit:contain;filter:brightness(1.1)}
 .nav-logo-text{font-size:20px;font-weight:900;color:#fff;letter-spacing:-0.5px}
@@ -41,7 +43,9 @@ a{text-decoration:none;color:var(--blue)}
 .nav-logout:hover{color:#fff;border-color:var(--red);background:rgba(239,68,68,.12)}
 
 /* LAYOUT */
-.main-content{margin-top:66px;padding:14px 28px 28px;max-width:1500px;margin-left:auto;margin-right:auto}
+.main-content{margin-top:66px;padding:20px 32px 40px;max-width:100%;width:100%}
+@media(min-width:1400px){.main-content{padding:20px 48px 40px}}
+@media(min-width:1800px){.main-content{padding:20px 72px 40px}}
 .page-header{margin-bottom:24px}
 .page-header h2{font-size:24px;font-weight:800;color:var(--text);letter-spacing:-.5px}
 .page-header p{color:var(--gray2);font-size:14px;margin-top:4px}
@@ -137,7 +141,7 @@ textarea.form-control{resize:vertical;min-height:80px}
   .nav-links a{flex:0 0 auto;padding:7px 10px;font-size:12px}
   .nav-user{display:none}
   .nav-logout{padding:7px 10px;font-size:12px}
-  .main-content{padding:10px 14px 24px;padding-top:80px}
+  .main-content{padding:10px 16px 24px;padding-top:80px}
   .page-header{display:block!important}
   .page-header>div,.page-header>a,.page-header button{margin-bottom:8px}
   .card{padding:16px;border-radius:12px;overflow-x:auto}

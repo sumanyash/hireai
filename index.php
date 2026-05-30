@@ -18,6 +18,7 @@ $route_map = [
     'audit_logs' => 'audit_logs.php',
     'logout' => 'logout.php',
     'video_view' => 'video_view.php',
+    'jd_builder' => 'jd_builder.php',
 ];
 if (isset($route_map[$request_path])) {
     if (empty($_SESSION['token'])) {

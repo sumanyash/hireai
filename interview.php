@@ -748,7 +748,9 @@ function renderDynamicAnswer(q) {
     return `<div id="text-answer" class="choice-list" ${multi ? 'data-multi="1"' : 'data-choice-group="1"'}>${options.map((o, i) => `<label class="choice-item"><input type="${inputType}" name="answer_choice" value="${escapeHtml(o)}"><span class="choice-prefix">${optionLabel(i)}</span><span>${escapeHtml(displayOption(o, i))}</span></label>`).join('')}</div>`;
   };
   if (type === 'dropdown') {
-    wrap.innerHTML = `<select id="text-answer"><option value="">Select an option...</option>${options.map((o, i) => `<option value="${escapeHtml(o)}">${escapeHtml(displayOption(o, i))}</option>`).join('')}</select>`;
+    wrap.innerHTML = options.length
+      ? `<div id="text-answer" class="choice-list" data-choice-group="1">${options.map((o, i) => `<label class="choice-item"><input type="radio" name="answer_choice" value="${escapeHtml(o)}"><span class="choice-prefix">${optionLabel(i)}</span><span>${escapeHtml(o)}</span></label>`).join('')}</div>`
+      : `<select id="text-answer"><option value="">Select an option...</option></select>`;
   } else if (type === 'multi_select') {
     wrap.innerHTML = choiceHtml('checkbox', true);
   } else if (type === 'checkbox') {

@@ -25,18 +25,19 @@ if ($ref_token !== '') {
 $campaign = null;
 if ($campaign_id) {
     $campaign = db_fetch_one(
-        "SELECT * FROM campaigns WHERE id=? AND status='active'",
+        "SELECT * FROM campaigns WHERE id=? AND status IN ('active','draft','paused')",
         [$campaign_id],
         'i'
     );
 } elseif ($token) {
     $campaign = db_fetch_one(
-        "SELECT * FROM campaigns WHERE share_token=? AND status='active'",
+        "SELECT * FROM campaigns WHERE share_token=? AND status IN ('active','draft','paused')",
         [$token],
         's'
     );
     if ($campaign) $campaign_id = $campaign['id'];
 }
+$campaign_is_live = $campaign && $campaign['status'] === 'active';
 
 // Get organization details for branding
 $org = null;
@@ -57,12 +58,28 @@ $job_desc  = $campaign['description'] ?? '';
 $all_campaigns = db_fetch_all("SELECT id, name, job_role FROM campaigns WHERE status='active' ORDER BY name ASC", [], '');
 $application_fields = $campaign_id ? db_fetch_all("SELECT * FROM application_fields WHERE campaign_id=? AND is_active=1 ORDER BY order_no,id", [$campaign_id], 'i') : [];
 $default_apply_keys = [
-    'salutation', 'first_name', 'last_name', 'dob', 'city', 'relocate', 'relocate_time',
-    'phone_code', 'other_country_code', 'phone', 'email', 'college', 'college_other',
-    'source', 'source_other', 'role_applied', 'engagement_type', 'english_level',
-    'years_exp', 'industry', 'industry_other', 'exp_type', 'exp_desc', 'current_salary',
-    'expected_salary', 'tenure', 'joining_date', 'flex_hours', 'laptop', 'internet',
-    'location', 'commute', 'resume', 'photo', 'video_option', 'video_link', 'video_file',
+    // Core personal
+    'salutation', 'first_name', 'last_name', 'full_name', 'name', 'candidate_name',
+    'dob', 'date_of_birth', 'birth_date',
+    'city', 'current_city', 'location', 'current_location', 'hometown',
+    'relocate', 'relocate_time',
+    // Contact
+    'phone_code', 'other_country_code',
+    'phone', 'phone_number', 'mobile', 'mobile_number', 'contact', 'contact_number',
+    'email', 'email_id', 'email_address',
+    // Education / source
+    'college', 'college_other', 'source', 'source_other', 'role_applied',
+    // Experience
+    'engagement_type', 'english_level',
+    'years_exp', 'experience_years', 'years_of_experience', 'exp_years', 'experience', 'total_experience',
+    'industry', 'industry_other', 'exp_type', 'exp_desc',
+    // Compensation
+    'current_salary', 'current_ctc', 'ctc', 'current_salary_monthly',
+    'expected_salary', 'expected_ctc', 'expected_salary_monthly',
+    // Work preferences
+    'tenure', 'joining_date', 'flex_hours', 'laptop', 'internet', 'commute',
+    // Uploads / consent
+    'resume', 'photo', 'video_option', 'video_link', 'video_file',
     'portfolio', 'ai_test_willing', 'declaration_confirmation'
 ];
 $custom_application_fields = array_values(array_filter($application_fields, function ($field) use ($default_apply_keys) {
@@ -71,7 +88,31 @@ $custom_application_fields = array_values(array_filter($application_fields, func
 }));
 $has_extra_application_fields = !empty($custom_application_fields);
 $declaration_section = $has_extra_application_fields ? 10 : 9;
-$is_dynamic_apply = false;
+// Standard field visibility config (JSON stored in campaigns.apply_form_config)
+$_std_form_cfg = null;
+if (!empty($campaign['apply_form_config'])) {
+    $_std_form_cfg = json_decode($campaign['apply_form_config'], true) ?: null;
+}
+$_has_std_form_cfg = ($_std_form_cfg !== null);
+function is_std_on(string $key): bool {
+    global $_std_form_cfg;
+    return $_std_form_cfg === null || in_array($key, $_std_form_cfg, true);
+}
+// Use 9-step wizard when std-field config is set OR no custom fields exist.
+// Use 2-step dynamic form ONLY for pure custom-field campaigns (JD-builder) with no std config.
+$is_dynamic_apply = !$_has_std_form_cfg && !empty($custom_application_fields);
+// Detect if mandatory contact fields are missing from application_fields (need injection)
+$_adf_phone_keys = ['phone','mobile','phone_number','mobile_number','whatsapp','contact'];
+$_adf_email_keys = ['email','email_id','email_address'];
+$_adf_name_keys  = ['first_name','last_name','full_name','name','candidate_name','applicant_name'];
+$df_has_phone = false; $df_has_email = false; $df_has_name = false;
+foreach ($application_fields as $_f) {
+    $_fk = strtolower(trim($_f['field_key'] ?? ''));
+    $_ft = $_f['field_type'] ?? '';
+    if (in_array($_fk, $_adf_phone_keys, true) || $_ft === 'phone') $df_has_phone = true;
+    if (in_array($_fk, $_adf_email_keys, true) || $_ft === 'email') $df_has_email = true;
+    if (in_array($_fk, $_adf_name_keys, true)) $df_has_name = true;
+}
 
 ?>
 <!DOCTYPE html>
@@ -622,6 +663,17 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
   <p class="header-sub">Apply for: <strong><?=htmlspecialchars($job_role)?></strong> &nbsp;·&nbsp; Please complete all sections carefully.</p>
 </div>
 
+<?php if ($campaign && $campaign['status'] === 'draft'): ?>
+<div style="background:#FEF3C7;border-bottom:1px solid #FDE68A;padding:10px 20px;text-align:center;font-size:13px;font-weight:600;color:#92400E">
+  <i class="fa-solid fa-eye" style="margin-right:6px"></i> Preview Mode — This form is not yet live. Submissions are disabled until the campaign is activated.
+</div>
+<?php endif; ?>
+<?php if ($campaign && $campaign['status'] === 'paused'): ?>
+<div style="background:#FEF2F2;border-bottom:1px solid #FECACA;padding:10px 20px;text-align:center;font-size:13px;font-weight:600;color:#991B1B">
+  <i class="fa-solid fa-pause-circle" style="margin-right:6px"></i> This campaign is currently paused and not accepting new applications.
+</div>
+<?php endif; ?>
+
 <!-- Progress Bar -->
 <div class="progress-wrap">
   <div class="step-dots" id="stepDots"></div>
@@ -650,6 +702,28 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <div>This campaign application form is not configured yet. Please contact the recruiter.</div>
         </div>
       <?php endif; ?>
+
+      <?php /* ── Inject mandatory contact fields if not in application_fields ── */ ?>
+      <?php if (!$df_has_phone): ?>
+      <div class="field" id="mand-phone-wrap">
+        <label>Phone Number <span class="req">*</span></label>
+        <input type="tel" id="mand_phone" placeholder="10-digit number" maxlength="15">
+        <p class="field-hint">Your interview link will be sent to this WhatsApp number</p>
+      </div>
+      <?php endif; ?>
+      <?php if (!$df_has_email): ?>
+      <div class="field" id="mand-email-wrap">
+        <label>Email Address <span class="req">*</span></label>
+        <input type="email" id="mand_email" placeholder="you@example.com">
+      </div>
+      <?php endif; ?>
+      <?php if (!$df_has_name): ?>
+      <div class="field" id="mand-name-wrap">
+        <label>Full Name <span class="req">*</span></label>
+        <input type="text" id="mand_name" placeholder="Your full name">
+      </div>
+      <?php endif; ?>
+
       <?php foreach ($application_fields as $field):
         $fid = (int)$field['id'];
         $fieldId = 'appField_' . $fid;
@@ -743,6 +817,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     </div>
     <div id="val-banner-1" class="val-banner"></div>
     <div class="card">
+      <?php if (is_std_on('salutation')): ?>
       <div class="field">
         <label for="salutation">Salutation <span class="req">*</span></label>
         <select id="salutation">
@@ -753,11 +828,21 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <option>Dr.</option>
         </select>
       </div>
+      <?php endif; ?>
+      <?php if (is_std_on('first_name') || is_std_on('last_name')): ?>
       <div class="field-row">
+        <?php if (is_std_on('first_name')): ?>
         <div class="field"><label for="firstName">First Name <span class="req">*</span></label><input type="text" id="firstName" placeholder="First name" oninput="this.value=this.value.replace(/[^A-Za-z\s]/g,'')"></div>
+        <?php endif; ?>
+        <?php if (is_std_on('last_name')): ?>
         <div class="field"><label for="lastName">Last Name <span class="req">*</span></label><input type="text" id="lastName" placeholder="Last name" oninput="this.value=this.value.replace(/[^A-Za-z\s]/g,'')"></div>
+        <?php endif; ?>
       </div>
+      <?php endif; ?>
+      <?php if (is_std_on('dob')): ?>
       <div class="field"><label for="dob">Date of Birth <span class="req">*</span></label><input type="date" id="dob"></div>
+      <?php endif; ?>
+      <?php if (is_std_on('city')): ?>
       <div class="field-row" style="align-items:start">
         <div class="field" style="margin-bottom:0"><label for="currentCity">Current City <span class="req">*</span></label><input type="text" id="currentCity" placeholder="Your city" oninput="handleCityChange()"></div>
         <div class="field" id="relocateCol" style="display:none;margin-bottom:0"><label for="relocate">Comfortable to Relocate? <span class="req">*</span></label><select id="relocate" onchange="handleRelocateChange()"><option value="">Select</option><option>Yes</option><option>No</option></select></div>
@@ -766,6 +851,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
         <label for="relocateTime">Relocation Time <span class="req">*</span></label>
         <select id="relocateTime"><option value="">Select</option><option>Immediate</option><option>Within 15 days</option><option>Within 1 month</option><option>Within 3 months</option><option>More than 3 months</option></select>
       </div>
+      <?php endif; ?>
       <div id="phoneRow" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;margin-top:20px">
         <div class="field" style="margin-bottom:0">
           <label for="phoneCode">Phone Code <span class="req">*</span></label>
@@ -805,6 +891,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
         </div>
       </div>
       <div class="field" style="margin-top:20px"><label for="email">Email ID <span class="req">*</span></label><input type="email" id="email" placeholder="you@example.com"></div>
+      <?php if (is_std_on('college')): ?>
       <div class="field">
         <label for="college">College / University <span class="req">*</span></label>
         <select id="college" onchange="handleCollegeChange()">
@@ -823,6 +910,8 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
         </select>
       </div>
       <div class="field" id="collegeOtherField" style="display:none"><label for="collegeOther">Specify College <span class="req">*</span></label><input type="text" id="collegeOther" placeholder="Full college/university name"></div>
+      <?php endif; ?>
+      <?php if (is_std_on('source')): ?>
       <div class="field">
         <label for="source">How did you hear about us? <span class="req">*</span></label>
         <select id="source" onchange="handleSourceChange()">
@@ -839,6 +928,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
         </select>
       </div>
       <div class="field" id="sourceOtherField" style="display:none"><label for="sourceOther">Please specify <span class="req">*</span></label><input type="text" id="sourceOther" placeholder="Where did you hear about us?"></div>
+      <?php endif; ?>
     </div>
     <div class="nav-bar"><div></div><button class="btn btn-primary" onclick="nextSection(1)">Continue →</button></div>
   </div>
@@ -947,6 +1037,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     <div id="val-banner-3" class="val-banner"></div>
     <div class="card">
       <div class="field-row">
+        <?php if (is_std_on('english_level')): ?>
         <div class="field">
           <label for="englishLevel">English Communication <span class="req">*</span></label>
           <select id="englishLevel">
@@ -958,6 +1049,8 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
             <option value="5">5 - Fluent / Native</option>
           </select>
         </div>
+        <?php endif; ?>
+        <?php if (is_std_on('years_exp')): ?>
         <div class="field">
           <label for="yearsExp">Years of Experience <span class="req">*</span></label>
           <select id="yearsExp" onchange="handleYearsExpChange()">
@@ -972,7 +1065,9 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
             <option value="15+ Years">15+ Years</option>
           </select>
         </div>
+        <?php endif; ?>
       </div>
+      <?php if (is_std_on('industry')): ?>
       <div class="field-row" id="industryFieldContainer">
         <div class="field">
           <label for="industry">Industry Background <span class="req">*</span></label>
@@ -991,6 +1086,8 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <input type="text" id="industryOther" placeholder="Your industry">
         </div>
       </div>
+      <?php endif; ?>
+      <?php if (is_std_on('exp_type')): ?>
       <div class="field" id="expTypeFieldContainer">
         <label>Experience Type <span class="req">*</span></label>
         <div class="options-grid cols2">
@@ -1002,11 +1099,14 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <label class="opt-label"><input type="radio" name="expType" value="Full-time"><span>Entrepreneurial / Startup</span></label>
         </div>
       </div>
+      <?php endif; ?>
+      <?php if (is_std_on('exp_desc')): ?>
       <div class="field" id="internshipDescContainer">
         <label for="internshipDesc">Describe Your Past Experience (If Any)</label>
         <textarea id="internshipDesc" placeholder="Briefly describe any relevant internship or project experience (Max 50 words)..." oninput="limitWords(this, 50)"></textarea>
         <p class="field-hint" id="wordCountHint">0 / 50 words</p>
       </div>
+      <?php endif; ?>
     </div>
     <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(3)">← Back</button><button class="btn btn-primary" onclick="nextSection(3)">Continue →</button></div>
   </div>
@@ -1023,14 +1123,18 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     <div id="val-banner-4" class="val-banner"></div>
     <div class="card">
       <div class="field-row">
+        <?php if (is_std_on('current_salary')): ?>
         <div class="field">
           <label for="currentSalary">Current Salary / Stipend (Per Month)</label>
           <input type="text" id="currentSalary" placeholder="e.g. ₹15,000/month or N/A">
         </div>
+        <?php endif; ?>
+        <?php if (is_std_on('expected_salary')): ?>
         <div class="field">
           <label for="expectedSalary">Expected Salary / Stipend (Per Month) <span class="req">*</span></label>
           <input type="text" id="expectedSalary" placeholder="Mention realistic figures (in ₹)">
         </div>
+        <?php endif; ?>
       </div>
     </div>
     <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(4)">← Back</button><button class="btn btn-primary" onclick="nextSection(4)">Continue →</button></div>
@@ -1047,6 +1151,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     </div>
     <div id="val-banner-5" class="val-banner"></div>
     <div class="card">
+      <?php if (is_std_on('tenure')): ?>
       <div class="field" id="tenureField">
         <label for="tenure">Internship / Training Tenure <span class="req">*</span></label>
         <select id="tenure">
@@ -1058,11 +1163,15 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <option value="24 months">24 Months</option>
         </select>
       </div>
+      <?php endif; ?>
       <div class="field-row">
+        <?php if (is_std_on('joining_date')): ?>
         <div class="field">
           <label for="joiningDate">Preferred Joining Date <span class="req">*</span></label>
           <input type="date" id="joiningDate">
         </div>
+        <?php endif; ?>
+        <?php if (is_std_on('flex_hours')): ?>
         <div class="field">
           <label for="flexHours">Open to Flexible Hours? <span class="req">*</span></label>
           <select id="flexHours">
@@ -1071,6 +1180,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
             <option value="No">No</option>
           </select>
         </div>
+        <?php endif; ?>
       </div>
     </div>
     <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(5)">← Back</button><button class="btn btn-primary" onclick="nextSection(5)">Continue →</button></div>
@@ -1088,6 +1198,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     <div id="val-banner-6" class="val-banner"></div>
     <div class="card">
       <div class="field-row">
+        <?php if (is_std_on('laptop')): ?>
         <div class="field">
           <label for="laptop">Do you own a Laptop? <span class="req">*</span></label>
           <select id="laptop">
@@ -1096,6 +1207,8 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
             <option value="No">No</option>
           </select>
         </div>
+        <?php endif; ?>
+        <?php if (is_std_on('internet')): ?>
         <div class="field">
           <label for="internet">Reliable Broadband / Wi-Fi at Home? <span class="req">*</span></label>
           <select id="internet">
@@ -1104,7 +1217,9 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
             <option value="No">No</option>
           </select>
         </div>
+        <?php endif; ?>
       </div>
+      <?php if (is_std_on('location')): ?>
       <div class="field">
         <label for="candidateLocation">Check Commute Distance <span style="color:var(--muted);font-size:11px;font-weight:400;">(Optional)</span></label>
         <div style="display:flex;gap:10px;margin-bottom:8px;">
@@ -1116,6 +1231,8 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
         </div>
         <p class="field-hint" style="margin-top:0;font-size:13px;">📍 Office: <a href="https://maps.google.com/?q=Avyukta+Intellicall,+Narayan+Vihar+Rd,+Ganatpura,+Jaipur" target="_blank" style="color:var(--accent);font-weight:500;text-decoration:none;">Avyukta Intellicall, Narayan Vihar Rd, Ganatpura, Jaipur</a></p>
       </div>
+      <?php endif; ?>
+      <?php if (is_std_on('commute')): ?>
       <div class="field">
         <label for="commute">Commute to Office <span class="req">*</span></label>
         <select id="commute">
@@ -1124,6 +1241,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <option value="Self-managed">I will manage on my own</option>
         </select>
       </div>
+      <?php endif; ?>
     </div>
     <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(6)">← Back</button><button class="btn btn-primary" onclick="nextSection(6)">Continue →</button></div>
   </div>
@@ -1139,6 +1257,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     </div>
     <div id="val-banner-7" class="val-banner"></div>
     <div class="card">
+      <?php if (is_std_on('resume')): ?>
       <div class="field">
         <label>Resume / CV <span class="req">*</span></label>
         <div class="file-upload-area" onclick="document.getElementById('resumeFile').click()">
@@ -1149,6 +1268,8 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <input type="file" id="resumeFile" accept=".pdf,.docx" onchange="showFileName('resumeFile','resumeFileName')">
         </div>
       </div>
+      <?php endif; ?>
+      <?php if (is_std_on('video_option')): ?>
       <div class="field">
         <label for="videoOption">Video Introduction <span style="color:var(--muted);font-size:11px;font-weight:400">(Optional)</span></label>
         <select id="videoOption" onchange="toggleVideoInput()">
@@ -1167,7 +1288,10 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <input type="file" id="videoFile" accept=".mp4,.mov,.avi" onchange="showFileName('videoFile','videoFileName')">
         </div>
       </div>
+      <?php endif; ?>
+      <?php if (is_std_on('portfolio')): ?>
       <div class="field"><label for="portfolioLinks">Portfolio / Project Links</label><input type="url" id="portfolioLinks" placeholder="GitHub, LinkedIn, or personal website URL"><p class="field-hint">Separate multiple URLs with a comma.</p></div>
+      <?php endif; ?>
     </div>
     <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(7)">← Back</button><button class="btn btn-primary" onclick="nextSection(7)">Continue →</button></div>
   </div>
@@ -1183,6 +1307,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
     </div>
     <div id="val-banner-8" class="val-banner"></div>
     <div class="card">
+      <?php if (is_std_on('ai_test_willing')): ?>
       <div class="field">
         <label for="aiTestWilling">Willing to Take the AI Test? <span class="req">*</span></label>
         <select id="aiTestWilling">
@@ -1191,6 +1316,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <option value="No">No</option>
         </select>
       </div>
+      <?php endif; ?>
     </div>
     <div class="nav-bar"><button class="btn btn-ghost" onclick="prevSection(8)">← Back</button><button class="btn btn-primary" onclick="nextSection(8)">Continue →</button></div>
   </div>
@@ -1423,6 +1549,10 @@ function showBanner(id, errs) {
 function v(id) {
   return (document.getElementById(id) || {}).value || '';
 }
+// Check element exists in DOM (used by validators to skip fields hidden via PHP)
+function el(id) {
+  return !!document.getElementById(id);
+}
 
 function radio(name) {
   const c = document.querySelector(`input[name="${name}"]:checked`);
@@ -1649,24 +1779,20 @@ function validateDeclaration() {
   return e;
 }
 
-// Validators
+// Validators — each check uses el(id) to skip fields not rendered by PHP (toggled off)
 const validators = {
   1: () => {
     const e = [];
-    if (!v('salutation')) e.push('Salutation required');
-    if (!v('firstName').trim()) e.push('First name required');
-    if (!v('lastName').trim()) e.push('Last name required');
-    const dobVal = v('dob');
-    const dobErr = dateError('Date of birth', dobVal, { max: todayYmd() });
-    if (dobErr) e.push(dobErr);
-    if (!v('currentCity').trim()) e.push('Current city required');
-    
-    const pe = validatePhone(); if (pe) e.push(pe);
-    
-    if (!isStrictEmail(v('email'))) e.push('Valid email required');
-    if (!v('college')) e.push('College/University required');
-    if (v('college') === 'Other – specify' && !v('collegeOther').trim()) e.push('Specify your college');
-    if (!v('source')) e.push('Application source required');
+    if (el('salutation') && !v('salutation')) e.push('Salutation required');
+    if (el('firstName') && !v('firstName').trim()) e.push('First name required');
+    if (el('lastName') && !v('lastName').trim()) e.push('Last name required');
+    if (el('dob')) { const dobErr = dateError('Date of birth', v('dob'), { max: todayYmd() }); if (dobErr) e.push(dobErr); }
+    if (el('currentCity') && !v('currentCity').trim()) e.push('Current city required');
+    if (el('phone')) { const pe = validatePhone(); if (pe) e.push(pe); }
+    if (el('email') && !isStrictEmail(v('email'))) e.push('Valid email required');
+    if (el('college') && !v('college')) e.push('College/University required');
+    if (el('collegeOther') && v('college') === 'Other – specify' && !v('collegeOther').trim()) e.push('Specify your college');
+    if (el('source') && !v('source')) e.push('Application source required');
     return e;
   },
 
@@ -1677,63 +1803,63 @@ const validators = {
     if (!v('engagementType')) e.push('Engagement type required');
     return e;
   },
-  
+
   3: () => {
     const e = [];
-    if (!v('englishLevel')) e.push('English level required');
-    if (!v('yearsExp')) e.push('Years of experience required');
+    if (el('englishLevel') && !v('englishLevel')) e.push('English level required');
+    if (el('yearsExp') && !v('yearsExp')) e.push('Years of experience required');
     const isFresher = v('yearsExp') === 'Fresher';
-    if (!isFresher && !v('industry')) e.push('Industry background required');
-    if (!isFresher && !checks('expType')) e.push('Select at least one experience type');
-    if (isFresher) {
-      // auto-set for fresher
-      const ind = document.getElementById('industry');
-      if (ind) ind.value = 'Fresher / None';
+    if (el('industry') && !isFresher && !v('industry')) e.push('Industry background required');
+    if (el('expTypeFieldContainer') && !isFresher && !checks('expType')) e.push('Select at least one experience type');
+    if (isFresher) { const ind = document.getElementById('industry'); if (ind) ind.value = 'Fresher / None'; }
+    return e;
+  },
+
+  4: () => {
+    const e = [];
+    if (el('expectedSalary')) {
+      const expected = moneyNumber(v('expectedSalary'));
+      const current = moneyNumber(v('currentSalary'));
+      if (expected === null) e.push('Expected salary / stipend must be a valid number.');
+      if (expected !== null && current !== null && expected < current) e.push('Expected salary / stipend cannot be lower than current salary / stipend.');
     }
     return e;
   },
-  
-  4: () => {
-    const e = [];
-    const expected = moneyNumber(v('expectedSalary'));
-    const current = moneyNumber(v('currentSalary'));
-    if (expected === null) e.push('Expected salary / stipend must be a valid number.');
-    if (expected !== null && current !== null && expected < current) e.push('Expected salary / stipend cannot be lower than current salary / stipend.');
-    return e;
-  },
-  
+
   5: () => {
     const e = [];
     const et = v('engagementType');
-    if (et !== 'Employment' && !v('tenure')) e.push('Internship / training tenure is required.');
-    const joiningErr = dateError('Preferred joining date', v('joiningDate'), { min: todayYmd() });
-    if (joiningErr) e.push(joiningErr);
-    if (!v('flexHours')) e.push('Flexible hours preference is required.');
+    if (el('tenure') && et !== 'Employment' && !v('tenure')) e.push('Internship / training tenure is required.');
+    if (el('joiningDate')) { const joiningErr = dateError('Preferred joining date', v('joiningDate'), { min: todayYmd() }); if (joiningErr) e.push(joiningErr); }
+    if (el('flexHours') && !v('flexHours')) e.push('Flexible hours preference is required.');
     return e;
   },
-  
+
   6: () => {
     const e = [];
-    if (!v('laptop')) e.push('Laptop ownership is required.');
-    if (!v('internet')) e.push('Internet availability is required.');
-    if (!v('commute')) e.push('Commute preference is required.');
+    if (el('laptop') && !v('laptop')) e.push('Laptop ownership is required.');
+    if (el('internet') && !v('internet')) e.push('Internet availability is required.');
+    if (el('commute') && !v('commute')) e.push('Commute preference is required.');
     return e;
   },
-  
+
   7: () => {
     const e = [];
-    if (!document.getElementById('resumeFile').files.length) { e.push('Please upload your Resume / CV.'); } else if (!checkFileSize('resumeFile', 10)) { e.push('Resume file size must be less than 10 MB.'); }
-    const vo = v('videoOption');
-    if (vo === 'link' && !v('videoLinkInput').trim()) e.push('Video URL required');
+    const resumeEl = document.getElementById('resumeFile');
+    if (resumeEl) {
+      if (!resumeEl.files.length) { e.push('Please upload your Resume / CV.'); }
+      else if (!checkFileSize('resumeFile', 10)) { e.push('Resume file size must be less than 10 MB.'); }
+    }
+    if (el('videoOption')) { const vo = v('videoOption'); if (vo === 'link' && !v('videoLinkInput').trim()) e.push('Video URL required'); }
     return e;
   },
-  
+
   8: () => {
     const e = [];
-    if (!v('aiTestWilling')) e.push('Please indicate AI test willingness');
+    if (el('aiTestWilling') && !v('aiTestWilling')) e.push('Please indicate AI test willingness');
     return e;
   },
-  
+
   9: () => {
     if (!HAS_EXTRA_FIELDS) return validateDeclaration();
     const e = [];
@@ -1862,7 +1988,8 @@ function toggleVideoInput() {
 }
 
 function showFileName(inputId, displayId) {
-  const f = document.getElementById(inputId).files[0];
+  const inp = document.getElementById(inputId);
+  const f = inp && inp.files ? inp.files[0] : null;
   if (f) {
     const d = document.getElementById(displayId);
     d.textContent = '✓ ' + f.name;
@@ -1956,18 +2083,18 @@ async function submitForm() {
       timestamp: new Date().toISOString()
     };
     
-    // Resume
+    // Resume (field may be hidden by std field config)
     const ri = document.getElementById('resumeFile');
-    if (ri.files.length) {
+    if (ri && ri.files.length) {
       const f = ri.files[0];
       data.resume_name = f.name;
       data.resume_type = f.type;
       data.resume_base64 = await getBase64(f);
     }
-    
-    // Video
+
+    // Video (field may be hidden by std field config)
     const vi = document.getElementById('videoFile');
-    if (vi.files.length && g('videoOption') === 'upload') {
+    if (vi && vi.files.length && g('videoOption') === 'upload') {
       const f = vi.files[0];
       data.video_name = f.name;
       data.video_type = f.type;
@@ -2023,13 +2150,23 @@ async function submitDynamicForm() {
       firstName = parts.shift() || fullName;
       lastName = parts.join(' ');
     }
+    // Collect injected mandatory fields (when not in application_fields)
+    const mandPhone = (document.getElementById('mand_phone')?.value || '').trim();
+    const mandEmail = (document.getElementById('mand_email')?.value || '').trim();
+    const mandName  = (document.getElementById('mand_name')?.value || '').trim();
+    // Mandatory field validation
+    const mandErrs = [];
+    if (document.getElementById('mand_phone') && !mandPhone) mandErrs.push('Phone number is required');
+    if (document.getElementById('mand_email') && !mandEmail) mandErrs.push('Email address is required');
+    if (document.getElementById('mand_name')  && !mandName)  mandErrs.push('Full name is required');
+    if (mandErrs.length) { showBanner('val-banner-1', mandErrs); return; }
     const data = {
       campaign_id: CAMPAIGN_ID,
       salutation: dynamicByKeys(answers, ['salutation','title']),
-      first_name: firstName || fullName || 'Candidate',
+      first_name: firstName || fullName || mandName || 'Candidate',
       last_name: lastName,
-      phone: dynamicByKeys(answers, ['phone','mobile','mobile_number','phone_number','whatsapp','whatsapp_number']),
-      email: dynamicByKeys(answers, ['email','email_id','email_address']),
+      phone: dynamicByKeys(answers, ['phone','mobile','mobile_number','phone_number','whatsapp','whatsapp_number']) || mandPhone,
+      email: dynamicByKeys(answers, ['email','email_id','email_address']) || mandEmail,
       city: dynamicByKeys(answers, ['city','current_city','location']),
       source: dynamicByKeys(answers, ['source','application_source','how_did_you_hear']),
       role_applied: dynamicByKeys(answers, ['role','role_applied','job_role']) || <?= json_encode($job_role) ?>,
@@ -2251,6 +2388,7 @@ function validatePhone() {
 // ── FILE SIZE CHECK ────────────────────────────────────────────
 function checkFileSize(inputId, maxMB) {
   const fi = document.getElementById(inputId);
+  if (!fi) return true;
   return !(fi.files.length > 0 && fi.files[0].size > maxMB * 1024 * 1024);
 }
 

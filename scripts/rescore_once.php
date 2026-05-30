@@ -8,7 +8,7 @@ if (php_sapi_name() !== 'cli') {
     exit(1);
 }
 
-$opts = getopt('', ['all', 'on-hold', 'campaign:', 'candidate:', 'limit:', 'delay:', 'retries:', 'dry-run']);
+$opts = getopt('', ['all', 'on-hold', 'voice-only', 'campaign:', 'candidate:', 'limit:', 'delay:', 'retries:', 'dry-run']);
 $campaign_id = isset($opts['campaign']) ? (int)$opts['campaign'] : 0;
 $candidate_id = isset($opts['candidate']) ? (int)$opts['candidate'] : 0;
 $limit = isset($opts['limit']) ? max(1, (int)$opts['limit']) : 0;
@@ -16,21 +16,34 @@ $delay = isset($opts['delay']) ? max(0, (int)$opts['delay']) : 25;
 $retries = isset($opts['retries']) ? max(0, (int)$opts['retries']) : 3;
 $dry_run = array_key_exists('dry-run', $opts);
 $on_hold_only = array_key_exists('on-hold', $opts);
+$voice_only = array_key_exists('voice-only', $opts);
 
-if (!$candidate_id && !$campaign_id && !array_key_exists('all', $opts) && !$on_hold_only) {
+if (!$candidate_id && !$campaign_id && !array_key_exists('all', $opts) && !$on_hold_only && !$voice_only) {
     echo "Usage:\n";
     echo "  php scripts/rescore_once.php --all\n";
     echo "  php scripts/rescore_once.php --on-hold\n";
+    echo "  php scripts/rescore_once.php --voice-only\n";
     echo "  php scripts/rescore_once.php --campaign=13\n";
     echo "  php scripts/rescore_once.php --candidate=112\n";
     echo "  php scripts/rescore_once.php --all --limit=20 --dry-run\n";
     echo "  php scripts/rescore_once.php --all --delay=30 --retries=3\n\n";
+    echo "  --voice-only: only candidates with voice answers that have no transcript yet\n";
     echo "This refreshes AI scores in silent mode, so WhatsApp/result calls are not sent.\n";
     echo "If the AI provider rate-limits a candidate, existing marks are preserved and retried.\n";
     exit(1);
 }
 
-$where = "EXISTS (SELECT 1 FROM interview_answers ia WHERE ia.candidate_id = c.id)";
+// voice-only: filter to candidates with at least one untranscribed voice answer
+if ($voice_only) {
+    $where = "EXISTS (
+        SELECT 1 FROM interview_answers ia
+        WHERE ia.candidate_id = c.id
+          AND ia.audio_url IS NOT NULL AND ia.audio_url != ''
+          AND (ia.text_answer IS NULL OR TRIM(ia.text_answer) = '')
+    )";
+} else {
+    $where = "EXISTS (SELECT 1 FROM interview_answers ia WHERE ia.candidate_id = c.id)";
+}
 $params = [];
 $types = '';
 

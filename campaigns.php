@@ -9,7 +9,7 @@ $campaign_write_actions = [
     'new','save','edit','edit_save','add_question','edit_question','delete_question',
     'add_application_field','add_application_template','delete_application_field',
     'bulk_delete_application_fields','activate','clone_campaign','delete_campaign',
-    'bulk_delete_campaigns'
+    'bulk_delete_campaigns','save_apply_form_config'
 ];
 if (!$can_manage_campaigns && in_array($action, $campaign_write_actions, true)) {
     header("Location: campaigns.php?msg=admin_campaigns_only");
@@ -136,14 +136,13 @@ function campaign_setup_state($campaign, $questions, $application_fields) {
     $has_questions = count($questions) > 0;
     $weight = array_sum(array_map('intval', array_column($questions, 'weight')));
     $has_scoring = $has_questions && $weight === 100;
-    $has_integration = !empty($campaign['integration_type']) && $campaign['integration_type'] !== 'none' && !empty($campaign['integration_endpoint']);
+    $has_integration = true;
     $steps = [
         ['label' => 'Campaign details', 'done' => $has_details],
         ['label' => 'AI voice agent (optional)', 'done' => true],
         ['label' => 'Apply form', 'done' => $has_apply],
         ['label' => 'Interview questions', 'done' => $has_questions],
         ['label' => 'Scoring weight 100%', 'done' => $has_scoring],
-        ['label' => 'CRM / Sheet connection', 'done' => $has_integration],
         ['label' => 'Activate campaign', 'done' => ($campaign['status'] ?? '') === 'active'],
     ];
     $done = count(array_filter($steps, fn($s) => $s['done']));
@@ -156,7 +155,7 @@ function campaign_setup_state($campaign, $questions, $application_fields) {
         'remaining_weight' => max(0, 100 - $weight),
         'ready_to_preview' => $has_apply,
         'ready_to_activate' => $has_details && $has_apply && $has_questions && $has_scoring,
-        'integration_pending' => !$has_integration,
+        'integration_pending' => false,
     ];
 }
 
@@ -408,6 +407,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'application_template_added', ['added' => $added]);
         header("Location: campaigns.php?action=apply_form&id=$campaign_id&msg=template_added_$added"); exit;
     }
+    if ($action === 'save_apply_form_config') {
+        $campaign_exists = db_fetch_one("SELECT id FROM campaigns WHERE id=? AND org_id=?", [$campaign_id,$user['org_id']], 'ii');
+        if (!$campaign_exists) { header("Location: campaigns.php?action=apply_form&id=$campaign_id&msg=config_error"); exit; }
+        // Ensure column exists (safe to run multiple times on MySQL)
+        @get_db()->query("ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS apply_form_config JSON NULL DEFAULT NULL");
+        $enabled_keys = array_map('strtolower', array_values(array_filter(array_map('trim', (array)($_POST['std_fields'] ?? [])))));
+        // Save enabled keys as JSON in campaigns row — no application_fields rows for std fields
+        db_execute("UPDATE campaigns SET apply_form_config=? WHERE id=?", [json_encode($enabled_keys), $campaign_id], 'si');
+        // Clean up any standard fields previously added to application_fields by old approach
+        foreach (array_column(legacy_application_template_fields(), 1) as $sk) {
+            db_execute("DELETE FROM application_fields WHERE campaign_id=? AND field_key=?", [$campaign_id, $sk], 'is');
+        }
+        audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'apply_form_config_saved', ['enabled'=>count($enabled_keys)]);
+        header("Location: campaigns.php?action=apply_form&id=$campaign_id&msg=config_saved"); exit;
+    }
     if ($action === 'bulk_delete_application_fields') {
         $field_ids = array_values(array_filter(array_map('intval', $_POST['field_ids'] ?? [])));
         $campaign_exists = db_fetch_one("SELECT id FROM campaigns WHERE id=? AND org_id=?", [$campaign_id,$user['org_id']], 'ii');
@@ -603,249 +617,507 @@ if ($editing_question && !empty($editing_question['options_json'])) {
 <div class="main-content">
 
 <?php if ($action === 'list'): ?>
-  <style>
-    .campaign-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-    .campaign-actions .btn-sm,.campaign-actions .btn-green{white-space:nowrap}
-    @media(max-width:900px){.campaign-table-wrap{overflow-x:auto}.campaign-actions{min-width:520px}}
-  </style>
-  <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
-    <div><h2>Campaigns</h2><p>Manage all hiring campaigns</p></div>
+<style>
+/* ── Campaign List — Unicorn Edition ─────────────────────── */
+:root{--cl-border:#E8ECF0;--cl-bg:#F8FAFC;--cl-txt:#0F172A;--cl-muted:#64748B;--cl-hover:#F1F5F9}
+.cl-wrap{max-width:1100px}
+/* Top bar */
+.cl-topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.cl-topbar-left h2{font-size:21px;font-weight:800;letter-spacing:-.4px;color:var(--cl-txt);margin:0;display:flex;align-items:center;gap:8px}
+.cl-topbar-left h2 .cl-total{font-size:12px;font-weight:700;background:var(--cl-border);color:var(--cl-muted);border-radius:99px;padding:2px 9px;letter-spacing:0}
+.cl-topbar-right{display:flex;gap:8px}
+.cl-btn-jd{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;background:linear-gradient(135deg,#6D28D9,#2563EB);color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none;transition:opacity .15s;letter-spacing:-.1px}
+.cl-btn-jd:hover{opacity:.88}
+.cl-btn-new{display:inline-flex;align-items:center;gap:7px;padding:8px 15px;background:#0F172A;color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;text-decoration:none;transition:background .15s}
+.cl-btn-new:hover{background:#1E293B}
+/* Kpi row */
+.cl-kpi{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.cl-kpi-item{background:#fff;border:1px solid var(--cl-border);border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:9px;min-width:100px}
+.cl-kpi-icon{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+.cl-kpi-val{font-size:17px;font-weight:800;color:var(--cl-txt);line-height:1;letter-spacing:-.3px}
+.cl-kpi-lbl{font-size:10px;color:var(--cl-muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-top:1px}
+/* Toolbar */
+.cl-toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px}
+.cl-toolbar-left{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--cl-muted)}
+.cl-sel-all{display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;user-select:none}
+.cl-sel-all input{width:14px;height:14px;accent-color:#7C3AED;cursor:pointer}
+/* List container */
+.cl-list{background:#fff;border:1px solid var(--cl-border);border-radius:12px;overflow:hidden}
+/* Row */
+.cl-row{display:grid;grid-template-columns:36px 1fr auto;align-items:center;border-bottom:1px solid var(--cl-border);transition:background .12s;position:relative}
+.cl-row:last-child{border-bottom:none}
+.cl-row:hover{background:var(--cl-hover)}
+.cl-row-check{display:flex;align-items:center;justify-content:center;padding:0 0 0 14px}
+.cl-row-check input{width:14px;height:14px;accent-color:#7C3AED;cursor:pointer}
+/* Status stripe */
+.cl-row::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:0}
+.cl-row[data-status="active"]::before{background:#10B981}
+.cl-row[data-status="draft"]::before{background:#CBD5E1}
+.cl-row[data-status="paused"]::before{background:#F59E0B}
+.cl-row[data-status="completed"]::before{background:#6366F1}
+/* Row body */
+.cl-row-body{padding:11px 14px 11px 10px;min-width:0}
+.cl-row-main{display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap}
+.cl-s-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;flex-shrink:0;line-height:1.4}
+.cl-s-pill.active{background:#DCFCE7;color:#15803D}
+.cl-s-pill.draft{background:#F1F5F9;color:#64748B}
+.cl-s-pill.paused{background:#FEF3C7;color:#B45309}
+.cl-s-pill.completed{background:#EDE9FE;color:#6D28D9}
+.cl-s-dot{width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}
+.cl-name{font-size:14px;font-weight:700;color:var(--cl-txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px;letter-spacing:-.2px}
+.cl-row-sub{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--cl-muted);flex-wrap:wrap}
+.cl-row-sub .sep{color:#CBD5E1}
+/* Inline stats */
+.cl-row-stats{display:flex;align-items:center;gap:0;margin-top:7px;border:1px solid var(--cl-border);border-radius:7px;width:fit-content;overflow:hidden}
+.cl-rs{padding:4px 12px;border-right:1px solid var(--cl-border);text-align:center}
+.cl-rs:last-child{border-right:none}
+.cl-rs-v{font-size:13px;font-weight:800;color:var(--cl-txt);letter-spacing:-.3px;display:block}
+.cl-rs-l{font-size:9px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.5px;display:block}
+/* Agent chip */
+.cl-agent{display:inline-flex;align-items:center;gap:5px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;padding:3px 8px;font-size:10.5px;color:#1D4ED8;font-weight:700;font-family:ui-monospace,monospace;margin-top:6px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cl-agent-none{display:inline-flex;align-items:center;gap:5px;background:#FFF1F2;border:1px solid #FECDD3;border-radius:6px;padding:3px 8px;font-size:10.5px;color:#BE123C;font-weight:700;margin-top:6px}
+/* Action panel */
+.cl-row-actions{display:flex;flex-direction:column;gap:5px;padding:10px 14px 10px 8px;align-items:flex-end;min-width:260px}
+.cl-arow{display:flex;gap:4px;align-items:center}
+.ca{display:inline-flex;align-items:center;gap:4px;padding:5px 9px;border-radius:7px;font-size:11.5px;font-weight:700;border:1px solid var(--cl-border);background:#fff;color:#374151;text-decoration:none;cursor:pointer;transition:all .12s;white-space:nowrap;line-height:1;letter-spacing:-.1px}
+.ca:hover{border-color:#7C3AED;color:#6D28D9;background:#F5F3FF}
+.ca.green{border-color:#BBF7D0;color:#15803D;background:#F0FDF4}.ca.green:hover{border-color:#16A34A;background:#DCFCE7}
+.ca.amber{border-color:#FDE68A;color:#92400E;background:#FFFBEB}.ca.amber:hover{border-color:#F59E0B;background:#FEF3C7}
+.ca.purple{border-color:#DDD6FE;color:#6D28D9;background:#F5F3FF}.ca.purple:hover{border-color:#7C3AED;background:#EDE9FE}
+.ca.red{border-color:#FECACA;color:#DC2626;background:#FFF5F5}.ca.red:hover{border-color:#DC2626;background:#FEE2E2}
+.ca.activate{border-color:#A7F3D0;color:#065F46;background:#ECFDF5}.ca.activate:hover{border-color:#10B981;background:#D1FAE5}
+.ca-badge{background:#7C3AED;color:#fff;border-radius:5px;padding:0px 5px;font-size:9px;font-weight:800;line-height:16px}
+/* Empty */
+.cl-empty{padding:48px 24px;text-align:center;color:#94A3B8}
+/* Bulk bar */
+.cl-bulk{display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0F172A;color:#fff;padding:11px 20px;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.22);align-items:center;gap:12px;z-index:999;font-size:13px;font-weight:700}
+@media(max-width:860px){.cl-name{max-width:240px}.cl-row-actions{display:none}.cl-kpi{gap:6px}.cl-kpi-item{min-width:80px;padding:8px 12px}}
+</style>
+<?php
+  $stat_total  = $campaign_total;
+  $stat_active = (int)(db_fetch_one("SELECT COUNT(*) cnt FROM campaigns WHERE org_id=? AND status='active'", [$user['org_id']], 'i')['cnt'] ?? 0);
+  $stat_leads  = (int)(db_fetch_one("SELECT COUNT(*) cnt FROM candidates WHERE org_id=?", [$user['org_id']], 'i')['cnt'] ?? 0);
+?>
+
+<div class="cl-topbar">
+  <div class="cl-topbar-left">
+    <h2>Campaigns <span class="cl-total"><?= $stat_total ?></span></h2>
+  </div>
+  <?php if ($can_manage_campaigns): ?>
+  <div class="cl-topbar-right">
+    <a href="/jd_builder" class="cl-btn-jd"><i class="fa-solid fa-wand-magic-sparkles fa-xs"></i> Create from JD</a>
+    <a href="campaigns.php?action=new" class="cl-btn-new"><i class="fa-solid fa-plus fa-xs"></i> New Campaign</a>
+  </div>
+  <?php endif; ?>
+</div>
+
+<?php if (($_GET['msg'] ?? '') === 'admin_campaigns_only'): ?>
+  <div class="alert alert-info" style="margin-bottom:14px"><i class="fa-solid fa-circle-info"></i> Campaign creation and changes are available for Admin and Super Admin users.</div>
+<?php elseif (!empty($_GET['msg'])): ?>
+  <div class="alert alert-success" style="margin-bottom:14px">✅ <?= htmlspecialchars(str_replace('_',' ',$_GET['msg'])) ?>!</div>
+<?php endif; ?>
+
+<div class="cl-kpi">
+  <div class="cl-kpi-item">
+    <div class="cl-kpi-icon" style="background:#EFF6FF;color:#2563EB"><i class="fa-solid fa-bullhorn fa-xs"></i></div>
+    <div><div class="cl-kpi-val"><?= $stat_total ?></div><div class="cl-kpi-lbl">Total</div></div>
+  </div>
+  <div class="cl-kpi-item">
+    <div class="cl-kpi-icon" style="background:#F0FDF4;color:#16A34A"><i class="fa-solid fa-circle-play fa-xs"></i></div>
+    <div><div class="cl-kpi-val"><?= $stat_active ?></div><div class="cl-kpi-lbl">Active</div></div>
+  </div>
+  <div class="cl-kpi-item">
+    <div class="cl-kpi-icon" style="background:#F5F3FF;color:#7C3AED"><i class="fa-solid fa-users fa-xs"></i></div>
+    <div><div class="cl-kpi-val"><?= $stat_leads ?></div><div class="cl-kpi-lbl">Leads</div></div>
+  </div>
+</div>
+
+<div class="cl-toolbar">
+  <div class="cl-toolbar-left">
     <?php if ($can_manage_campaigns): ?>
-    <a href="campaigns.php?action=new" class="btn-primary">+ New Campaign</a>
+    <label class="cl-sel-all"><input type="checkbox" id="select-all-camps"> Select all</label>
+    <?php endif; ?>
+    <span>Show <?= pagination_per_page_select('campaign_per_page', 'campaign_page', $campaign_list_per_page) ?> campaigns</span>
+  </div>
+</div>
+
+<div class="cl-list">
+<?php if (empty($campaigns)): ?>
+  <div class="cl-empty">
+    <div style="font-size:32px;margin-bottom:10px;opacity:.35"><i class="fa-solid fa-folder-open"></i></div>
+    <div style="font-size:15px;font-weight:700;color:#334155;margin-bottom:4px">No campaigns yet</div>
+    <p style="font-size:12px;margin-bottom:14px">Create your first campaign to start hiring.</p>
+    <?php if ($can_manage_campaigns): ?>
+    <a href="campaigns.php?action=new" class="cl-btn-new" style="display:inline-flex"><i class="fa-solid fa-plus fa-xs"></i> New Campaign</a>
     <?php endif; ?>
   </div>
-  <?php if (($_GET['msg'] ?? '') === 'admin_campaigns_only'): ?>
-    <div class="alert alert-info"><i class="fa-solid fa-circle-info"></i> Campaign creation and changes are available for Admin and Super Admin users.</div>
-  <?php elseif (!empty($_GET['msg'])): ?>
-    <div class="alert alert-success">✅ Campaign <?= htmlspecialchars(str_replace('_',' ',$_GET['msg'])) ?>!</div>
-  <?php endif; ?>
-  <div class="card campaign-table-wrap">
-    <div class="pager-top">Show <?= pagination_per_page_select('campaign_per_page', 'campaign_page', $campaign_list_per_page) ?> campaigns</div>
-    <table class="table">
-      <thead><tr>
-        <?php if ($can_manage_campaigns): ?><th style="width:36px"><input type="checkbox" id="select-all-camps" title="Select All" style="cursor:pointer;width:16px;height:16px"></th><?php endif; ?>
-        <th>Campaign</th><th>Created By</th><th>Job Role</th><th>AI Agent</th><th>Candidates</th><th>Pass Score</th><th>Status</th><th>Actions</th></tr></thead>
-      <tbody>
-        <?php foreach ($campaigns as $c): ?>
-        <tr>
-          <?php $applyLink = campaign_apply_link($c); ?>
-          <?php if ($can_manage_campaigns): ?><td style="text-align:center"><input type="checkbox" class="camp-chk" value="<?= $c['id'] ?>" style="cursor:pointer;width:16px;height:16px"></td><?php endif; ?>
-          <td><strong><?= htmlspecialchars($c['name']) ?></strong><br><small style="color:#8892A4"><?= date('d M Y', strtotime($c['created_at'])) ?></small></td>
-          <td><strong><?= htmlspecialchars($c['creator_name'] ?: 'Unknown') ?></strong><br><small style="color:#8892A4">Audit enabled</small></td>
-          <td><?= htmlspecialchars($c['job_role']) ?></td>
-          <td><small style="font-family:monospace;color:#0066FF"><?= $c['el_agent_id'] ? substr($c['el_agent_id'],0,20).'...' : '<span style="color:#dc3545">Not set</span>' ?></small></td>
-          <td><?= $c['total_cands'] ?></td>
-          <td><?= $c['passing_score'] ?>/100</td>
-          <td><span class="badge badge-<?= $c['status'] ?>"><?= ucfirst($c['status']) ?></span></td>
-          <td class="campaign-actions">
-            <?php if ($can_manage_campaigns): ?><a href="campaigns.php?action=edit&id=<?= $c['id'] ?>" class="btn-sm">✏️ Edit</a><?php endif; ?>
-            <a href="campaigns.php?action=apply_form&id=<?= $c['id'] ?>" class="btn-sm">Apply Form</a>
-            <a href="campaigns.php?action=questions&id=<?= $c['id'] ?>" class="btn-sm">Questions</a>
-            <a href="candidates.php?campaign_id=<?= $c['id'] ?>" class="btn-sm">Leads</a>
-            <?php if ((int)$c['apply_field_count'] > 0): ?>
-            <button type="button" class="btn-sm" onclick="copyCampaignLink(<?= htmlspecialchars(json_encode($applyLink), ENT_QUOTES, 'UTF-8') ?>)">Copy Link</button>
-            <a href="https://wa.me/?text=<?= urlencode('Apply here: ' . $applyLink) ?>" target="_blank" rel="noopener" class="btn-sm" style="color:#16A34A;border-color:#16A34A40;background:#16A34A10">WhatsApp</a>
-            <?php else: ?>
-            <a href="campaigns.php?action=apply_form&id=<?= $c['id'] ?>" class="btn-sm" style="color:#B45309;border-color:#F59E0B55;background:#FEF3C7">Form Pending</a>
-            <?php endif; ?>
-            <?php if ($can_manage_campaigns && $c['status'] !== 'active'): ?>
-              <form method="POST" action="/campaigns?action=activate&id=<?= $c['id'] ?>" style="display:inline">
-                <?= csrf_input() ?>
-                <button type="submit" class="btn-green" style="padding:5px 12px;font-size:13px">▶ Activate</button>
-              </form>
-            <?php endif; ?>
-            <?php if ($can_manage_campaigns): ?>
-            <a href="campaigns.php?action=clone_campaign&id=<?= $c['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" class="btn-sm" style="color:#7C3AED;border-color:#7C3AED40;background:#EDE9FE10" onclick="return confirm('Clone this campaign (questions + form fields will be copied)?')">📋 Clone</a>
-            <a href="campaigns.php?action=delete_campaign&id=<?= $c['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" class="btn-danger" style="padding:5px 12px;font-size:13px;text-decoration:none" onclick="return confirm('Delete this campaign and all mapped candidates/interview data? This cannot be undone.')">Delete</a>
-            <?php endif; ?>
-          </td>
-        </tr>
-        <?php endforeach; ?>
-        <?php if (empty($campaigns)): ?>
-        <tr><td colspan="<?= $can_manage_campaigns ? 9 : 8 ?>" style="text-align:center;padding:32px;color:#8892A4">No campaigns yet. <?php if ($can_manage_campaigns): ?><a href="campaigns.php?action=new">Create your first →</a><?php endif; ?></td></tr>
-        <?php endif; ?>
-      </tbody>
-    </table>
-    <?= pagination_html('campaign_page', $campaign_list_page, $campaign_total_pages, $campaign_total, $campaign_list_per_page) ?>
-  </div>
+<?php endif; ?>
 
-  <!-- Bulk Delete Bar -->
+<?php foreach ($campaigns as $c):
+  $applyLink  = campaign_apply_link($c);
+  $hasForm    = (int)$c['apply_field_count'] > 0;
+  $st         = $c['status'];
+  $agentShort = $c['el_agent_id'] ? (strlen($c['el_agent_id']) > 24 ? substr($c['el_agent_id'],0,24).'…' : $c['el_agent_id']) : null;
+  $cands      = (int)$c['total_cands'];
+?>
+<div class="cl-row" data-status="<?= htmlspecialchars($st) ?>">
   <?php if ($can_manage_campaigns): ?>
-  <div id="bulk-bar" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:12px 24px;border-radius:12px;box-shadow:0 4px 24px #0006;display:none;align-items:center;gap:16px;z-index:999">
-    <span id="bulk-count" style="font-weight:600">0 selected</span>
-    <form id="bulk-delete-form" method="POST" action="/campaigns?action=bulk_delete_campaigns" style="display:inline">
-      <?= csrf_input() ?>
-      <input type="hidden" name="campaign_ids" id="bulk-ids">
-      <button type="button" onclick="bulkDeleteCampaigns()" style="background:#ef4444;color:#fff;border:none;padding:8px 20px;border-radius:8px;font-weight:600;cursor:pointer">🗑 Delete Selected</button>
-    </form>
-    <button onclick="clearBulkSelection()" style="background:#475569;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer">Cancel</button>
-  </div>
+  <div class="cl-row-check"><input type="checkbox" class="camp-chk" value="<?= $c['id'] ?>"></div>
   <?php endif; ?>
-  <script>
-    const selectAll = document.getElementById('select-all-camps');
-    const bulkBar  = document.getElementById('bulk-bar');
-    const bulkCount = document.getElementById('bulk-count');
 
-    function getChecked() {
-      return [...document.querySelectorAll('.camp-chk:checked')];
-    }
-    function updateBulkBar() {
-      if (!bulkBar || !bulkCount) return;
-      const checked = getChecked();
-      if (checked.length > 0) {
-        bulkBar.style.display = 'flex';
-        bulkCount.textContent = checked.length + ' selected';
-      } else {
-        bulkBar.style.display = 'none';
-      }
-    }
-    selectAll?.addEventListener('change', function() {
-      document.querySelectorAll('.camp-chk').forEach(c => c.checked = this.checked);
+  <div class="cl-row-body">
+    <div class="cl-row-main">
+      <span class="cl-s-pill <?= htmlspecialchars($st) ?>"><span class="cl-s-dot"></span><?= ucfirst($st) ?></span>
+      <span class="cl-name"><?= htmlspecialchars($c['name']) ?></span>
+    </div>
+    <div class="cl-row-sub">
+      <i class="fa-solid fa-briefcase fa-xs"></i><span><?= htmlspecialchars($c['job_role']) ?></span>
+      <span class="sep">·</span>
+      <i class="fa-solid fa-user fa-xs"></i><span><?= htmlspecialchars($c['creator_name'] ?: 'Unknown') ?></span>
+      <span class="sep">·</span>
+      <i class="fa-regular fa-calendar fa-xs"></i><span><?= date('d M Y', strtotime($c['created_at'])) ?></span>
+      <?php if ($agentShort): ?>
+      <span class="sep">·</span><span class="cl-agent"><i class="fa-solid fa-robot fa-xs"></i><?= htmlspecialchars($agentShort) ?></span>
+      <?php else: ?><span class="sep">·</span><span class="cl-agent-none"><i class="fa-solid fa-robot fa-xs"></i>No agent</span><?php endif; ?>
+    </div>
+    <div class="cl-row-stats">
+      <div class="cl-rs"><span class="cl-rs-v"><?= $cands ?></span><span class="cl-rs-l">Leads</span></div>
+      <div class="cl-rs"><span class="cl-rs-v"><?= (int)$c['passing_score'] ?></span><span class="cl-rs-l">Pass</span></div>
+      <div class="cl-rs"><span class="cl-rs-v"><?= (int)($c['question_count'] ?? 0) ?></span><span class="cl-rs-l">Questions</span></div>
+    </div>
+  </div>
+
+  <div class="cl-row-actions">
+    <div class="cl-arow">
+      <?php if ($can_manage_campaigns): ?>
+      <a href="campaigns.php?action=edit&id=<?= $c['id'] ?>" class="ca"><i class="fa-solid fa-pen-to-square fa-xs"></i> Edit</a>
+      <?php endif; ?>
+      <a href="campaigns.php?action=questions&id=<?= $c['id'] ?>" class="ca"><i class="fa-solid fa-microphone-lines fa-xs"></i> Questions</a>
+      <a href="campaigns.php?action=apply_form&id=<?= $c['id'] ?>" class="ca <?= !$hasForm ? 'amber' : '' ?>">
+        <i class="fa-solid fa-<?= $hasForm ? 'wpforms' : 'triangle-exclamation' ?> fa-xs"></i><?= $hasForm ? 'Form' : 'Form ⚠' ?>
+      </a>
+      <a href="candidates.php?campaign_id=<?= $c['id'] ?>" class="ca purple">
+        <i class="fa-solid fa-users fa-xs"></i> Leads<?= $cands ? ' <span class="ca-badge">'.$cands.'</span>' : '' ?>
+      </a>
+    </div>
+    <div class="cl-arow">
+      <?php if ($hasForm): ?>
+      <button type="button" class="ca green" onclick="copyCampaignLink(<?= htmlspecialchars(json_encode($applyLink),ENT_QUOTES,'UTF-8') ?>)"><i class="fa-solid fa-link fa-xs"></i> Copy Link</button>
+      <a href="https://wa.me/?text=<?= urlencode('Apply here: '.$applyLink) ?>" target="_blank" rel="noopener" class="ca green"><i class="fa-brands fa-whatsapp fa-xs"></i> Share</a>
+      <?php endif; ?>
+      <?php if ($can_manage_campaigns && $st !== 'active'): ?>
+      <form style="display:inline;margin:0" method="POST" action="/campaigns?action=activate&id=<?= $c['id'] ?>">
+        <?= csrf_input() ?>
+        <button type="submit" class="ca activate"><i class="fa-solid fa-play fa-xs"></i> Activate</button>
+      </form>
+      <?php endif; ?>
+      <?php if ($can_manage_campaigns): ?>
+      <a href="campaigns.php?action=clone_campaign&id=<?= $c['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" class="ca" onclick="return confirm('Clone this campaign?')"><i class="fa-regular fa-copy fa-xs"></i> Clone</a>
+      <a href="campaigns.php?action=delete_campaign&id=<?= $c['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" class="ca red" onclick="return confirm('Delete this campaign and ALL data? Cannot be undone.')"><i class="fa-solid fa-trash-can fa-xs"></i> Delete</a>
+      <?php endif; ?>
+    </div>
+  </div>
+</div>
+<?php endforeach; ?>
+</div>
+
+<?= pagination_html('campaign_page', $campaign_list_page, $campaign_total_pages, $campaign_total, $campaign_list_per_page) ?>
+
+<?php if ($can_manage_campaigns): ?>
+<div class="cl-bulk" id="bulk-bar">
+  <span id="bulk-count" style="font-weight:700">0 selected</span>
+  <form id="bulk-delete-form" method="POST" action="/campaigns?action=bulk_delete_campaigns" style="display:inline">
+    <?= csrf_input() ?>
+    <input type="hidden" name="campaign_ids" id="bulk-ids">
+    <button type="button" onclick="bulkDeleteCampaigns()" style="background:#EF4444;color:#fff;border:none;padding:7px 16px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer"><i class="fa-solid fa-trash-can fa-xs"></i> Delete Selected</button>
+  </form>
+  <button onclick="clearBulkSelection()" style="background:#334155;color:#fff;border:none;padding:7px 13px;border-radius:8px;font-size:12px;cursor:pointer">Cancel</button>
+</div>
+<?php endif; ?>
+
+<script>
+  const selectAll = document.getElementById('select-all-camps');
+  const bulkBar   = document.getElementById('bulk-bar');
+  const bulkCount = document.getElementById('bulk-count');
+  const getChecked = () => [...document.querySelectorAll('.camp-chk:checked')];
+  function updateBulkBar() {
+    if (!bulkBar||!bulkCount) return;
+    const n = getChecked().length;
+    bulkBar.style.display = n ? 'flex' : 'none';
+    bulkCount.textContent = n + ' selected';
+  }
+  selectAll?.addEventListener('change', function() {
+    document.querySelectorAll('.camp-chk').forEach(c => c.checked = this.checked);
+    updateBulkBar();
+  });
+  document.querySelectorAll('.camp-chk').forEach(c => {
+    c.addEventListener('change', () => {
+      if (selectAll) selectAll.checked = [...document.querySelectorAll('.camp-chk')].every(x => x.checked);
       updateBulkBar();
     });
-    document.querySelectorAll('.camp-chk').forEach(c => {
-      c.addEventListener('change', function() {
-        if (selectAll) selectAll.checked = [...document.querySelectorAll('.camp-chk')].every(x => x.checked);
-        updateBulkBar();
-      });
-    });
-    function clearBulkSelection() {
-      document.querySelectorAll('.camp-chk').forEach(c => c.checked = false);
-      if (selectAll) selectAll.checked = false;
-      if (bulkBar) bulkBar.style.display = 'none';
-    }
-    function bulkDeleteCampaigns() {
-      const ids = getChecked().map(c => c.value).join(',');
-      const count = getChecked().length;
-      if (!ids) return;
-      if (!confirm('Delete ' + count + ' campaign(s) and ALL their candidates/interview data? This CANNOT be undone.')) return;
-      document.getElementById('bulk-ids').value = ids;
-      document.getElementById('bulk-delete-form').submit();
-    }
-  </script>
+  });
+  function clearBulkSelection() {
+    document.querySelectorAll('.camp-chk').forEach(c => c.checked = false);
+    if (selectAll) selectAll.checked = false;
+    if (bulkBar) bulkBar.style.display = 'none';
+  }
+  function bulkDeleteCampaigns() {
+    const ids = getChecked().map(c => c.value).join(',');
+    if (!ids || !confirm('Delete ' + getChecked().length + ' campaign(s) and ALL their data? CANNOT be undone.')) return;
+    document.getElementById('bulk-ids').value = ids;
+    document.getElementById('bulk-delete-form').submit();
+  }
+</script>
 
 <?php elseif ($action === 'new' || ($action === 'edit' && $campaign)): ?>
-  <?php $is_edit = ($action === 'edit'); ?>
-  <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
-    <div><h2><?= $is_edit ? 'Edit Campaign' : 'New Campaign' ?></h2><p><?= $is_edit ? htmlspecialchars($campaign['name']) : 'Set up a new hiring campaign' ?></p></div>
-    <a href="campaigns.php" class="btn-sm">← Back</a>
+<?php $is_edit = ($action === 'edit'); ?>
+<?php
+  $form_msg = (string)($_GET['msg'] ?? '');
+  $form_errors = ['start_date_past','end_before_start','required_missing','create_failed','invalid_method'];
+  $form_messages = [
+    'start_date_past'   => 'Start date cannot be in the past.',
+    'end_before_start'  => 'End date must be after the start date.',
+    'duplicate_campaign'=> 'A campaign with the same name and job role already exists.',
+    'required_missing'  => 'Campaign name and job role are required.',
+    'create_failed'     => 'Campaign could not be saved. Please check server logs.',
+    'invalid_method'    => 'Please use the form to save campaign details.',
+  ];
+  $creator_name = htmlspecialchars($is_edit ? ($campaign['creator_name'] ?: $user['name']) : $user['name']);
+  $setup_steps = [
+    ['Save campaign details', true],
+    ['Configure apply form fields', $is_edit && !empty($setup_state['steps'][2]['done'])],
+    ['Add interview questions', $is_edit && !empty($setup_state['steps'][3]['done'])],
+    ['Score weight = 100%', $is_edit && !empty($setup_state['steps'][4]['done'])],
+    ['Activate & share', $is_edit && ($campaign['status']??'')  === 'active'],
+  ];
+?>
+<style>
+.cf-wrap{display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start}
+.cf-form{background:#fff;border:1px solid #E8ECF0;border-radius:16px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.cf-form-header{padding:22px 28px 18px;border-bottom:1px solid #EEF2F7;display:flex;align-items:center;justify-content:space-between}
+.cf-form-title{font-size:18px;font-weight:800;color:#0F172A;letter-spacing:-.3px}
+.cf-form-subtitle{font-size:12px;color:#64748B;margin-top:2px}
+.cf-form-body{padding:24px 28px 28px}
+.cf-section{margin-bottom:26px}
+.cf-section-label{font-size:10px;font-weight:800;color:#7C3AED;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.cf-section-label::after{content:'';flex:1;height:1px;background:#F1F5F9}
+.cf-row{display:grid;gap:14px;margin-bottom:14px}
+.cf-row-2{grid-template-columns:1fr 1fr}
+.cf-row-3{grid-template-columns:1fr 1fr 1fr}
+.cf-group{display:flex;flex-direction:column;gap:5px}
+.cf-label{font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.4px}
+.cf-label span{color:#EF4444;margin-left:2px}
+.cf-input,.cf-select,.cf-textarea{width:100%;padding:9px 13px;border:1px solid #E2E8F0;border-radius:9px;font-size:13px;font-family:inherit;color:#0F172A;background:#FAFBFC;transition:all .15s;outline:none}
+.cf-textarea{resize:vertical;min-height:90px;line-height:1.55}
+.cf-input:focus,.cf-select:focus,.cf-textarea:focus{border-color:#7C3AED;background:#fff;box-shadow:0 0 0 3px rgba(124,58,237,.1)}
+.cf-hint{font-size:11px;color:#94A3B8;margin-top:3px;line-height:1.4}
+.cf-agent-row{display:flex;gap:8px;margin-top:8px}
+.cf-agent-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border:1px solid #E2E8F0;border-radius:7px;font-size:11.5px;font-weight:600;color:#374151;text-decoration:none;background:#F8FAFC;transition:all .12s}
+.cf-agent-btn:hover{border-color:#7C3AED;color:#6D28D9;background:#F5F3FF}
+.cf-submit{display:inline-flex;align-items:center;gap:8px;padding:11px 24px;background:linear-gradient(135deg,#6D28D9,#2563EB);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;transition:opacity .14s,transform .14s;letter-spacing:-.1px}
+.cf-submit:hover{opacity:.9;transform:translateY(-1px)}
+/* Sidebar */
+.cf-sidebar{display:flex;flex-direction:column;gap:14px;position:sticky;top:88px}
+.cf-card{background:#fff;border:1px solid #E8ECF0;border-radius:14px;padding:18px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.cf-card-title{font-size:12px;font-weight:800;color:#0F172A;text-transform:uppercase;letter-spacing:.4px;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.cf-step{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #F8FAFC;font-size:13px}
+.cf-step:last-child{border-bottom:none}
+.cf-step-num{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex-shrink:0}
+.cf-step-num.done{background:#DCFCE7;color:#15803D}
+.cf-step-num.pending{background:#F1F5F9;color:#94A3B8}
+.cf-step-num.current{background:#EDE9FE;color:#6D28D9}
+.cf-step-txt{font-size:12.5px;color:#374151;font-weight:600}
+.cf-step-txt.done{color:#15803D}
+.cf-step-txt.pending{color:#94A3B8}
+.cf-creator-chip{display:flex;align-items:center;gap:10px;padding:11px 14px;background:#F8FAFC;border:1px solid #EEF2F7;border-radius:10px}
+.cf-creator-av{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#6D28D9,#4F46E5);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;flex-shrink:0}
+.cf-creator-name{font-size:13px;font-weight:700;color:#0F172A}
+.cf-creator-role{font-size:11px;color:#94A3B8;margin-top:1px}
+@media(max-width:1100px){.cf-wrap{grid-template-columns:1fr}.cf-sidebar{position:static}}
+@media(max-width:640px){.cf-row-2,.cf-row-3{grid-template-columns:1fr}}
+</style>
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+  <div>
+    <h2 style="font-size:20px;font-weight:800;color:#0F172A;letter-spacing:-.3px"><?= $is_edit ? 'Edit Campaign' : 'New Campaign' ?></h2>
+    <p style="font-size:13px;color:#64748B;margin-top:2px"><?= $is_edit ? htmlspecialchars($campaign['name']) : 'Fill in the details to create a new hiring campaign' ?></p>
   </div>
-  <?php if (!empty($_GET['msg'])): ?>
-    <?php
-      $form_msg = (string)$_GET['msg'];
-      $form_errors = ['start_date_past','end_before_start','required_missing','create_failed','invalid_method'];
-      $form_messages = [
-          'start_date_past' => 'Start date cannot be in the past. Please choose today or a future date.',
-          'end_before_start' => 'End date must be after the start date.',
-          'duplicate_campaign' => 'A campaign with the same name and job role already exists.',
-          'required_missing' => 'Campaign name and job role are required.',
-          'create_failed' => 'Campaign could not be saved. Please contact support or check server error logs.',
-          'invalid_method' => 'Please use the New Campaign form to save campaign details.',
-      ];
-    ?>
-    <div class="alert <?= in_array($form_msg, $form_errors, true) ? 'alert-error' : 'alert-success' ?>">
-      <?= htmlspecialchars($form_messages[$form_msg] ?? str_replace('_', ' ', $form_msg)) ?>
+  <a href="campaigns.php" style="display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border:1px solid #E2E8F0;border-radius:8px;font-size:12.5px;font-weight:700;color:#374151;text-decoration:none;background:#fff;transition:all .12s" onmouseover="this.style.borderColor='#7C3AED';this.style.color='#6D28D9'" onmouseout="this.style.borderColor='#E2E8F0';this.style.color='#374151'">
+    <i class="fa-solid fa-arrow-left fa-xs"></i> Back
+  </a>
+</div>
+
+<?php if ($form_msg): ?>
+<div class="alert <?= in_array($form_msg,$form_errors,true)?'alert-error':'alert-success' ?>" style="margin-bottom:16px">
+  <?= htmlspecialchars($form_messages[$form_msg] ?? str_replace('_',' ',$form_msg)) ?>
+</div>
+<?php endif; ?>
+
+<div class="cf-wrap">
+  <!-- ── FORM ── -->
+  <div class="cf-form">
+    <div class="cf-form-header">
+      <div>
+        <div class="cf-form-title"><?= $is_edit ? 'Campaign Details' : 'Campaign Setup' ?></div>
+        <div class="cf-form-subtitle">Fields marked <span style="color:#EF4444">*</span> are required</div>
+      </div>
+      <?php if ($is_edit && ($campaign['status']??'') === 'active'): ?>
+      <span style="display:inline-flex;align-items:center;gap:5px;padding:4px 11px;background:#DCFCE7;border:1px solid #BBF7D0;border-radius:99px;font-size:11px;font-weight:800;color:#15803D"><span style="width:6px;height:6px;border-radius:50%;background:#16A34A;display:inline-block"></span>Active</span>
+      <?php elseif ($is_edit): ?>
+      <span style="display:inline-flex;align-items:center;gap:5px;padding:4px 11px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:99px;font-size:11px;font-weight:800;color:#64748B"><span style="width:6px;height:6px;border-radius:50%;background:#94A3B8;display:inline-block"></span><?= ucfirst($campaign['status']??'draft') ?></span>
+      <?php endif; ?>
     </div>
-  <?php endif; ?>
-  <div class="card" style="max-width:720px">
+    <div class="cf-form-body">
     <form method="POST" action="/campaigns?action=<?= $is_edit ? 'edit_save' : 'save' ?><?= $is_edit ? '&id='.$campaign_id : '' ?>">
       <?= csrf_input() ?>
-      <div class="alert alert-info" style="margin-bottom:18px">
-        <i class="fa-solid fa-user-shield"></i>
-        Creator: <strong><?= htmlspecialchars($is_edit ? ($campaign['creator_name'] ?: $user['name']) : $user['name']) ?></strong>. This name is stored for reporting and audit logs.
-      </div>
-      <div class="alert alert-info" style="margin-bottom:18px;align-items:flex-start">
-        <i class="fa-solid fa-route" style="margin-top:2px"></i>
-        <div>
-          Guided setup: 1. Save campaign details, 2. Add apply form fields, 3. Add MCQ/video/audio questions, 4. Check 100% scoring weight, 5. Activate and share.
+      <input type="hidden" name="integration_type" value="none">
+      <input type="hidden" name="integration_endpoint" value="">
+
+      <!-- Basics -->
+      <div class="cf-section">
+        <div class="cf-section-label"><i class="fa-solid fa-circle-info fa-xs"></i> Basic Info</div>
+        <div class="cf-row cf-row-2">
+          <div class="cf-group">
+            <label class="cf-label">Campaign Name <span>*</span></label>
+            <input type="text" name="name" class="cf-input" value="<?= htmlspecialchars($campaign['name'] ?? '') ?>" placeholder="e.g. AI Developer – Batch 2026" required>
+          </div>
+          <div class="cf-group">
+            <label class="cf-label">Job Role <span>*</span></label>
+            <input type="text" name="job_role" class="cf-input" value="<?= htmlspecialchars($campaign['job_role'] ?? '') ?>" placeholder="e.g. AI Developer" required>
+          </div>
         </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <div class="form-group">
-          <label class="form-label">Campaign Name *</label>
-          <input type="text" name="name" class="form-control" value="<?= htmlspecialchars($campaign['name'] ?? '') ?>" placeholder="AI Developer Batch 1" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Job Role *</label>
-          <input type="text" name="job_role" class="form-control" value="<?= htmlspecialchars($campaign['job_role'] ?? '') ?>" placeholder="AI Developer" required>
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Description</label>
-        <textarea name="description" class="form-control"><?= htmlspecialchars($campaign['description'] ?? '') ?></textarea>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <div class="form-group">
-          <label class="form-label">Start Date</label>
-          <input type="date" name="start_date" class="form-control" min="<?= date('Y-m-d') ?>" value="<?= htmlspecialchars($campaign['start_date'] ?? '') ?>">
-          <small style="color:#64748B">Today or future date only.</small>
-        </div>
-        <div class="form-group">
-          <label class="form-label">End Date</label>
-          <input type="date" name="end_date" class="form-control" min="<?= date('Y-m-d') ?>" value="<?= htmlspecialchars($campaign['end_date'] ?? '') ?>">
+        <div class="cf-group">
+          <label class="cf-label">Description <span style="color:#94A3B8;font-weight:500;text-transform:none;letter-spacing:0">(shown to candidates)</span></label>
+          <textarea name="description" class="cf-textarea" placeholder="Briefly describe the role, team, and what you're looking for…"><?= htmlspecialchars($campaign['description'] ?? '') ?></textarea>
         </div>
       </div>
 
-      <div class="form-group">
-        <label class="form-label">AI Voice Agent
-          <span id="agent-loading" style="color:#8892A4;font-size:12px;margin-left:8px">Loading agents...</span>
-        </label>
-        <select name="el_agent_id" id="agent-select" class="form-control">
-          <option value="">No AI voice agent for now</option>
-          <?php if (!empty($campaign['el_agent_id'])): ?>
+      <!-- Schedule -->
+      <div class="cf-section">
+        <div class="cf-section-label"><i class="fa-solid fa-calendar fa-xs"></i> Schedule</div>
+        <div class="cf-row cf-row-2">
+          <div class="cf-group">
+            <label class="cf-label">Start Date</label>
+            <input type="date" name="start_date" class="cf-input" min="<?= date('Y-m-d') ?>" value="<?= htmlspecialchars($campaign['start_date'] ?? '') ?>">
+            <div class="cf-hint">Today or future date only</div>
+          </div>
+          <div class="cf-group">
+            <label class="cf-label">End Date</label>
+            <input type="date" name="end_date" class="cf-input" min="<?= date('Y-m-d') ?>" value="<?= htmlspecialchars($campaign['end_date'] ?? '') ?>">
+            <div class="cf-hint">Leave blank for open-ended campaigns</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Voice -->
+      <div class="cf-section">
+        <div class="cf-section-label"><i class="fa-solid fa-robot fa-xs"></i> AI Voice Agent <span style="font-size:9px;font-weight:600;background:#FEF3C7;color:#92400E;border-radius:4px;padding:1px 5px;text-transform:none;letter-spacing:0">Optional</span></div>
+        <div class="cf-group">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+            <label class="cf-label" style="margin-bottom:0">Your AI Agent</label>
+            <span id="agent-loading" style="font-size:11px;color:#94A3B8">Loading agents…</span>
+          </div>
+          <select name="el_agent_id" id="agent-select" class="cf-select">
+            <option value="">No AI voice agent for now</option>
+            <?php if (!empty($campaign['el_agent_id'])): ?>
             <option value="<?= htmlspecialchars($campaign['el_agent_id']) ?>" selected><?= htmlspecialchars($campaign['el_agent_id']) ?></option>
-          <?php endif; ?>
-        </select>
-        <small style="color:#8892A4">Optional. Select this only when you want outbound AI voice calling for the campaign.</small>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-          <a class="btn-sm" href="credits.php" target="_blank" rel="noopener"><i class="fa-solid fa-coins"></i> Recharge / Balance</a>
-          <a class="btn-sm" href="credits.php#pricing" target="_blank" rel="noopener"><i class="fa-solid fa-tags"></i> AI Pricing Portal</a>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">Where should applications sync?</label>
-        <select name="integration_type" class="form-control" id="integrationType" onchange="updateIntegrationHelp()">
-          <option value="none" <?= ($campaign['integration_type'] ?? 'none') === 'none' ? 'selected' : '' ?>>Decide later</option>
-          <option value="crm" <?= ($campaign['integration_type'] ?? '') === 'crm' ? 'selected' : '' ?>>CRM/API connection</option>
-          <option value="google_sheet" <?= ($campaign['integration_type'] ?? '') === 'google_sheet' ? 'selected' : '' ?>>Google Sheet GID/Webhook</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Connection URL / Sheet GID</label>
-        <input type="text" name="integration_endpoint" id="integrationEndpoint" class="form-control" value="<?= htmlspecialchars($campaign['integration_endpoint'] ?? '') ?>" placeholder="Paste CRM webhook URL or Google Sheet GID">
-        <small id="integrationHelp" style="color:#64748B">This can be completed later, but the campaign journey will show it as pending.</small>
-        <details style="margin-top:10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:10px 12px">
-          <summary style="cursor:pointer;font-weight:800;color:#334155">Google Sheet setup guide</summary>
-          <ol style="margin:10px 0 0 18px;color:#64748B;font-size:13px;line-height:1.7">
-            <li>Create a Google Sheet with columns like Name, Phone, Email, Campaign, Status.</li>
-            <li>Use Apps Script or your CRM webhook to accept JSON submissions.</li>
-            <li>Paste the Apps Script webhook URL here. A plain Sheet GID can be saved for tracking, but webhook URL is required for automatic sync.</li>
-          </ol>
-        </details>
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
-        <div class="form-group">
-          <label class="form-label">Passing Score (/100)</label>
-          <input type="number" name="passing_score" class="form-control" value="<?= $campaign['passing_score'] ?? 70 ?>" min="0" max="100">
-        </div>
-        <div class="form-group">
-          <label class="form-label">No. of Questions</label>
-          <input type="number" name="num_questions" class="form-control" value="<?= $campaign['num_questions'] ?? 6 ?>" min="1" max="20">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Language</label>
-          <select name="language" class="form-control">
-            <option value="english" <?= ($campaign['language']??'english')==='english'?'selected':'' ?>>English</option>
-            <option value="hinglish" <?= ($campaign['language']??'')==='hinglish'?'selected':'' ?>>Hinglish</option>
-            <option value="hindi" <?= ($campaign['language']??'')==='hindi'?'selected':'' ?>>Hindi</option>
+            <?php endif; ?>
           </select>
+          <div class="cf-hint">Select only when you need outbound AI voice calling for this campaign</div>
+          <div class="cf-agent-row">
+            <a class="cf-agent-btn" href="credits.php" target="_blank" rel="noopener"><i class="fa-solid fa-coins fa-xs"></i> Recharge / Balance</a>
+            <a class="cf-agent-btn" href="credits.php#pricing" target="_blank" rel="noopener"><i class="fa-solid fa-tags fa-xs"></i> AI Pricing</a>
+          </div>
         </div>
       </div>
-      <button type="submit" class="btn-primary"><?= $is_edit ? '💾 Save Changes' : 'Save & Add Questions →' ?></button>
+
+      <!-- Scoring -->
+      <div class="cf-section" style="margin-bottom:28px">
+        <div class="cf-section-label"><i class="fa-solid fa-chart-bar fa-xs"></i> Scoring & Language</div>
+        <div class="cf-row cf-row-3">
+          <div class="cf-group">
+            <label class="cf-label">Passing Score <span style="color:#94A3B8;font-weight:500;text-transform:none;letter-spacing:0">(/100)</span></label>
+            <input type="number" name="passing_score" class="cf-input" value="<?= $campaign['passing_score'] ?? 70 ?>" min="0" max="100">
+            <div class="cf-hint">Candidates above this score are shortlisted</div>
+          </div>
+          <div class="cf-group">
+            <label class="cf-label">No. of Questions</label>
+            <input type="number" name="num_questions" class="cf-input" value="<?= $campaign['num_questions'] ?? 6 ?>" min="1" max="20">
+            <div class="cf-hint">Expected questions in this interview</div>
+          </div>
+          <div class="cf-group">
+            <label class="cf-label">Language</label>
+            <select name="language" class="cf-select">
+              <option value="english" <?= ($campaign['language']??'english')==='english'?'selected':'' ?>>English</option>
+              <option value="hinglish" <?= ($campaign['language']??'')==='hinglish'?'selected':'' ?>>Hinglish</option>
+              <option value="hindi" <?= ($campaign['language']??'')==='hindi'?'selected':'' ?>>Hindi</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" class="cf-submit">
+        <?php if ($is_edit): ?>
+        <i class="fa-solid fa-floppy-disk fa-xs"></i> Save Changes
+        <?php else: ?>
+        <i class="fa-solid fa-arrow-right fa-xs"></i> Save & Continue →
+        <?php endif; ?>
+      </button>
     </form>
+    </div>
   </div>
+
+  <!-- ── SIDEBAR ── -->
+  <div class="cf-sidebar">
+    <!-- Creator -->
+    <div class="cf-card">
+      <div class="cf-card-title"><i class="fa-solid fa-user fa-xs" style="color:#7C3AED"></i> Creator</div>
+      <div class="cf-creator-chip">
+        <div class="cf-creator-av"><?= strtoupper(substr($creator_name, 0, 1)) ?></div>
+        <div>
+          <div class="cf-creator-name"><?= $creator_name ?></div>
+          <div class="cf-creator-role">Stored in audit logs</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Setup checklist -->
+    <div class="cf-card">
+      <div class="cf-card-title"><i class="fa-solid fa-list-check fa-xs" style="color:#7C3AED"></i> Setup Guide</div>
+      <?php foreach ($setup_steps as $idx => [$step_label, $step_done]):
+        $is_current = $idx === 0 && !$is_edit;
+        $cls = $step_done ? 'done' : ($is_current ? 'current' : 'pending');
+        $icon = $step_done ? '✓' : ($idx + 1);
+      ?>
+      <div class="cf-step">
+        <span class="cf-step-num <?= $cls ?>"><?= $icon ?></span>
+        <span class="cf-step-txt <?= $cls ?>"><?= htmlspecialchars($step_label) ?></span>
+      </div>
+      <?php endforeach; ?>
+    </div>
+
+    <?php if ($is_edit && !empty($setup_state['steps'])): ?>
+    <!-- Quick actions -->
+    <div class="cf-card">
+      <div class="cf-card-title"><i class="fa-solid fa-bolt fa-xs" style="color:#7C3AED"></i> Quick Actions</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <a href="campaigns.php?action=apply_form&id=<?= $campaign_id ?>" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1px solid #E2E8F0;border-radius:9px;font-size:12.5px;font-weight:600;color:#374151;text-decoration:none;background:#FAFBFC;transition:all .12s" onmouseover="this.style.borderColor='#7C3AED';this.style.color='#6D28D9'" onmouseout="this.style.borderColor='#E2E8F0';this.style.color='#374151'">
+          <span><i class="fa-solid fa-wpforms fa-xs" style="margin-right:6px"></i>Apply Form</span>
+          <i class="fa-solid fa-chevron-right fa-xs" style="color:#CBD5E1"></i>
+        </a>
+        <a href="campaigns.php?action=questions&id=<?= $campaign_id ?>" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1px solid #E2E8F0;border-radius:9px;font-size:12.5px;font-weight:600;color:#374151;text-decoration:none;background:#FAFBFC;transition:all .12s" onmouseover="this.style.borderColor='#7C3AED';this.style.color='#6D28D9'" onmouseout="this.style.borderColor='#E2E8F0';this.style.color='#374151'">
+          <span><i class="fa-solid fa-microphone-lines fa-xs" style="margin-right:6px"></i>Interview Questions</span>
+          <i class="fa-solid fa-chevron-right fa-xs" style="color:#CBD5E1"></i>
+        </a>
+        <a href="candidates.php?campaign_id=<?= $campaign_id ?>" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1px solid #E2E8F0;border-radius:9px;font-size:12.5px;font-weight:600;color:#374151;text-decoration:none;background:#FAFBFC;transition:all .12s" onmouseover="this.style.borderColor='#7C3AED';this.style.color='#6D28D9'" onmouseout="this.style.borderColor='#E2E8F0';this.style.color='#374151'">
+          <span><i class="fa-solid fa-users fa-xs" style="margin-right:6px"></i>View Candidates</span>
+          <i class="fa-solid fa-chevron-right fa-xs" style="color:#CBD5E1"></i>
+        </a>
+      </div>
+    </div>
+    <?php endif; ?>
+  </div>
+</div>
 
   <script>
   const currentAgentId = '<?= htmlspecialchars($campaign['el_agent_id'] ?? '') ?>';
@@ -871,24 +1143,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
           document.getElementById('agent-loading').textContent = '❌ Failed to load agents';
       }
   }
-  function updateIntegrationHelp() {
-      const type = document.getElementById('integrationType')?.value || 'none';
-      const help = document.getElementById('integrationHelp');
-      const endpoint = document.getElementById('integrationEndpoint');
-      if (!help || !endpoint) return;
-      if (type === 'crm') {
-          help.textContent = 'Paste CRM webhook/API endpoint. Candidate applications can be pushed here after submit.';
-          endpoint.placeholder = 'https://crm.example.com/webhook/hireai';
-      } else if (type === 'google_sheet') {
-          help.textContent = 'Paste Google Sheet GID or Apps Script webhook URL for sheet sync.';
-          endpoint.placeholder = 'Sheet GID or Apps Script webhook URL';
-      } else {
-          help.textContent = 'This can be completed later, but the campaign journey will show it as pending.';
-          endpoint.placeholder = 'Paste CRM webhook URL or Google Sheet GID';
-      }
-  }
   loadAgents();
-  updateIntegrationHelp();
   </script>
 
 <?php elseif ($action === 'questions' && $campaign): ?>
@@ -896,235 +1151,489 @@ if ($editing_question && !empty($editing_question['options_json'])) {
   <?php $total_weight = $setup_state['weight'] ?? array_sum(array_column($questions, 'weight')); ?>
   <?php $canPreview = !empty($setup_state['ready_to_preview']); ?>
   <?php $topic_presets = question_topic_presets($campaign['job_role'] ?? ''); ?>
-  <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
-    <div>
-      <h2><?= htmlspecialchars($campaign['name']) ?></h2>
-      <p>
-        Role: <strong><?= htmlspecialchars($campaign['job_role']) ?></strong> |
-        Agent: <code style="font-size:12px;color:#0066FF"><?= htmlspecialchars($campaign['el_agent_id'] ?: 'Not set') ?></code> |
-        Pass: <?= $campaign['passing_score'] ?>/100
-      </p>
-    </div>
-    <div style="display:flex;gap:8px">
-      <?php if ($canPreview): ?>
-      <button type="button" onclick="copyCampaignLink(<?= htmlspecialchars(json_encode($applyLink), ENT_QUOTES, 'UTF-8') ?>)" class="btn-green">Copy Apply Link</button>
-      <a href="<?= htmlspecialchars($applyLink) ?>" target="_blank" rel="noopener" class="btn-sm" style="color:#7C3AED;border-color:#7C3AED40;background:#EDE9FE20">🧪 Test Run</a>
-      <a href="https://wa.me/?text=<?= urlencode('Apply here: ' . $applyLink) ?>" target="_blank" rel="noopener" class="btn-sm" style="color:#16A34A;border-color:#16A34A40;background:#16A34A10">Share WA</a>
-      <?php else: ?>
-      <a href="campaigns.php?action=apply_form&id=<?= $campaign_id ?>" class="btn-sm" style="color:#B45309;border-color:#F59E0B55;background:#FEF3C7">Configure Apply Form</a>
-      <?php endif; ?>
-      <a href="campaigns.php?action=apply_form&id=<?= $campaign_id ?>" class="btn-sm">Apply Form</a>
-      <a href="campaigns.php?action=edit&id=<?= $campaign_id ?>" class="btn-sm">✏️ Edit</a>
-      <a href="campaigns.php" class="btn-sm">← Back</a>
-    </div>
-  </div>
+<style>
+/* ── Questions page ───────────────────────────────────── */
+.qp-header{background:#fff;border:1px solid #E8ECF0;border-radius:16px;padding:20px 24px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.qp-title{font-size:18px;font-weight:800;color:#0F172A;letter-spacing:-.3px;margin-bottom:3px}
+.qp-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.qp-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:700}
+.qp-chip-role{background:#EFF6FF;color:#1D4ED8}
+.qp-chip-pass{background:#F0FDF4;color:#15803D}
+.qp-chip-agent{background:#F5F3FF;color:#6D28D9;font-family:ui-monospace,monospace;font-size:10.5px}
+.qp-chip-noagent{background:#FFF1F2;color:#BE123C}
+.qp-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex-shrink:0}
+.qp-btn{display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid #E2E8F0;background:#fff;color:#374151;text-decoration:none;cursor:pointer;transition:all .12s;white-space:nowrap}
+.qp-btn:hover{border-color:#7C3AED;color:#6D28D9;background:#F5F3FF}
+.qp-btn-primary{background:linear-gradient(135deg,#16A34A,#15803D);color:#fff;border-color:transparent}
+.qp-btn-primary:hover{opacity:.9;color:#fff;background:linear-gradient(135deg,#16A34A,#15803D)}
+.qp-btn-purple{border-color:#DDD6FE;color:#6D28D9;background:#F5F3FF}
+.qp-btn-purple:hover{border-color:#7C3AED;background:#EDE9FE;color:#5B21B6}
+.qp-btn-wa{border-color:#BBF7D0;color:#15803D;background:#F0FDF4}
+.qp-btn-wa:hover{border-color:#16A34A;background:#DCFCE7}
+.qp-link-bar{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E8ECF0;border-radius:12px;padding:11px 16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.qp-link-url{flex:1;font-size:12px;color:#2563EB;font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#F0F6FF;border:1px solid #BFDBFE;border-radius:8px;padding:6px 11px}
+/* Question type badges */
+.qt-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap}
+.qt-audio{background:#ECFDF5;color:#065F46}
+.qt-video{background:#EDE9FE;color:#5B21B6}
+.qt-textarea{background:#EFF6FF;color:#1E40AF}
+.qt-text{background:#F0F9FF;color:#0369A1}
+.qt-dropdown{background:#FDF4FF;color:#86198F}
+.qt-multi_select{background:#FFF7ED;color:#C2410C}
+.qt-rating{background:#FFFBEB;color:#B45309}
+.qt-file{background:#F8FAFC;color:#475569}
+.qt-other{background:#F1F5F9;color:#475569}
+/* Questions table */
+.q-table{width:100%;border-collapse:separate;border-spacing:0}
+.q-table th{padding:8px 14px;text-align:left;font-size:10px;font-weight:800;color:#94A3B8;text-transform:uppercase;letter-spacing:.7px;background:#F8FAFC;border-bottom:1px solid #EEF2F7}
+.q-table td{padding:11px 14px;border-bottom:1px solid #F3F6FA;vertical-align:middle;font-size:13px}
+.q-table tr:last-child td{border-bottom:none}
+.q-table tbody tr:hover td{background:#F8FAFC}
+.q-num{width:30px;height:30px;border-radius:8px;background:#F1F5F9;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#475569;flex-shrink:0}
+.q-text-main{font-size:13px;font-weight:600;color:#0F172A;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;display:block}
+.q-weight-bar{display:flex;flex-direction:column;gap:3px}
+.q-weight-val{font-size:13px;font-weight:800;color:#0F172A}
+.q-weight-track{width:44px;height:4px;background:#E2E8F0;border-radius:2px}
+.q-weight-fill{height:100%;background:linear-gradient(90deg,#7C3AED,#2563EB);border-radius:2px}
+.q-act-btn{width:28px;height:28px;border-radius:7px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;transition:all .12s;text-decoration:none}
+.q-act-edit{background:#EFF6FF;color:#1E40AF}.q-act-edit:hover{background:#DBEAFE}
+.q-act-del{background:#FFF1F2;color:#BE123C}.q-act-del:hover{background:#FECDD3}
+/* Add question form */
+.qf-card{background:#fff;border:1px solid #E8ECF0;border-radius:16px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.qf-head{padding:14px 20px;border-bottom:1px solid #EEF2F7;display:flex;align-items:center;justify-content:space-between;background:#F8FAFC}
+.qf-head-title{font-size:14px;font-weight:800;color:#0F172A;display:flex;align-items:center;gap:8px}
+.qf-hint-bar{padding:10px 20px;background:linear-gradient(135deg,#F5F3FF,#EFF6FF);border-bottom:1px solid #EEF2F7;font-size:12px;color:#4B5563;line-height:1.45}
+.qf-body{padding:16px 20px}
+.qf-row{display:grid;gap:12px;margin-bottom:12px}
+.qf-row-2{grid-template-columns:1fr 1fr}
+.qf-row-3{grid-template-columns:1fr 1fr 1fr}
+.qf-group{display:flex;flex-direction:column;gap:5px}
+.qf-label{font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;justify-content:space-between}
+.qf-input,.qf-select,.qf-textarea{width:100%;padding:8px 12px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;font-family:inherit;color:#0F172A;background:#FAFBFC;outline:none;transition:all .14s}
+.qf-textarea{resize:vertical;line-height:1.5}
+.qf-input:focus,.qf-select:focus,.qf-textarea:focus{border-color:#7C3AED;background:#fff;box-shadow:0 0 0 3px rgba(124,58,237,.1)}
+.qf-hint{font-size:11px;color:#94A3B8;margin-top:3px}
+.qf-mcq{display:none;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:14px;margin-bottom:14px}
+.qf-mcq.active{display:block}
+.qf-mcq-presets{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.qf-mcq-presets button{border:1px solid #BFDBFE;background:#EFF6FF;color:#1D4ED8;border-radius:99px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer}
+.qf-mcq-presets button:hover{background:#DBEAFE}
+.qf-req-toggle{display:flex;align-items:center;gap:7px;font-size:13px;color:#374151;cursor:pointer;padding:8px 0}
+.qf-req-toggle input{width:15px;height:15px;accent-color:#7C3AED}
+.qf-submit{display:inline-flex;align-items:center;gap:7px;padding:10px 22px;background:linear-gradient(135deg,#6D28D9,#4F46E5);color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;transition:opacity .13s,transform .13s}
+.qf-submit:hover{opacity:.9;transform:translateY(-1px)}
+/* Journey sidebar */
+.journey-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
+.journey-card{background:#fff;border:1px solid #E8ECF0;border-radius:14px;padding:18px;position:sticky;top:88px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.journey-title{font-size:14px;font-weight:800;color:#0F172A;margin-bottom:2px}
+.journey-sub{font-size:11.5px;color:#94A3B8;margin-bottom:10px}
+.journey-ring{height:6px;background:#EEF2F7;border-radius:999px;overflow:hidden;margin-bottom:5px}
+.journey-ring span{display:block;height:100%;background:linear-gradient(90deg,#7C3AED,#2563EB);border-radius:999px}
+.journey-pct{font-size:12px;font-weight:800;color:#374151;margin-bottom:12px}
+.journey-step{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#64748B;padding:7px 0;border-bottom:1px solid #F8FAFC}
+.journey-step:last-child{border-bottom:none}
+.journey-step i{font-size:12px;color:#CBD5E1;width:14px;text-align:center}
+.journey-step.done{color:#15803D;font-weight:700}
+.journey-step.done i{color:#16A34A}
+.j-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0}
+.j-stat{background:#F8FAFC;border:1px solid #EEF2F7;border-radius:9px;padding:10px 12px}
+.j-stat strong{display:block;font-size:17px;font-weight:800;color:#0F172A;letter-spacing:-.3px}
+.j-stat span{font-size:10px;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.4px}
+.j-note{background:#EFF6FF;border:1px solid #BFDBFE;border-radius:9px;padding:10px 12px;font-size:11.5px;color:#1E40AF;line-height:1.5}
+.helper-text{display:block;color:#94A3B8;font-size:11px;margin-top:3px}
+.mcq-box{display:none}
+.mcq-box.active{display:block}
+.mcq-presets{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.mcq-presets button{border:1px solid #BFDBFE;background:#EFF6FF;color:#1D4ED8;border-radius:99px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer}
+.mcq-presets button:hover{background:#DBEAFE}
+.advanced-question-block{display:none}
+/* Add Question modal */
+.aq-overlay{position:fixed;inset:0;background:rgba(10,16,32,.72);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:9000;display:none;align-items:center;justify-content:center;padding:24px;animation:aqFadeIn .18s}
+.aq-overlay.open{display:flex}
+@keyframes aqFadeIn{from{opacity:0}to{opacity:1}}
+.aq-modal{background:#fff;border-radius:22px;width:100%;max-width:720px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 32px 100px rgba(0,0,0,.35);animation:aqSlideUp .26s cubic-bezier(.4,0,.2,1)}
+@keyframes aqSlideUp{from{opacity:0;transform:translateY(26px) scale(.97)}to{opacity:1;transform:none}}
+.aq-head{display:flex;align-items:center;justify-content:space-between;padding:22px 28px 18px;border-bottom:1px solid #EEF2F7;flex-shrink:0}
+.aq-head-left{display:flex;align-items:center;gap:11px}
+.aq-head-icon{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#EDE9FE,#DBEAFE);display:flex;align-items:center;justify-content:center;font-size:18px;color:#6D28D9}
+.aq-head-title{font-size:17px;font-weight:800;color:#0F172A;letter-spacing:-.25px}
+.aq-head-sub{font-size:11.5px;color:#94A3B8;margin-top:2px}
+.aq-close{width:34px;height:34px;border:none;background:#F1F5F9;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#64748B;font-size:15px;transition:all .14s;flex-shrink:0}
+.aq-close:hover{background:#E2E8F0;color:#0F172A}
+.aq-hint-bar{padding:10px 28px;background:linear-gradient(135deg,#F5F3FF,#EFF6FF);border-bottom:1px solid #EEF2F7;font-size:12px;color:#4B5563;line-height:1.45;flex-shrink:0}
+.aq-body{flex:1;overflow-y:auto;padding:22px 28px}
+.aq-footer{padding:18px 28px;border-top:1px solid #EEF2F7;display:flex;align-items:center;gap:10px;flex-shrink:0;background:#FAFBFC;border-radius:0 0 22px 22px}
+/* Big add button */
+.aq-open-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;background:linear-gradient(135deg,#6D28D9,#4F46E5);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;transition:opacity .13s,transform .13s;white-space:nowrap}
+.aq-open-btn:hover{opacity:.88;transform:translateY(-1px)}
+/* Empty state */
+.aq-empty{text-align:center;padding:52px 24px;color:#94A3B8}
+.aq-empty i{font-size:44px;margin-bottom:14px;display:block;color:#CBD5E1}
+.aq-empty p{font-size:15px;font-weight:700;color:#374151;margin-bottom:6px}
+.aq-empty span{font-size:13px;color:#94A3B8;display:block;margin-bottom:22px}
+@media(max-width:1100px){.journey-grid{grid-template-columns:1fr}.journey-card{position:static}}
+@media(max-width:640px){.qf-row-2,.qf-row-3{grid-template-columns:1fr}}
+</style>
 
-  <div class="card" style="padding:16px 18px">
-    <div style="font-size:12px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Public Apply Link</div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <code style="flex:1;min-width:260px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:9px 12px;color:#2563EB;word-break:break-all"><?= htmlspecialchars($applyLink) ?></code>
-      <?php if ($canPreview): ?>
-        <a class="btn-sm" href="<?= htmlspecialchars($applyLink) ?>" target="_blank" rel="noopener">Preview</a>
-      <?php else: ?>
-        <a class="btn-sm" href="campaigns.php?action=apply_form&id=<?= $campaign_id ?>">Add fields first</a>
-      <?php endif; ?>
-    </div>
-  </div>
+<?php
+  $question_errors = ['options_required' => 'Add choices for MCQ/rating questions before saving.'];
+  $qp_msg = (string)($_GET['msg'] ?? '');
+?>
 
-  <?php if (!empty($_GET['msg']) && $_GET['msg'] !== 'setup_incomplete'): ?>
-    <?php
-      $question_errors = [
-          'options_required' => 'Add choices for MCQ/rating questions before saving.',
-      ];
-    ?>
-    <div class="alert <?= isset($question_errors[$_GET['msg']]) ? 'alert-error' : 'alert-success' ?>">
-      <?= isset($question_errors[$_GET['msg']]) ? '⚠️ ' . $question_errors[$_GET['msg']] : '✅ ' . htmlspecialchars(str_replace('_',' ',$_GET['msg'])) . '!' ?>
-    </div>
-  <?php endif; ?>
-
-  <?php if (!empty($_GET['msg']) && $_GET['msg'] === 'setup_incomplete'): ?>
-  <div class="alert alert-error">⚠️ Campaign cannot be activated yet. Complete details, apply form, questions, and total scoring weight 100%.</div>
-  <?php endif; ?>
-
-  <?php if (!$campaign['el_agent_id'] || $campaign['el_agent_id'] === 'PASTE_YOUR_EL_AGENT_ID'): ?>
-  <div class="alert alert-info">AI voice agent is optional. Add one only if this campaign should trigger outbound AI calls.</div>
-  <?php endif; ?>
-
-  <style>
-    .journey-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
-    .journey-card{background:#fff;border:1px solid #E5E7EB;border-radius:14px;box-shadow:var(--card-shadow);padding:18px;position:sticky;top:88px}
-    .journey-ring{height:9px;background:#E5E7EB;border-radius:999px;overflow:hidden;margin:10px 0 16px}
-    .journey-ring span{display:block;height:100%;background:linear-gradient(90deg,#6B21A8,#0EA5E9);border-radius:999px}
-    .journey-step{display:flex;align-items:center;gap:9px;font-size:13px;color:#475569;padding:7px 0;border-bottom:1px solid #F1F5F9}
-    .journey-step i{width:18px;text-align:center;color:#CBD5E1}
-    .journey-step.done{color:#14532D;font-weight:700}
-    .journey-step.done i{color:#16A34A}
-    .summary-stat{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0}
-    .summary-stat div{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:10px}
-    .summary-stat strong{display:block;font-size:18px;color:#0F172A}
-    .simple-question-form{border:1px solid #E5E7EB;border-radius:16px;overflow:hidden}
-    .simple-question-help{background:#F8FAFC;border-bottom:1px solid #E5E7EB;padding:14px 18px;color:#475569;font-size:13px;line-height:1.5}
-    .simple-question-help strong{color:#0F172A}
-    .helper-text{display:block;color:#64748B;font-size:12px;line-height:1.45;margin-top:6px}
-    .mcq-box{display:none;background:#FFFBEB;border:1px solid #FCD34D;border-radius:12px;padding:14px;margin-bottom:18px}
-    .mcq-box.active{display:block}
-    .mcq-presets{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
-    .mcq-presets button{border:1px solid #BFDBFE;background:#EFF6FF;color:#1D4ED8;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800;cursor:pointer}
-    .mcq-presets button:hover{background:#DBEAFE}
-    .advanced-question-block{display:none}
-    @media(max-width:980px){.journey-grid{grid-template-columns:1fr}.journey-card{position:static}}
-  </style>
-  <div class="journey-grid">
+<div class="qp-header">
   <div>
-  <!-- Existing Questions -->
-  <?php if (!empty($questions)): ?>
-  <div class="card">
-    <div class="card-header">
-      <h3>Interview Questions (<?= count($questions) ?>)</h3>
-      <span style="font-size:13px;color:<?= $total_weight==100?'#00C896':'#dc3545' ?>">
-        Total Weight: <strong><?= $total_weight ?>%</strong>
-        <?= $total_weight==100 ? '✅' : '⚠️ Must be 100%' ?>
-      </span>
+    <div class="qp-title"><?= htmlspecialchars($campaign['name']) ?></div>
+    <div class="qp-meta">
+      <span class="qp-chip qp-chip-role"><i class="fa-solid fa-briefcase fa-xs"></i> <?= htmlspecialchars($campaign['job_role']) ?></span>
+      <span class="qp-chip qp-chip-pass"><i class="fa-solid fa-bullseye fa-xs"></i> Pass <?= (int)$campaign['passing_score'] ?>/100</span>
+      <?php if ($campaign['el_agent_id']): ?>
+      <span class="qp-chip qp-chip-agent"><i class="fa-solid fa-robot fa-xs"></i> <?= htmlspecialchars(substr($campaign['el_agent_id'],0,24)) ?></span>
+      <?php else: ?><span class="qp-chip qp-chip-noagent"><i class="fa-solid fa-robot fa-xs"></i> No Agent</span><?php endif; ?>
     </div>
-    <div class="pager-top">Show <?= pagination_per_page_select('question_per_page', 'question_page', $question_per_page) ?> questions</div>
-    <table class="table">
-      <thead><tr><th>#</th><th>Type</th><th>Weight</th><th>Max Marks</th><th>Question</th><th>Logic</th><th></th></tr></thead>
-      <tbody>
-        <?php foreach ($question_page_rows as $q): ?>
-        <tr>
-          <td><?= $q['order_no'] ?></td>
-          <td><span class="badge badge-draft"><?= htmlspecialchars(str_replace('_', ' ', $q['question_type'] ?? 'textarea')) ?></span></td>
-          <td><strong><?= $q['weight'] ?>%</strong></td>
-          <td><?= $q['max_marks'] ?></td>
-          <td style="max-width:280px;font-size:13px"><?= htmlspecialchars($q['question_text']) ?></td>
-          <td style="font-size:12px;color:#64748B">
-            <?= !empty($q['branch_rules_json']) ? 'Branching' : 'Linear' ?>
-          </td>
-          <td style="display:flex;gap:6px;align-items:center">
-            <a href="campaigns.php?action=questions&id=<?= $campaign_id ?>&edit_qid=<?= $q['id'] ?>" class="btn-sm" style="font-size:12px;padding:6px 9px;text-decoration:none"><i class="fa-solid fa-pen"></i> Edit</a>
-            <a href="campaigns.php?action=delete_question&id=<?= $campaign_id ?>&qid=<?= $q['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" class="btn-danger" style="font-size:12px" onclick="return confirm('Delete?')">🗑</a>
-          </td>
-        </tr>
-        <?php endforeach; ?>
-      </tbody>
-    </table>
-    <?= pagination_html('question_page', $question_page, $question_total_pages, $question_total, $question_per_page) ?>
   </div>
-  <?php endif; ?>
+  <div class="qp-actions">
+    <?php if ($canPreview): ?>
+    <button type="button" class="qp-btn qp-btn-primary" onclick="copyCampaignLink(<?= htmlspecialchars(json_encode($applyLink),ENT_QUOTES,'UTF-8') ?>)"><i class="fa-solid fa-copy fa-xs"></i> Copy Link</button>
+    <a href="<?= htmlspecialchars($applyLink) ?>" target="_blank" rel="noopener" class="qp-btn qp-btn-purple"><i class="fa-solid fa-flask fa-xs"></i> Test Run</a>
+    <a href="https://wa.me/?text=<?= urlencode('Apply here: '.$applyLink) ?>" target="_blank" rel="noopener" class="qp-btn qp-btn-wa"><i class="fa-brands fa-whatsapp fa-xs"></i> Share WA</a>
+    <?php else: ?>
+    <a href="campaigns.php?action=apply_form&id=<?= $campaign_id ?>" class="qp-btn" style="border-color:#FDE68A;color:#92400E;background:#FFFBEB"><i class="fa-solid fa-triangle-exclamation fa-xs"></i> Setup Apply Form</a>
+    <?php endif; ?>
+    <a href="campaigns.php?action=apply_form&id=<?= $campaign_id ?>" class="qp-btn"><i class="fa-solid fa-wpforms fa-xs"></i> Apply Form</a>
+    <a href="campaigns.php?action=edit&id=<?= $campaign_id ?>" class="qp-btn"><i class="fa-solid fa-pen fa-xs"></i> Edit</a>
+    <a href="campaigns.php" class="qp-btn"><i class="fa-solid fa-arrow-left fa-xs"></i> Back</a>
+  </div>
+</div>
 
-  <!-- Add/Edit Question -->
-  <div class="card simple-question-form">
-    <div class="card-header">
-      <h3><?= $editing_question ? 'Edit Interview Question' : 'Add Interview Question' ?></h3>
-      <?php if ($editing_question): ?><a href="campaigns.php?action=questions&id=<?= $campaign_id ?>" class="btn-sm" style="text-decoration:none">Cancel edit</a><?php endif; ?>
+<div class="qp-link-bar">
+  <span style="font-size:10px;font-weight:800;color:#94A3B8;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap">Apply Link</span>
+  <span class="qp-link-url"><?= htmlspecialchars($applyLink) ?></span>
+  <?php if ($canPreview): ?>
+  <a href="<?= htmlspecialchars($applyLink) ?>" target="_blank" rel="noopener" class="qp-btn" style="flex-shrink:0"><i class="fa-solid fa-eye fa-xs"></i> Preview</a>
+  <?php else: ?>
+  <a href="campaigns.php?action=apply_form&id=<?= $campaign_id ?>" class="qp-btn" style="flex-shrink:0;border-color:#FDE68A;color:#92400E;background:#FFFBEB">Add fields first</a>
+  <?php endif; ?>
+</div>
+
+<?php if ($qp_msg && $qp_msg !== 'setup_incomplete'): ?>
+<div class="alert <?= isset($question_errors[$qp_msg])?'alert-error':'alert-success' ?>" style="margin-bottom:14px">
+  <?= isset($question_errors[$qp_msg])?'⚠️ '.$question_errors[$qp_msg]:'✅ '.htmlspecialchars(str_replace('_',' ',$qp_msg)).'!' ?>
+</div>
+<?php endif; ?>
+<?php if ($qp_msg === 'setup_incomplete'): ?>
+<div class="alert alert-error" style="margin-bottom:14px">⚠️ Campaign cannot be activated yet — complete all setup steps first.</div>
+<?php endif; ?>
+
+<div class="journey-grid">
+<div>
+
+<?php if (!empty($questions)):
+  $qt_colors=['audio'=>'qt-audio','video'=>'qt-video','textarea'=>'qt-textarea','text'=>'qt-text','dropdown'=>'qt-dropdown','multi_select'=>'qt-multi_select','rating'=>'qt-rating','file'=>'qt-file'];
+  $qt_icons=['audio'=>'fa-microphone','video'=>'fa-video','textarea'=>'fa-align-left','text'=>'fa-font','dropdown'=>'fa-list','multi_select'=>'fa-check-square','rating'=>'fa-star','file'=>'fa-file'];
+?>
+<div style="background:#fff;border:1px solid #E8ECF0;border-radius:16px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.05);margin-bottom:18px">
+  <div style="padding:14px 18px;border-bottom:1px solid #EEF2F7;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <div style="font-size:14px;font-weight:800;color:#0F172A;display:flex;align-items:center;gap:8px">
+      <i class="fa-solid fa-comments" style="color:#7C3AED;font-size:13px"></i>
+      Interview Questions
+      <span style="background:#EDE9FE;color:#6D28D9;border-radius:99px;padding:1px 9px;font-size:11px;font-weight:800"><?= count($questions) ?></span>
     </div>
-    <div class="simple-question-help">
-      <strong>Simple mode:</strong> write the question, choose answer type, set marks, and add choices only for MCQ/rating. AI scores from the question and candidate answer.
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="font-size:11px;color:<?= $total_weight==100?'#15803D':'#DC2626' ?>;font-weight:700">
+        Total Weight: <strong><?= $total_weight ?>%</strong>
+        <?= $total_weight==100?'<i class="fa-solid fa-circle-check fa-xs"></i>':'<i class="fa-solid fa-triangle-exclamation fa-xs"></i> Must be 100%' ?>
+      </span>
+      <?= pagination_per_page_select('question_per_page','question_page',$question_per_page) ?>
+      <button type="button" class="aq-open-btn" onclick="openAddModal()"><i class="fa-solid fa-plus fa-xs"></i> Add Question</button>
     </div>
-    <form method="POST" action="/campaigns?action=<?= $editing_question ? 'edit_question' : 'add_question' ?>&id=<?= $campaign_id ?>" onsubmit="return validateQuestionForm(this)">
+  </div>
+  <table class="q-table">
+    <thead><tr>
+      <th style="width:44px">#</th><th>Type</th><th>Weight</th><th>Max</th><th>Question</th><th>Logic</th><th style="width:70px"></th>
+    </tr></thead>
+    <tbody>
+    <?php foreach ($question_page_rows as $q):
+      $qt=$q['question_type']??'textarea';
+      $qtc=$qt_colors[$qt]??'qt-other';
+      $qti=$qt_icons[$qt]??'fa-question';
+    ?>
+    <tr>
+      <td><div class="q-num"><?= (int)$q['order_no'] ?></div></td>
+      <td><span class="qt-badge <?= $qtc ?>"><i class="fa-solid <?= $qti ?> fa-xs"></i> <?= htmlspecialchars(str_replace('_',' ',$qt)) ?></span></td>
+      <td><div class="q-weight-bar"><span class="q-weight-val"><?= (int)$q['weight'] ?>%</span><div class="q-weight-track"><div class="q-weight-fill" style="width:<?= min(100,(int)$q['weight']) ?>%"></div></div></div></td>
+      <td style="font-size:12px;color:#64748B;font-weight:600"><?= (int)$q['max_marks'] ?></td>
+      <td><span class="q-text-main" title="<?= htmlspecialchars($q['question_text']) ?>"><?= htmlspecialchars($q['question_text']) ?></span></td>
+      <td><span style="font-size:11px;font-weight:600;color:<?= !empty($q['branch_rules_json'])?'#D97706':'#94A3B8' ?>"><?= !empty($q['branch_rules_json'])?'Branch':'Linear' ?></span></td>
+      <td><div style="display:flex;gap:5px">
+        <a href="campaigns.php?action=questions&id=<?= $campaign_id ?>&edit_qid=<?= $q['id'] ?>" class="q-act-btn q-act-edit" title="Edit"><i class="fa-solid fa-pen fa-xs"></i></a>
+        <a href="campaigns.php?action=delete_question&id=<?= $campaign_id ?>&qid=<?= $q['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" class="q-act-btn q-act-del" title="Delete" onclick="return confirm('Delete this question?')"><i class="fa-solid fa-trash-can fa-xs"></i></a>
+      </div></td>
+    </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  <?= pagination_html('question_page',$question_page,$question_total_pages,$question_total,$question_per_page) ?>
+</div>
+<?php else: ?>
+<div class="aq-empty">
+  <i class="fa-solid fa-comments"></i>
+  <p>No interview questions yet</p>
+  <span>Add questions to evaluate candidates during the application process.</span>
+  <button type="button" class="aq-open-btn" onclick="openAddModal()"><i class="fa-solid fa-plus fa-xs"></i> Add First Question</button>
+</div>
+<?php endif; ?>
+
+</div>
+
+<!-- ══ ADD QUESTION MODAL ══════════════════════════════ -->
+<div class="aq-overlay" id="aqOverlay" onclick="if(event.target===this)closeAddModal()">
+  <div class="aq-modal">
+    <div class="aq-head">
+      <div class="aq-head-left">
+        <div class="aq-head-icon"><i class="fa-solid fa-plus fa-sm"></i></div>
+        <div>
+          <div class="aq-head-title">Add Interview Question</div>
+          <div class="aq-head-sub">Fill in the details below and save</div>
+        </div>
+      </div>
+      <button type="button" class="aq-close" onclick="closeAddModal()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="aq-hint-bar"><strong>Simple mode:</strong> write the question, pick an answer type, set marks, and add choices only for MCQ/rating.</div>
+    <div class="aq-body">
+      <form id="aqForm" method="POST" action="/campaigns?action=add_question&id=<?= $campaign_id ?>" onsubmit="return validateQuestionForm(this)">
+        <?= csrf_input() ?>
+        <div class="qf-row qf-row-2" style="margin-bottom:14px">
+          <div class="qf-group">
+            <label class="qf-label">Answer Type</label>
+            <select name="question_type" class="qf-select" onchange="syncQuestionTypeUI()">
+              <option value="textarea">Long Text / Interview Answer</option>
+              <option value="text">Short Text</option>
+              <option value="number">Numeric</option>
+              <option value="decimal">Decimal</option>
+              <option value="date">Date</option>
+              <option value="dropdown">MCQ — Single Choice</option>
+              <option value="multi_select">MCQ — Multiple Choice</option>
+              <option value="rating">Rating Scale</option>
+              <option value="file">File Upload</option>
+              <option value="audio">Record Audio</option>
+              <option value="video">Record Video</option>
+              <option value="hyperlink">Hyperlink</option>
+            </select>
+          </div>
+          <div class="qf-group">
+            <label class="qf-label">Required</label>
+            <label class="qf-req-toggle"><input type="checkbox" name="is_required" checked> Candidate must answer this question</label>
+          </div>
+        </div>
+        <div class="qf-row qf-row-3" style="margin-bottom:14px">
+          <div class="qf-group">
+            <label class="qf-label">Weight (%)</label>
+            <input type="number" name="weight" class="qf-input" value="15" min="1" max="100" required>
+            <div class="qf-hint">Score contribution</div>
+          </div>
+          <div class="qf-group">
+            <label class="qf-label">Max Marks</label>
+            <input type="number" name="max_marks" class="qf-input" value="15" min="1" required>
+          </div>
+          <div class="qf-group">
+            <label class="qf-label">Order</label>
+            <input type="number" name="order_no" class="qf-input" value="<?= count($questions)+1 ?>">
+          </div>
+        </div>
+        <div class="qf-group" style="margin-bottom:14px">
+          <label class="qf-label">Question Text <span style="color:#EF4444">*</span></label>
+          <textarea name="question_text" class="qf-textarea" rows="3" placeholder="Write the question here." required onblur="autoFillInlineChoices()"></textarea>
+        </div>
+        <div class="qf-group" style="margin-bottom:14px">
+          <label class="qf-label">
+            AI Scoring Criteria
+            <button type="button" class="qp-btn qp-btn-purple" style="font-size:11px;padding:4px 10px" onclick="assistIdealAnswer()"><i class="fa-solid fa-wand-magic-sparkles fa-xs"></i> AI Assist</button>
+          </label>
+          <textarea name="ideal_answer_hint" class="qf-textarea" rows="3" placeholder="Keywords or concepts AI should look for…"></textarea>
+        </div>
+        <div class="qf-mcq mcq-box" id="mcqBox" style="margin-bottom:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <label class="qf-label" style="margin:0">MCQ Choices <span style="color:#EF4444">*</span></label>
+            <button type="button" class="qp-btn" style="font-size:11px;padding:4px 10px" onclick="fillOptionSuggestion()">Guide me</button>
+          </div>
+          <div class="qf-mcq-presets mcq-presets">
+            <button type="button" onclick="setQuestionOptions('Yes\nNo')">Yes / No</button>
+            <button type="button" onclick="setQuestionOptions('Beginner\nIntermediate\nAdvanced')">Skill Level</button>
+            <button type="button" onclick="setQuestionOptions('1 - Poor\n2 - Fair\n3 - Good\n4 - Very Good\n5 - Excellent')">5-point Rating</button>
+          </div>
+          <textarea name="options_text" class="qf-textarea" rows="4" placeholder="One option per line"></textarea>
+          <div class="qf-hint">Shown as radio buttons / checkboxes to the candidate</div>
+        </div>
+        <div class="advanced-question-block" style="margin-bottom:14px">
+          <details>
+            <summary style="cursor:pointer;font-size:12px;font-weight:700;color:#94A3B8">Advanced — Branching Rules</summary>
+            <div class="qf-group" style="margin-top:10px">
+              <textarea name="branch_rules_json" class="qf-textarea" rows="3" placeholder='[{"when":"yes","jump_to_order":5}]'></textarea>
+            </div>
+          </details>
+        </div>
+      </form>
+    </div>
+    <div class="aq-footer">
+      <button type="submit" form="aqForm" class="qf-submit"><i class="fa-solid fa-plus fa-xs"></i> Add Question</button>
+      <button type="button" onclick="closeAddModal()" style="font-size:13px;color:#94A3B8;background:none;border:none;cursor:pointer;font-weight:600;padding:10px 6px">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ EDIT QUESTION MODAL ══════════════════════════════ -->
+<?php if ($editing_question): ?>
+<style>
+.eq-overlay{position:fixed;inset:0;background:rgba(10,16,32,.7);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:9000;display:flex;align-items:center;justify-content:center;padding:24px;animation:fadeIn .2s}
+.eq-modal{background:#fff;border-radius:22px;width:100%;max-width:700px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 32px 100px rgba(0,0,0,.35);animation:eqSlideUp .28s cubic-bezier(.4,0,.2,1)}
+@keyframes eqSlideUp{from{opacity:0;transform:translateY(28px) scale(.97)}to{opacity:1;transform:none}}
+.eq-head{display:flex;align-items:center;justify-content:space-between;padding:22px 28px 18px;border-bottom:1px solid #EEF2F7;flex-shrink:0}
+.eq-head-left{display:flex;align-items:center;gap:10px}
+.eq-head-icon{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#EDE9FE,#DBEAFE);display:flex;align-items:center;justify-content:center;font-size:16px;color:#6D28D9}
+.eq-head-title{font-size:16px;font-weight:800;color:#0F172A;letter-spacing:-.2px}
+.eq-head-sub{font-size:11px;color:#94A3B8;margin-top:1px}
+.eq-close{width:32px;height:32px;border:none;background:#F1F5F9;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#64748B;font-size:15px;text-decoration:none;transition:all .14s;flex-shrink:0}
+.eq-close:hover{background:#E2E8F0;color:#0F172A}
+.eq-body{flex:1;overflow-y:auto;padding:24px 28px}
+.eq-footer{padding:18px 28px;border-top:1px solid #EEF2F7;display:flex;align-items:center;gap:10px;flex-shrink:0;background:#FAFBFC;border-radius:0 0 22px 22px}
+</style>
+<div class="eq-overlay" id="eqOverlay" onclick="if(event.target===this)closeEqModal()">
+  <div class="eq-modal">
+    <div class="eq-head">
+      <div class="eq-head-left">
+        <div class="eq-head-icon"><i class="fa-solid fa-pen-to-square fa-sm"></i></div>
+        <div>
+          <div class="eq-head-title">Edit Question</div>
+          <div class="eq-head-sub">Q<?= (int)($editing_question['order_no']??'') ?> &mdash; <?= htmlspecialchars(ucfirst(str_replace('_',' ',$editing_question['question_type']??'textarea'))) ?></div>
+        </div>
+      </div>
+      <a href="campaigns.php?action=questions&id=<?= $campaign_id ?>" class="eq-close" id="eqClose"><i class="fa-solid fa-xmark"></i></a>
+    </div>
+
+    <div class="eq-body">
+    <form id="eqForm" method="POST" action="/campaigns?action=edit_question&id=<?= $campaign_id ?>" onsubmit="return validateQuestionForm(this)">
       <?= csrf_input() ?>
-      <?php if ($editing_question): ?><input type="hidden" name="question_id" value="<?= (int)$editing_question['id'] ?>"><?php endif; ?>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <div class="form-group">
-          <label class="form-label">Answer Type</label>
-          <?php $selected_qtype = $editing_question['question_type'] ?? 'textarea'; ?>
-          <select name="question_type" class="form-control" onchange="syncQuestionTypeUI()">
-            <option value="textarea" <?= $selected_qtype === 'textarea' ? 'selected' : '' ?>>Long Text / Interview Answer</option>
-            <option value="text" <?= $selected_qtype === 'text' ? 'selected' : '' ?>>Short Text</option>
-            <option value="number" <?= $selected_qtype === 'number' ? 'selected' : '' ?>>Numeric</option>
-            <option value="decimal" <?= $selected_qtype === 'decimal' ? 'selected' : '' ?>>Decimal</option>
-            <option value="date" <?= $selected_qtype === 'date' ? 'selected' : '' ?>>Date</option>
-            <option value="dropdown" <?= $selected_qtype === 'dropdown' ? 'selected' : '' ?>>MCQ - Single Choice</option>
-            <option value="multi_select" <?= $selected_qtype === 'multi_select' ? 'selected' : '' ?>>MCQ - Multiple Choice</option>
-            <option value="rating" <?= $selected_qtype === 'rating' ? 'selected' : '' ?>>Rating</option>
-            <option value="file" <?= $selected_qtype === 'file' ? 'selected' : '' ?>>Upload Section</option>
-            <option value="audio" <?= $selected_qtype === 'audio' ? 'selected' : '' ?>>Record Audio</option>
-            <option value="video" <?= $selected_qtype === 'video' ? 'selected' : '' ?>>Record Video</option>
-            <option value="hyperlink" <?= $selected_qtype === 'hyperlink' ? 'selected' : '' ?>>Hyperlink</option>
+      <input type="hidden" name="question_id" value="<?= (int)$editing_question['id'] ?>">
+
+      <div class="qf-row qf-row-2" style="margin-bottom:14px">
+        <div class="qf-group">
+          <label class="qf-label">Answer Type</label>
+          <?php $selected_qtype=$editing_question['question_type']??'textarea'; ?>
+          <select name="question_type" class="qf-select" onchange="syncQuestionTypeUI()">
+            <option value="textarea" <?= $selected_qtype==='textarea'?'selected':'' ?>>Long Text / Interview Answer</option>
+            <option value="text" <?= $selected_qtype==='text'?'selected':'' ?>>Short Text</option>
+            <option value="number" <?= $selected_qtype==='number'?'selected':'' ?>>Numeric</option>
+            <option value="decimal" <?= $selected_qtype==='decimal'?'selected':'' ?>>Decimal</option>
+            <option value="date" <?= $selected_qtype==='date'?'selected':'' ?>>Date</option>
+            <option value="dropdown" <?= $selected_qtype==='dropdown'?'selected':'' ?>>MCQ — Single Choice</option>
+            <option value="multi_select" <?= $selected_qtype==='multi_select'?'selected':'' ?>>MCQ — Multiple Choice</option>
+            <option value="rating" <?= $selected_qtype==='rating'?'selected':'' ?>>Rating Scale</option>
+            <option value="file" <?= $selected_qtype==='file'?'selected':'' ?>>File Upload</option>
+            <option value="audio" <?= $selected_qtype==='audio'?'selected':'' ?>>Record Audio</option>
+            <option value="video" <?= $selected_qtype==='video'?'selected':'' ?>>Record Video</option>
+            <option value="hyperlink" <?= $selected_qtype==='hyperlink'?'selected':'' ?>>Hyperlink</option>
           </select>
         </div>
-        <div class="form-group">
-          <label class="form-label">Mandatory?</label>
-          <label style="display:flex;align-items:center;gap:8px;padding:11px 0;font-size:14px">
-            <input type="checkbox" name="is_required" <?= (!$editing_question || !empty($editing_question['is_required'])) ? 'checked' : '' ?>> Candidate must answer this question
+        <div class="qf-group">
+          <label class="qf-label">Required</label>
+          <label class="qf-req-toggle">
+            <input type="checkbox" name="is_required" <?= !empty($editing_question['is_required'])?'checked':'' ?>>
+            Candidate must answer this question
           </label>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
-        <div class="form-group">
-          <label class="form-label">Weight (%)</label>
-          <input type="number" name="weight" class="form-control" value="<?= htmlspecialchars($editing_question['weight'] ?? 15) ?>" min="1" max="100" required>
+
+      <div class="qf-row qf-row-3" style="margin-bottom:14px">
+        <div class="qf-group">
+          <label class="qf-label">Weight (%)</label>
+          <input type="number" name="weight" class="qf-input" value="<?= htmlspecialchars($editing_question['weight']??15) ?>" min="1" max="100" required>
         </div>
-        <div class="form-group">
-          <label class="form-label">Max Marks</label>
-          <input type="number" name="max_marks" class="form-control" value="<?= htmlspecialchars($editing_question['max_marks'] ?? 15) ?>" min="1" required>
+        <div class="qf-group">
+          <label class="qf-label">Max Marks</label>
+          <input type="number" name="max_marks" class="qf-input" value="<?= htmlspecialchars($editing_question['max_marks']??15) ?>" min="1" required>
         </div>
-        <div class="form-group">
-          <label class="form-label">Order</label>
-          <input type="number" name="order_no" class="form-control" value="<?= htmlspecialchars($editing_question['order_no'] ?? (count($questions)+1)) ?>">
+        <div class="qf-group">
+          <label class="qf-label">Order</label>
+          <input type="number" name="order_no" class="qf-input" value="<?= htmlspecialchars($editing_question['order_no']??(count($questions)+1)) ?>">
         </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Question Text *</label>
-        <textarea name="question_text" class="form-control" rows="3" placeholder="Write only the question here. Put MCQ choices in the choices box below." required onblur="autoFillInlineChoices()"><?= htmlspecialchars($editing_question['question_text'] ?? '') ?></textarea>
-        <small class="helper-text">Example: Which Python library is used for OpenAI API calls?</small>
+
+      <div class="qf-group" style="margin-bottom:14px">
+        <label class="qf-label">Question Text <span style="color:#EF4444">*</span></label>
+        <textarea name="question_text" class="qf-textarea" rows="4" required onblur="autoFillInlineChoices()"><?= htmlspecialchars($editing_question['question_text']??'') ?></textarea>
       </div>
-      <div class="form-group">
-        <label class="form-label" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-          <span>Suggested Reply / AI Scoring Criteria</span>
-          <button type="button" class="btn-sm" onclick="assistIdealAnswer()" style="padding:5px 10px"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Assist</button>
+
+      <div class="qf-group" style="margin-bottom:14px">
+        <label class="qf-label">
+          AI Scoring Criteria
+          <button type="button" class="qp-btn qp-btn-purple" style="font-size:11px;padding:4px 10px" onclick="assistIdealAnswer()"><i class="fa-solid fa-wand-magic-sparkles fa-xs"></i> AI Assist</button>
         </label>
-        <textarea name="ideal_answer_hint" class="form-control" rows="2" placeholder="Keywords or criteria AI should look for..."><?= htmlspecialchars($editing_question['ideal_answer_hint'] ?? '') ?></textarea>
+        <textarea name="ideal_answer_hint" class="qf-textarea" rows="2" placeholder="Keywords AI should look for in a strong answer…"><?= htmlspecialchars($editing_question['ideal_answer_hint']??'') ?></textarea>
       </div>
-      <div class="form-group mcq-box" id="mcqBox">
-        <label class="form-label" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-          <span>MCQ / Rating Choices *</span>
-          <button type="button" class="btn-sm" onclick="fillOptionSuggestion()" style="padding:5px 10px">Guide me</button>
-        </label>
-        <div class="mcq-presets">
+
+      <div class="qf-mcq mcq-box" id="mcqBox" style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <label class="qf-label" style="margin:0">MCQ Choices <span style="color:#EF4444">*</span></label>
+          <button type="button" class="qp-btn" style="font-size:11px;padding:4px 10px" onclick="fillOptionSuggestion()">Guide me</button>
+        </div>
+        <div class="qf-mcq-presets mcq-presets">
           <button type="button" onclick="setQuestionOptions('Yes\nNo')">Yes / No</button>
           <button type="button" onclick="setQuestionOptions('Beginner\nIntermediate\nAdvanced')">Skill Level</button>
           <button type="button" onclick="setQuestionOptions('1 - Poor\n2 - Fair\n3 - Good\n4 - Very Good\n5 - Excellent')">5-point Rating</button>
         </div>
-        <textarea name="options_text" class="form-control" rows="4" placeholder="One option per line&#10;Example:&#10;pandas&#10;openai&#10;flask&#10;numpy"><?= htmlspecialchars($editing_options_text) ?></textarea>
-        <small class="helper-text">These choices will be shown as dropdown/checkboxes to the candidate.</small>
+        <textarea name="options_text" class="qf-textarea" rows="4" placeholder="One option per line"><?= htmlspecialchars($editing_options_text) ?></textarea>
+        <div class="qf-hint">Shown as radio buttons / checkboxes to the candidate</div>
       </div>
-      <div class="form-group advanced-question-block">
+
+      <div class="advanced-question-block">
         <details>
-          <summary style="cursor:pointer;font-weight:800;color:#334155">Advanced branching rules</summary>
-          <label class="form-label" style="margin-top:12px">Branching rules JSON</label>
-          <textarea name="branch_rules_json" class="form-control" rows="4" placeholder='Example: [{"when":"yes","jump_to_order":5},{"when":"no","skip_to_order":8}]'><?= htmlspecialchars($editing_question['branch_rules_json'] ?? '') ?></textarea>
-          <small style="color:#8892A4">Optional. This is for advanced users only. Leave blank for normal step-by-step flow.</small>
+          <summary style="cursor:pointer;font-size:12px;font-weight:700;color:#94A3B8">Advanced — Branching Rules</summary>
+          <div class="qf-group" style="margin-top:10px">
+            <textarea name="branch_rules_json" class="qf-textarea" rows="3" placeholder='[{"when":"yes","jump_to_order":5}]'><?= htmlspecialchars($editing_question['branch_rules_json']??'') ?></textarea>
+            <div class="qf-hint">Optional. Leave blank for linear flow.</div>
+          </div>
         </details>
       </div>
-      <button type="submit" class="btn-primary"><?= $editing_question ? 'Save Question Changes' : '+ Add Question' ?></button>
     </form>
-  </div>
-  </div>
-  <aside class="journey-card">
-    <h3 style="font-size:16px;font-weight:900;color:#0F172A;margin-bottom:4px">Campaign Journey</h3>
-    <p style="font-size:13px;color:#64748B">Complete each block to move from setup to publish.</p>
-    <div class="journey-ring"><span style="width:<?= (int)$setup_state['percent'] ?>%"></span></div>
-    <div style="font-size:13px;font-weight:800;color:#334155;margin-bottom:8px"><?= (int)$setup_state['percent'] ?>% complete</div>
-    <?php foreach ($setup_state['steps'] as $step): ?>
-      <div class="journey-step <?= $step['done'] ? 'done' : '' ?>">
-        <i class="fa-solid <?= $step['done'] ? 'fa-circle-check' : 'fa-circle' ?>"></i>
-        <span><?= htmlspecialchars($step['label']) ?></span>
-      </div>
-    <?php endforeach; ?>
-    <div class="summary-stat">
-      <div><strong><?= count($questions) ?></strong><span>Questions</span></div>
-      <div><strong><?= count($application_fields) ?></strong><span>Apply fields</span></div>
-      <div><strong><?= (int)$setup_state['weight'] ?>%</strong><span>Weight used</span></div>
-      <div><strong><?= (int)$setup_state['remaining_weight'] ?>%</strong><span>Remaining</span></div>
     </div>
-    <?php if ($setup_state['integration_pending']): ?>
-      <div class="alert alert-info" style="margin:0 0 12px;padding:11px;font-size:13px">DB connection pending: choose CRM/API or Google Sheet on the campaign edit page.</div>
-    <?php endif; ?>
-    <div class="alert alert-info" style="margin:0;padding:11px;font-size:13px">Audio/video answers are stored as recordings/transcripts and then summarized during scoring for candidate filtering.</div>
-  </aside>
-  </div>
 
+    <div class="eq-footer">
+      <button type="submit" form="eqForm" class="qf-submit"><i class="fa-solid fa-floppy-disk fa-xs"></i> Save Changes</button>
+      <a href="campaigns.php?action=questions&id=<?= $campaign_id ?>" style="font-size:13px;color:#94A3B8;text-decoration:none;font-weight:600;padding:10px 6px">Cancel</a>
+      <span style="flex:1"></span>
+      <a href="campaigns.php?action=delete_question&id=<?= $campaign_id ?>&qid=<?= (int)$editing_question['id'] ?>&csrf_token=<?= urlencode(csrf_token()) ?>" style="display:inline-flex;align-items:center;gap:5px;padding:8px 13px;border:1px solid #FECACA;border-radius:8px;font-size:12px;font-weight:700;color:#DC2626;background:#FFF5F5;text-decoration:none;transition:all .12s" onclick="return confirm('Delete this question?')" onmouseover="this.style.background='#FEE2E2'" onmouseout="this.style.background='#FFF5F5'">
+        <i class="fa-solid fa-trash-can fa-xs"></i> Delete
+      </a>
+    </div>
+  </div>
+</div>
+<script>
+document.body.style.overflow='hidden';
+function closeEqModal(){document.body.style.overflow='';window.location.href='campaigns.php?action=questions&id=<?= $campaign_id ?>';}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeEqModal();});
+</script>
+<?php endif; ?>
+
+<aside class="journey-card">
+  <div class="journey-title">Campaign Journey</div>
+  <div class="journey-sub">Complete each step to publish.</div>
+  <div class="journey-ring"><span style="width:<?= (int)$setup_state['percent'] ?>%"></span></div>
+  <div class="journey-pct"><?= (int)$setup_state['percent'] ?>% complete</div>
+  <?php foreach ($setup_state['steps'] as $step): ?>
+  <div class="journey-step <?= $step['done']?'done':'' ?>">
+    <i class="fa-solid <?= $step['done']?'fa-circle-check':'fa-circle' ?>"></i>
+    <?= htmlspecialchars($step['label']) ?>
+  </div>
+  <?php endforeach; ?>
+  <div class="j-stats">
+    <div class="j-stat"><strong><?= count($questions) ?></strong><span>Questions</span></div>
+    <div class="j-stat"><strong><?= count($application_fields) ?></strong><span>Apply fields</span></div>
+    <div class="j-stat"><strong><?= (int)$setup_state['weight'] ?>%</strong><span>Weight used</span></div>
+    <div class="j-stat"><strong style="color:<?= $setup_state['remaining_weight']>0?'#DC2626':'#15803D' ?>"><?= (int)$setup_state['remaining_weight'] ?>%</strong><span>Remaining</span></div>
+  </div>
+  <div class="j-note"><i class="fa-solid fa-circle-info fa-xs" style="margin-right:5px"></i>Audio/video answers are stored as recordings/transcripts and summarized by AI during scoring.</div>
+</aside>
+</div>
 <?php elseif ($action === 'apply_form' && $campaign): ?>
   <?php $applyLink = campaign_apply_link($campaign); ?>
   <style>
@@ -1175,8 +1684,27 @@ if ($editing_question && !empty($editing_question['options_json'])) {
     .builder-panel .form-label{font-size:12px;text-transform:uppercase;letter-spacing:.35px;color:#475569}
     .required-toggle{height:44px;display:flex;align-items:center;gap:9px;border:1.5px solid var(--light);border-radius:11px;padding:0 12px;font-size:13px;font-weight:700;color:#334155;background:#fff}
     .builder-submit{width:100%;justify-content:center;padding:12px 18px;margin-top:4px}
+    /* Standard fields toggle */
+    .std-config-card{background:#fff;border:1px solid rgba(15,23,42,.08);border-radius:16px;box-shadow:var(--card-shadow);overflow:hidden;margin-bottom:20px}
+    .std-config-head{padding:16px 20px;border-bottom:1px solid #EEF2F7;display:flex;align-items:center;justify-content:space-between;gap:12px;background:linear-gradient(135deg,#F0FDF4,#EFF6FF)}
+    .std-config-head h3{font-size:15px;font-weight:900;color:#0F172A;display:flex;align-items:center;gap:8px;margin:0}
+    .std-section{padding:14px 20px 2px}
+    .std-section-label{font-size:11px;font-weight:800;color:#7C3AED;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+    .std-fields-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:14px}
+    .std-toggle{display:flex;align-items:flex-start;gap:0;cursor:pointer}
+    .std-toggle input[type=checkbox]{display:none}
+    .std-toggle-card{flex:1;border:1.5px solid #E2E8F0;border-radius:11px;padding:10px 12px;transition:all .15s;background:#FAFAFA;user-select:none}
+    .std-toggle input:checked~.std-toggle-card{border-color:#7C3AED;background:#F5F3FF;box-shadow:0 0 0 3px rgba(124,58,237,.1)}
+    .std-toggle-card:hover{border-color:#A78BFA;background:#FAF5FF}
+    .std-toggle-name{font-size:13px;font-weight:700;color:#111827;display:flex;align-items:center;gap:6px;margin-bottom:3px}
+    .std-toggle-name .tgl-check{width:16px;height:16px;border-radius:4px;border:2px solid #CBD5E1;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-size:10px;transition:all .15s}
+    .std-toggle input:checked~.std-toggle-card .tgl-check{background:#7C3AED;border-color:#7C3AED;color:#fff}
+    .std-toggle-meta{font-size:11px;color:#94A3B8;display:flex;align-items:center;gap:5px}
+    .std-toggle-meta code{font-size:10px;background:#F1F5F9;border-radius:4px;padding:1px 5px;color:#2563EB}
+    .std-save-bar{padding:14px 20px;border-top:1px solid #EEF2F7;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#F8FAFC}
+    .std-select-all{font-size:12px;font-weight:700;color:#7C3AED;cursor:pointer;background:none;border:none;padding:0}
     @media(max-width:1100px){.builder-shell{grid-template-columns:1fr}.builder-panel{position:static}.panel-grid-3{grid-template-columns:1fr}.quick-grid{grid-template-columns:1fr 1fr}}
-    @media(max-width:620px){.builder-hero{padding:20px}.builder-title{font-size:22px}.builder-link-card{display:block}.builder-link-card code{display:block;margin-bottom:10px}.field-tile{grid-template-columns:24px 30px minmax(0,1fr)}.field-tile>a{grid-column:1/-1;justify-content:center}.quick-grid,.panel-grid-2{grid-template-columns:1fr}}
+    @media(max-width:620px){.builder-hero{padding:20px}.builder-title{font-size:22px}.builder-link-card{display:block}.builder-link-card code{display:block;margin-bottom:10px}.field-tile{grid-template-columns:24px 30px minmax(0,1fr)}.field-tile>a{grid-column:1/-1;justify-content:center}.quick-grid,.panel-grid-2{grid-template-columns:1fr}.std-fields-grid{grid-template-columns:1fr 1fr}}
   </style>
 
   <div class="builder-hero">
@@ -1212,8 +1740,76 @@ if ($editing_question && !empty($editing_question['options_json'])) {
     <div>
       Journey: <strong><?= (int)$setup_state['percent'] ?>% complete</strong>.
       <?= !empty($setup_state['ready_to_preview']) ? 'Public preview is ready.' : 'Preview/share unlocks after this form has at least one active field.' ?>
-      <?= !empty($setup_state['integration_pending']) ? ' DB connection is still pending: select CRM/API or Google Sheet on Edit Campaign.' : '' ?>
     </div>
+  </div>
+
+  <?php
+    // Build active-key lookup from current application_fields
+    $_camp_cfg_raw   = $campaign['apply_form_config'] ?? null;
+    $_camp_cfg       = $_camp_cfg_raw ? (json_decode($_camp_cfg_raw, true) ?: null) : null;
+    $std_never_saved = ($_camp_cfg === null); // never saved via toggle = all ON by default
+    $active_std_keys = $_camp_cfg ?? [];
+    // Organize template fields into sections
+    $std_sections = [
+        'Personal Info'      => ['salutation','first_name','last_name','dob','city','relocate','relocate_time'],
+        'Contact'            => ['phone_code','other_country_code','phone','email'],
+        'Education & Source' => ['college','college_other','source','source_other','role_applied'],
+        'Work Experience'    => ['engagement_type','english_level','years_exp','industry','industry_other','exp_type','exp_desc'],
+        'Compensation'       => ['current_salary','expected_salary'],
+        'Availability'       => ['tenure','joining_date','flex_hours'],
+        'Work Readiness'     => ['laptop','internet','location','commute'],
+        'Documents'          => ['resume','photo','video_option','video_link','video_file','portfolio'],
+        'Consent'            => ['ai_test_willing','declaration_confirmation'],
+    ];
+    // Build key→label/type map from legacy template
+    $std_field_meta = [];
+    foreach (legacy_application_template_fields() as $tf) {
+        $std_field_meta[$tf[1]] = ['label'=>$tf[0],'type'=>$tf[2]];
+    }
+    $required_always = ['phone','email','first_name','last_name','salutation','dob','city','years_exp','exp_type','english_level','engagement_type','laptop','internet','commute','flex_hours','tenure','joining_date','resume','ai_test_willing','declaration_confirmation','college','source','role_applied','industry','phone_code','expected_salary'];
+  ?>
+  <div class="std-config-card">
+    <div class="std-config-head">
+      <h3><i class="fa-solid fa-sliders" style="color:#7C3AED"></i> Standard Fields Configuration</h3>
+      <span style="font-size:12px;color:#64748B">Toggle which default fields appear on the public apply form</span>
+    </div>
+    <form method="POST" action="/campaigns?action=save_apply_form_config&id=<?= $campaign_id ?>">
+      <?= csrf_input() ?>
+      <?php foreach ($std_sections as $section_name => $section_keys): ?>
+      <div class="std-section">
+        <div class="std-section-label"><i class="fa-solid fa-circle-dot fa-xs"></i> <?= htmlspecialchars($section_name) ?></div>
+        <div class="std-fields-grid">
+          <?php foreach ($section_keys as $sk):
+            $meta = $std_field_meta[$sk] ?? ['label'=>$sk,'type'=>'text'];
+            $is_checked = $std_never_saved ? true : in_array($sk, $active_std_keys, true);
+          ?>
+          <label class="std-toggle">
+            <input type="checkbox" name="std_fields[]" value="<?= htmlspecialchars($sk) ?>"<?= $is_checked ? ' checked' : '' ?>>
+            <div class="std-toggle-card">
+              <div class="std-toggle-name">
+                <span class="tgl-check">✓</span>
+                <?= htmlspecialchars($meta['label']) ?>
+                <?php if (in_array($sk, ['phone','email'], true)): ?><span style="font-size:9px;background:#FEF3C7;color:#92400E;border-radius:4px;padding:1px 5px;font-weight:800">REQUIRED</span><?php endif; ?>
+              </div>
+              <div class="std-toggle-meta">
+                <code><?= htmlspecialchars($sk) ?></code>
+                <span class="type-pill"><?= htmlspecialchars($meta['type']) ?></span>
+              </div>
+            </div>
+          </label>
+          <?php endforeach; ?>
+        </div>
+      </div>
+      <?php endforeach; ?>
+      <div class="std-save-bar">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button type="button" class="std-select-all" onclick="stdToggleAll(true)">Select All</button>
+          <span style="color:#CBD5E1">|</span>
+          <button type="button" class="std-select-all" onclick="stdToggleAll(false)">Deselect All</button>
+        </div>
+        <button type="submit" class="btn-primary" style="padding:10px 22px"><i class="fa-solid fa-floppy-disk"></i> Save Field Configuration</button>
+      </div>
+    </form>
   </div>
 
   <div class="builder-shell">
@@ -1274,14 +1870,10 @@ if ($editing_question && !empty($editing_question['options_json'])) {
         <span class="canvas-meta">Default first</span>
       </div>
       <div class="default-template-cta">
-        <div class="default-template-title"><i class="fa-solid fa-wand-magic-sparkles" style="color:#6D28D9"></i> Step 1: Add Complete Apply Form</div>
-        <div class="default-template-copy">Start with the full original application form. After that, add or remove fields as per this campaign.</div>
-        <form method="POST" action="/campaigns?action=add_application_template&id=<?= $campaign_id ?>" onsubmit="return confirm('Add the complete default application form to this campaign? Existing matching fields will be skipped.')">
-          <?= csrf_input() ?>
-          <button type="submit" class="template-btn"><i class="fa-solid fa-circle-plus"></i> Add Complete Apply Form</button>
-        </form>
+        <div class="default-template-title"><i class="fa-solid fa-plus-circle" style="color:#10B981"></i> Add Campaign-Specific Custom Field</div>
+        <div class="default-template-copy">Use the form below to add role-specific fields not in the standard set above (e.g. GitHub URL, certifications, target company).</div>
       </div>
-      <div style="padding:14px 20px 0;font-size:12px;font-weight:900;color:#64748B;text-transform:uppercase;letter-spacing:.5px">Then add custom fields if needed</div>
+      <div style="padding:14px 20px 0;font-size:12px;font-weight:900;color:#64748B;text-transform:uppercase;letter-spacing:.5px">Quick-add custom fields</div>
       <div class="quick-grid">
         <button type="button" class="quick-chip" onclick="presetField('Full Name','name','text','Candidate full name')"><i class="fa-solid fa-user"></i> Name</button>
         <button type="button" class="quick-chip" onclick="presetField('Phone','phone','phone','WhatsApp number')"><i class="fa-brands fa-whatsapp"></i> Phone</button>
@@ -1484,9 +2076,25 @@ function fillOptionSuggestion() {
   options.focus();
   options.select();
 }
+function openAddModal(){
+  const ov=document.getElementById('aqOverlay');
+  if(!ov)return;
+  ov.classList.add('open');
+  document.body.style.overflow='hidden';
+  setTimeout(()=>ov.querySelector('textarea[name="question_text"]')?.focus(),120);
+}
+function closeAddModal(){
+  const ov=document.getElementById('aqOverlay');
+  if(ov)ov.classList.remove('open');
+  document.body.style.overflow='';
+}
 document.addEventListener('DOMContentLoaded', () => {
   syncQuestionTypeUI();
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')closeAddModal();});
 });
+function stdToggleAll(state) {
+  document.querySelectorAll('.std-toggle input[type=checkbox]').forEach(cb => { cb.checked = state; });
+}
 </script>
 <?php include __DIR__ . '/includes/footer.php'; ?>
 </body>

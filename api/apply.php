@@ -165,9 +165,18 @@ function sync_candidate_application($campaign, $candidate_id, $payload) {
 }
 
 $campaign_id = (int)($data['campaign_id'] ?? 0);
-$campaign_id = $campaign_id ?: (int)((db_fetch_one("SELECT id FROM campaigns WHERE status='active' ORDER BY id ASC LIMIT 1", [], '') ?: ['id'=>1])['id']);
-$campaign    = $campaign_id ? db_fetch_one("SELECT * FROM campaigns WHERE id=?",[$campaign_id],'i') : null;
-$org_id      = $campaign ? (int)$campaign['org_id'] : 1;
+if (!$campaign_id) {
+    // No campaign_id supplied — find the first active campaign (no hardcoded fallback to id=1)
+    $fallback = db_fetch_one("SELECT id FROM campaigns WHERE status='active' ORDER BY id ASC LIMIT 1", [], '');
+    if (!$fallback) apply_fail('No active campaign is currently accepting applications.');
+    $campaign_id = (int)$fallback['id'];
+}
+$campaign = db_fetch_one("SELECT * FROM campaigns WHERE id=?", [$campaign_id], 'i');
+if (!$campaign) apply_fail('Campaign not found.');
+if (!in_array($campaign['status'] ?? '', ['active'], true)) {
+    apply_fail('This campaign is not currently accepting applications.');
+}
+$org_id = (int)$campaign['org_id'];
 $email       = s($data,'email');
 $ref_token   = s($data,'ref_token');
 $ref_medium  = s($data,'ref_medium') ?: 'candidate_share';
@@ -204,13 +213,14 @@ if ($email === '' || !strict_email_apply($email)) {
 }
 $dob = s($data, 'dob');
 if ($dob === '') $dob = dynamic_answer_by_keys($application_answers, ['dob','date_of_birth','birth_date']);
-if (!strict_date_apply($dob) || $dob > date('Y-m-d')) {
+// DOB and joining date are optional — only validate format if provided
+if ($dob !== '' && (!strict_date_apply($dob) || $dob > date('Y-m-d'))) {
     apply_fail('Date of birth must be a valid date in YYYY-MM-DD format and cannot be in the future.');
 }
 $data['dob'] = $dob;
 $joining_date = s($data, 'joining_date');
 if ($joining_date === '') $joining_date = dynamic_answer_by_keys($application_answers, ['joining_date','preferred_joining_date','available_from']);
-if (!strict_date_apply($joining_date) || $joining_date < date('Y-m-d')) {
+if ($joining_date !== '' && (!strict_date_apply($joining_date) || $joining_date < date('Y-m-d'))) {
     apply_fail('Preferred joining date must be a valid date in YYYY-MM-DD format and cannot be before today.');
 }
 $data['joining_date'] = $joining_date;
@@ -220,10 +230,11 @@ $expected_salary_value = s($data, 'expected_salary');
 if ($expected_salary_value === '') $expected_salary_value = dynamic_answer_by_keys($application_answers, ['expected_salary','expected_ctc','expected_stipend']);
 $current_salary_num = money_apply($current_salary_value);
 $expected_salary_num = money_apply($expected_salary_value);
-if ($expected_salary_num === null) {
+// Salary validation: only if expected salary was actually submitted
+if ($expected_salary_value !== '' && $expected_salary_num === null) {
     apply_fail('Expected salary / stipend must be a valid number.');
 }
-if ($current_salary_num !== null && $expected_salary_num < $current_salary_num) {
+if ($expected_salary_value !== '' && $current_salary_num !== null && $expected_salary_num !== null && $expected_salary_num < $current_salary_num) {
     apply_fail('Expected salary / stipend cannot be lower than current salary / stipend.');
 }
 $data['current_salary'] = $current_salary_value;

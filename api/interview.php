@@ -46,10 +46,26 @@ if($action==='create_session'&&$method==='GET'){
   $token=$_GET['t']??'';if(!$token)json_response(['error'=>'Token required'],400);
   $c=db_fetch_one("SELECT * FROM candidates WHERE unique_token=?",[$token],'s');
   if(!$c)json_response(['error'=>'Invalid token'],404);
+
+  // Hard block: interview already completed/scored — never allow a new session
+  if(in_array($c['status'],['interview_completed','shortlisted','rejected','on_hold'])){
+    json_response(['error'=>'Interview already completed'],403);
+  }
+
+  // If already started, only resume the existing in_progress session — no new one
+  if($c['status']==='interview_started'){
+    $existing=db_fetch_one("SELECT id FROM interview_sessions WHERE candidate_id=? AND status='in_progress' ORDER BY id DESC LIMIT 1",[$c['id']],'i');
+    if($existing)json_response(['session_id'=>$existing['id']]);
+    // No in_progress session found (shouldn't happen) — block anyway
+    json_response(['error'=>'Interview locked — only one attempt allowed'],403);
+  }
+
+  // Fresh start: pending or outreach_sent
   $existing=db_fetch_one("SELECT id FROM interview_sessions WHERE candidate_id=? AND status='in_progress' ORDER BY id DESC LIMIT 1",[$c['id']],'i');
   if($existing)json_response(['session_id'=>$existing['id']]);
   $sid=db_insert("INSERT INTO interview_sessions (candidate_id,campaign_id,status,started_at) VALUES (?,?,'in_progress',NOW())",[$c['id'],$c['campaign_id']],'ii');
-  db_execute("UPDATE candidates SET status='interview_started' WHERE id=? AND status='pending'",[$c['id']],'i');
+  // Fix: was only WHERE status='pending' — outreach_sent candidates were never marked interview_started
+  db_execute("UPDATE candidates SET status='interview_started' WHERE id=? AND status IN ('pending','outreach_sent')",[$c['id']],'i');
   json_response(['session_id'=>$sid]);
 }
 
@@ -76,20 +92,23 @@ if($action==='complete_interview'&&$method==='POST'){
   if(!$ownership)json_response(['error'=>'Forbidden'],403);
   $c=db_fetch_one("SELECT c.*,camp.passing_score,camp.el_agent_id,camp.name as campaign_name,camp.job_role FROM candidates c JOIN campaigns camp ON c.campaign_id=camp.id WHERE c.unique_token=?",[$token],'s');
   if(!$c)json_response(['error'=>'Invalid token'],404);
-  db_execute("UPDATE interview_sessions SET completed_at=NOW(),status='completed',cheat_summary=? WHERE id=?",
+  // Idempotent: if already scored/completed, skip status + scoring re-trigger
+  $already_completed = in_array($c['status'],['interview_completed','shortlisted','rejected','on_hold']);
+  db_execute("UPDATE interview_sessions SET completed_at=COALESCE(completed_at,NOW()),status='completed',cheat_summary=? WHERE id=?",
     [json_encode($cheat),$sid],'si');
-  db_execute("UPDATE candidates SET status='interview_completed' WHERE id=?",[$c['id']],'i');
-  $name=$c['name']?:'Candidate';
-  $wa="🎉 *Interview Submitted!*\n\nHi $name,\n\nThank you for completing your interview for *{$c['job_role']}* at *{$c['campaign_name']}*.\n\nOur team will review your responses and reach out to you accordingly.\n\n*HireAI — Avyukta Intellicall*";
-  send_whatsapp($c['phone'],$wa, [
-    'org_id' => $c['org_id'],
-    'candidate_id' => $c['id'],
-    'campaign_id' => $c['campaign_id'],
-    'reason' => 'interview_submission_confirmation',
-  ]);
+  if(!$already_completed){
+    db_execute("UPDATE candidates SET status='interview_completed' WHERE id=?",[$c['id']],'i');
+  }
   $cid=(int)$c['id'];$cmp=(int)$c['campaign_id'];
-  $log=escapeshellarg("/tmp/score_{$cid}.log");
-  exec("php ".escapeshellarg(__DIR__."/score.php")." $cid $cmp > $log 2>&1 &");
+  if(!$already_completed){
+    $name=$c['name']?:'Candidate';
+    $wa="🎉 *Interview Submitted!*\n\nHi $name,\n\nThank you for completing your interview for *{$c['job_role']}* at *{$c['campaign_name']}*.\n\nOur team will review your responses and reach out to you accordingly.\n\n*HireAI — Avyukta Intellicall*";
+    send_whatsapp($c['phone'],$wa,[
+      'org_id'=>$c['org_id'],'candidate_id'=>$cid,'campaign_id'=>$cmp,'reason'=>'interview_submission_confirmation',
+    ]);
+    $log=escapeshellarg("/tmp/score_{$cid}.log");
+    exec("php ".escapeshellarg(__DIR__."/score.php")." $cid $cmp > $log 2>&1 &");
+  }
   json_response(['status'=>'completed']);
 }
 

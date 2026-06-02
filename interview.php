@@ -22,9 +22,23 @@ if (!empty($candidate['link_expires_at']) && strtotime($candidate['link_expires_
     http_response_code(410);
     die('This interview link has expired. Please contact the recruiter for a fresh link.');
 }
-$already_done = in_array($candidate['status'], ['interview_completed','shortlisted','rejected','on_hold']);
+$already_done    = in_array($candidate['status'], ['interview_completed','shortlisted','rejected','on_hold']);
+$already_started = $candidate['status'] === 'interview_started';
+
+// Count how many answers already recorded (to show on locked screen)
+$_answered_count = 0;
+if ($already_started) {
+    $_row = db_fetch_one(
+        "SELECT COUNT(*) cnt FROM interview_answers ia
+         JOIN interview_sessions s ON ia.session_id=s.id
+         WHERE s.candidate_id=? AND s.status='in_progress'",
+        [$candidate['id']], 'i'
+    );
+    $_answered_count = (int)($_row['cnt'] ?? 0);
+}
+
 $questions = db_fetch_all("SELECT * FROM questions WHERE campaign_id=? ORDER BY order_no ASC", [$candidate['campaign_id']], 'i');
-if (!$already_done && empty($questions)) { die('No questions configured. Please contact the recruiter.'); }
+if (!$already_done && !$already_started && empty($questions)) { die('No questions configured. Please contact the recruiter.'); }
 $total_q = count($questions);
 ?>
 <!DOCTYPE html>
@@ -141,9 +155,15 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 .voice-btn{width:72px;height:72px;border-radius:50%;border:none;background:var(--blue);color:#fff;font-size:28px;cursor:pointer;transition:all .25s;display:flex;align-items:center;justify-content:center;position:relative;z-index:1}
 .voice-btn:hover{transform:scale(1.06);background:#1D4ED8}
 .voice-btn.recording{background:var(--red);animation:pulse-btn 1.2s infinite}
+.voice-btn.idle-pulse{animation:idle-pulse-btn 1.8s infinite}
+@keyframes idle-pulse-btn{0%,100%{box-shadow:0 0 0 0 rgba(37,99,235,.5)}60%{box-shadow:0 0 0 18px rgba(37,99,235,0)}}
 @keyframes pulse-btn{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 14px rgba(239,68,68,0)}}
 .voice-ripple{position:absolute;inset:-8px;border-radius:50%;border:2px solid var(--red);opacity:0;animation:ripple 1.2s infinite}
 .voice-ripple2{animation-delay:.4s}
+/* Idle ripples (blue) shown before recording starts on audio questions */
+.voice-ripple-idle{position:absolute;inset:-8px;border-radius:50%;border:2px solid var(--blue2);opacity:0;animation:ripple-idle 1.8s infinite}
+.voice-ripple-idle2{animation-delay:.6s}
+@keyframes ripple-idle{0%{transform:scale(.9);opacity:.55}100%{transform:scale(1.5);opacity:0}}
 @keyframes ripple{0%{transform:scale(.9);opacity:.6}100%{transform:scale(1.4);opacity:0}}
 .voice-wave{display:flex;align-items:center;justify-content:center;gap:3px;height:30px;margin-bottom:8px}
 .voice-wave span{display:inline-block;width:3px;background:var(--blue2);border-radius:2px;animation:wave .8s ease-in-out infinite}
@@ -153,6 +173,11 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 .voice-wave span:nth-child(5){animation-delay:.4s}
 @keyframes wave{0%,100%{height:4px}50%{height:24px}}
 .voice-status{font-size:12px;color:var(--muted2);margin-bottom:8px}
+/* Auto-start countdown banner */
+.autostart-banner{background:rgba(37,99,235,.15);border:1px solid rgba(37,99,235,.3);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;font-weight:700;color:var(--blue2);display:flex;align-items:center;gap:8px;justify-content:center}
+.autostart-banner.hidden{display:none}
+/* Locked tab (audio-only questions hide text tab) */
+.atab.locked{display:none}
 .audio-preview{width:100%;margin-top:10px;border-radius:8px;display:none;filter:invert(1) hue-rotate(180deg);opacity:.8}
 
 /* ══ TEXT ANSWER ═════════════════════════════════════════════════════════════ */
@@ -210,6 +235,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 /* ══ NETWORK TOAST ═══════════════════════════════════════════════════════════ */
 .net-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e3a5f;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;pointer-events:none;transition:opacity .4s;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.4)}
 .net-warn{background:#92400E}
+.net-info{background:#1D4ED8}
 
 /* ══ PERMISSION SCREEN ════════════════════════════════════════════════════════ */
 .perm-screen{
@@ -339,8 +365,28 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 <div class="already-done-screen">
   <div class="done-card">
     <div class="done-icon">✅</div>
-    <div class="done-title">Already Completed</div>
-    <div class="done-sub">Hi <?= htmlspecialchars($candidate['name'] ?: 'there') ?>, you have already completed your interview.<br>Our team will contact you shortly.</div>
+    <div class="done-title">Interview Completed</div>
+    <div class="done-sub">Hi <?= htmlspecialchars($candidate['name'] ?: 'there') ?>, you have already completed this interview.<br>Our team will review your responses and contact you shortly.</div>
+    <div class="powered-by">Powered by <strong>HireAI</strong> — Avyukta Intellicall</div>
+  </div>
+</div>
+
+<?php elseif ($already_started): ?>
+<!-- ══ INTERVIEW LOCKED (started but not completed) ══════════════════════════ -->
+<div class="already-done-screen">
+  <div class="done-card">
+    <div class="done-icon">🔒</div>
+    <div class="done-title">Interview Attempt Locked</div>
+    <div class="done-sub">
+      Hi <?= htmlspecialchars($candidate['name'] ?: 'there') ?>, you have already started this interview
+      <?php if ($_answered_count > 0): ?>
+        and <strong><?= $_answered_count ?> answer<?= $_answered_count !== 1 ? 's' : '' ?></strong> have been recorded
+      <?php endif; ?>.
+      <br><br>
+      For fairness, only <strong>one attempt is allowed</strong> per candidate. You cannot restart the interview.
+      <br><br>
+      Your recorded responses will be evaluated by our team and we will reach out to you shortly.
+    </div>
     <div class="powered-by">Powered by <strong>HireAI</strong> — Avyukta Intellicall</div>
   </div>
 </div>
@@ -462,12 +508,20 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
           <!-- VOICE PANEL -->
           <div id="voice-panel">
             <div class="voice-panel">
+              <!-- Auto-start countdown banner (shown only on audio-type questions) -->
+              <div class="autostart-banner hidden" id="autostart-banner">
+                <span id="autostart-text">🎙️ Recording will start automatically…</span>
+              </div>
               <div class="voice-wave" id="voice-wave" style="display:none">
                 <span></span><span></span><span></span><span></span><span></span>
               </div>
               <div class="voice-btn-wrap">
+                <!-- Red ripples (recording) -->
                 <div class="voice-ripple" id="ripple1" style="display:none"></div>
                 <div class="voice-ripple voice-ripple2" id="ripple2" style="display:none"></div>
+                <!-- Blue idle ripples (waiting to record on audio questions) -->
+                <div class="voice-ripple-idle" id="idle-ripple1" style="display:none"></div>
+                <div class="voice-ripple-idle voice-ripple-idle2" id="idle-ripple2" style="display:none"></div>
                 <button class="voice-btn" id="voice-btn" onclick="toggleRecording()">🎤</button>
               </div>
               <div class="voice-status" id="voice-status">Tap to start recording your answer</div>
@@ -635,18 +689,38 @@ async function createSession() {
   } catch(e) {}
 }
 
+let _videoCheckpointTimer = null;
+let _videoCheckpointMime  = 'video/webm';
+
 function startVideoRecording() {
   try {
     videoChunks = [];
     const mt = pickSupportedMime(['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4']);
-    const opts = {
-      videoBitsPerSecond: 128000,
-      audioBitsPerSecond: 48000
-    };
+    _videoCheckpointMime = mt || 'video/webm';
+    const opts = { videoBitsPerSecond: 128000, audioBitsPerSecond: 48000 };
     if (mt) opts.mimeType = mt;
     videoRecorder = new MediaRecorder(mediaStream, opts);
     videoRecorder.ondataavailable = e => { if (e.data.size > 0) videoChunks.push(e.data); };
     videoRecorder.start(5000);
+
+    // Checkpoint every 2 minutes: upload accumulated chunks silently.
+    // If the browser closes before the final upload, the last checkpoint is preserved.
+    if (_videoCheckpointTimer) clearInterval(_videoCheckpointTimer);
+    _videoCheckpointTimer = setInterval(async () => {
+      if (videoChunks.length < 4) return; // skip if < 20s recorded
+      try {
+        const blob = new Blob(videoChunks, { type: _videoCheckpointMime });
+        if (blob.size < 50000) return; // skip tiny blobs
+        const fd = new FormData();
+        fd.append('video', blob, 'session_' + TOKEN + '_partial.webm');
+        fd.append('token', TOKEN);
+        fd.append('session_id', sessionId || '');
+        fd.append('is_partial', '1');
+        await fetch('api/upload_video.php', { method: 'POST', body: fd });
+        // No-op on failure — final upload will overwrite if it succeeds
+      } catch(e) { /* silent — checkpoint is best-effort */ }
+    }, 120000); // every 2 minutes
+
     return videoRecorder.state === 'recording';
   } catch(e) { console.warn('Video recording unavailable:', e); return false; }
 }
@@ -686,9 +760,61 @@ function loadQuestion(index) {
   renderDynamicAnswer(q);
   audioChunks = [];
   if (isRecording) stopRecording();
+  // Clear any pending auto-start timer
+  if (window._autoStartTimer) { clearTimeout(window._autoStartTimer); window._autoStartTimer = null; }
+  if (window._autoStartCountdown) { clearInterval(window._autoStartCountdown); window._autoStartCountdown = null; }
+
   const type = q.question_type || 'textarea';
-  if (['audio','video'].includes(type)) switchTab('voice');
-  else switchTab('text');
+  const isAudioQ = ['audio','video'].includes(type);
+
+  // Lock / unlock text tab
+  const tabText = document.getElementById('tab-text');
+  tabText.classList.toggle('locked', isAudioQ);
+
+  // Reset idle ripples & banner
+  document.getElementById('idle-ripple1').style.display = 'none';
+  document.getElementById('idle-ripple2').style.display = 'none';
+  document.getElementById('voice-btn').classList.remove('idle-pulse');
+  document.getElementById('autostart-banner').classList.add('hidden');
+
+  if (isAudioQ) {
+    switchTab('voice');
+    // Show idle pulse + blue ripples while countdown runs
+    document.getElementById('idle-ripple1').style.display = 'block';
+    document.getElementById('idle-ripple2').style.display = 'block';
+    document.getElementById('voice-btn').classList.add('idle-pulse');
+    document.getElementById('autostart-banner').classList.remove('hidden');
+
+    // 3-second countdown then auto-start
+    let countdown = 3;
+    const banner = document.getElementById('autostart-text');
+    banner.textContent = '🎙️ Recording starts in ' + countdown + '…';
+    window._autoStartCountdown = setInterval(() => {
+      countdown--;
+      if (countdown > 0) {
+        banner.textContent = '🎙️ Recording starts in ' + countdown + '…';
+      } else {
+        clearInterval(window._autoStartCountdown);
+        window._autoStartCountdown = null;
+      }
+    }, 1000);
+
+    window._autoStartTimer = setTimeout(() => {
+      window._autoStartTimer = null;
+      // Hide idle indicators
+      document.getElementById('idle-ripple1').style.display = 'none';
+      document.getElementById('idle-ripple2').style.display = 'none';
+      document.getElementById('voice-btn').classList.remove('idle-pulse');
+      document.getElementById('autostart-banner').classList.add('hidden');
+      // Auto-start if still on this question and not already recording
+      if (!isRecording && audioChunks.length === 0) {
+        startRecording();
+        showNetToast('🔴 Recording started automatically', 'info');
+      }
+    }, 3000);
+  } else {
+    switchTab('text');
+  }
 
   // Next / Submit label
   const isLast = index === QUESTIONS.length - 1;
@@ -855,6 +981,13 @@ function toggleRecording() { isRecording ? stopRecording() : startRecording(); }
 
 function startRecording() {
   if (!mediaStream) return;
+  // Cancel auto-start countdown if user taps manually first
+  if (window._autoStartTimer) { clearTimeout(window._autoStartTimer); window._autoStartTimer = null; }
+  if (window._autoStartCountdown) { clearInterval(window._autoStartCountdown); window._autoStartCountdown = null; }
+  document.getElementById('idle-ripple1').style.display = 'none';
+  document.getElementById('idle-ripple2').style.display = 'none';
+  document.getElementById('voice-btn').classList.remove('idle-pulse');
+  document.getElementById('autostart-banner').classList.add('hidden');
   audioChunks = [];
   const aStream = new MediaStream(mediaStream.getAudioTracks());
   if (!aStream.getAudioTracks().length) {
@@ -973,7 +1106,7 @@ function showNetToast(msg, type) {
   const existing = document.querySelectorAll('.net-toast');
   existing.forEach(t => t.remove());
   const t = document.createElement('div');
-  t.className = 'net-toast' + (type === 'warn' ? ' net-warn' : '');
+  t.className = 'net-toast' + (type === 'warn' ? ' net-warn' : type === 'info' ? ' net-info' : '');
   t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 400); }, 3500);
@@ -1001,6 +1134,8 @@ async function saveAnswer(answer) {
 
 // ── FINISH ───────────────────────────────────────────────────────────────────
 async function finishInterview() {
+  // Stop checkpoint timer — final upload handles the last chunk
+  if (_videoCheckpointTimer) { clearInterval(_videoCheckpointTimer); _videoCheckpointTimer = null; }
   document.getElementById('interview-screen').style.display = 'none';
   document.getElementById('completion-screen').style.display = 'flex';
   document.getElementById('rec-badge').style.display = 'none';
@@ -1008,35 +1143,45 @@ async function finishInterview() {
   const interviewEndTime = Date.now();
   const durationSeconds  = Math.round((interviewEndTime - interviewStartTime) / 1000);
 
-  let videoUploadPromise = Promise.resolve();
+  // ── STEP 1: complete_interview FIRST (status + score trigger) ──────────────
+  // Must happen before video upload wait — if user closes browser during upload,
+  // status would otherwise never update (the old bug that caused stuck sessions).
+  const completePayload = JSON.stringify({
+    token: TOKEN, session_id: sessionId, answers,
+    duration_seconds: durationSeconds,
+    cheat_summary: {
+      tab_switches : tabSwitchCount,
+      face_away    : 0,
+      copy_paste   : answers.reduce((s, a) => s + (a.copy_count || 0), 0),
+      total_flags  : cheatLog.length,
+    },
+  });
+  // Use sendBeacon as primary (survives page close); fetch as fallback
+  let beaconSent = false;
+  if (navigator.sendBeacon) {
+    const blob = new Blob([completePayload], { type: 'application/json' });
+    beaconSent = navigator.sendBeacon('api/interview.php?action=complete_interview', blob);
+  }
+  if (!beaconSent) {
+    try {
+      await fetch('api/interview.php?action=complete_interview', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: completePayload,
+      });
+    } catch(e) { console.warn('complete_interview fetch failed', e); }
+  }
+
+  // ── STEP 2: video upload is best-effort background (does not block status update) ──
   if (videoRecorder && videoRecorder.state !== 'inactive') {
-    videoUploadPromise = new Promise(resolve => {
+    const videoUploadPromise = new Promise(resolve => {
       videoRecorder.onstop = async () => { await uploadVideo(); resolve(); };
-      setTimeout(resolve, 45000); // 45s — enough for large recordings on slow connections
+      setTimeout(resolve, 45000);
     });
     videoRecorder.stop();
+    await videoUploadPromise;
   }
-  await videoUploadPromise;
   if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
   document.getElementById('share-wa').href = 'https://wa.me/?text=' + encodeURIComponent(SHARE_TEXT);
   document.getElementById('share-mail').href = 'mailto:?subject=' + encodeURIComponent('HireAI campaign referral') + '&body=' + encodeURIComponent(SHARE_TEXT);
-
-  try {
-    await fetch('api/interview.php?action=complete_interview', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token: TOKEN, session_id: sessionId, answers,
-        duration_seconds: durationSeconds,
-        cheat_summary: {
-          tab_switches : tabSwitchCount,
-          face_away    : 0,
-          copy_paste   : answers.reduce((s, a) => s + (a.copy_count || 0), 0),
-          total_flags  : cheatLog.length,
-        },
-      }),
-    });
-  } catch(e) {}
 }
 
 async function copyReferral() {

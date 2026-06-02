@@ -5,6 +5,28 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23080F1E'/%3E%3Cpath d='M16 41c10 7 25 6 33-5' fill='none' stroke='%2306B6D4' stroke-width='5' stroke-linecap='round'/%3E%3Cpath d='M14 31c11 7 27 6 36-6' fill='none' stroke='%236B21A8' stroke-width='5' stroke-linecap='round'/%3E%3Ccircle cx='22' cy='21' r='4' fill='%23fff'/%3E%3C/svg%3E">
 <meta name="theme-color" content="#080F1E">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<style>
+/* Global Flatpickr theme — matches HireAI accent colours */
+.flatpickr-calendar{font-family:'Inter',system-ui,sans-serif;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.16);border:1.5px solid #E2E8F0;z-index:99999!important}
+.flatpickr-months .flatpickr-month{background:#7C3AED;border-radius:12px 12px 0 0;height:44px}
+.flatpickr-current-month{font-size:14px;font-weight:700;color:#fff;padding-top:10px}
+.flatpickr-monthDropdown-months{background:#7C3AED;color:#fff;font-weight:700}
+.flatpickr-prev-month,.flatpickr-next-month{color:#fff!important;fill:#fff!important;padding-top:10px}
+.flatpickr-prev-month svg,.flatpickr-next-month svg{fill:#fff}
+.flatpickr-prev-month:hover svg,.flatpickr-next-month:hover svg{fill:#DDD6FE}
+.flatpickr-weekday{background:#F5F3FF;color:#6D28D9;font-weight:700;font-size:11px}
+.flatpickr-day{border-radius:8px;font-size:13px;font-weight:500;color:#374151}
+.flatpickr-day:hover{background:#EDE9FE;border-color:#DDD6FE;color:#5B21B6}
+.flatpickr-day.selected,.flatpickr-day.selected:hover{background:#7C3AED;border-color:#7C3AED;color:#fff;font-weight:700}
+.flatpickr-day.today{border-color:#7C3AED;color:#7C3AED;font-weight:700}
+.flatpickr-day.today.selected{color:#fff}
+.flatpickr-day.flatpickr-disabled,.flatpickr-day.flatpickr-disabled:hover{color:#CBD5E1}
+.numInputWrapper:hover{background:#F5F3FF}
+.numInputWrapper span{border-color:#DDD6FE}
+.numInputWrapper span:hover{background:#EDE9FE}
+</style>
 <style>
 :root{
   --navy:#1E0A2E;--navy2:#2D1045;--navy3:#3D1A5C;

@@ -8,7 +8,7 @@ $can_manage_campaigns = in_array($user_role_key, ['super_admin', 'admin'], true)
 $campaign_write_actions = [
     'new','save','edit','edit_save','add_question','edit_question','delete_question',
     'add_application_field','add_application_template','delete_application_field',
-    'bulk_delete_application_fields','activate','clone_campaign','delete_campaign',
+    'bulk_delete_application_fields','activate','deactivate','clone_campaign','delete_campaign',
     'bulk_delete_campaigns','save_apply_form_config'
 ];
 if (!$can_manage_campaigns && in_array($action, $campaign_write_actions, true)) {
@@ -132,7 +132,12 @@ function campaign_apply_link($campaign) {
 function campaign_setup_state($campaign, $questions, $application_fields) {
     $has_details = !empty($campaign['name']) && !empty($campaign['job_role']);
     $has_agent = !empty($campaign['el_agent_id']) && $campaign['el_agent_id'] !== 'PASTE_YOUR_EL_AGENT_ID';
-    $has_apply = count($application_fields) > 0;
+    // Standard fields (name, email, phone, etc.) are always present by default,
+    // so the apply form is ready even without custom extra fields.
+    $std_cfg = $campaign['apply_form_config'] ?? null;
+    $has_apply = count($application_fields) > 0
+        || $std_cfg === null
+        || count((array)json_decode((string)$std_cfg, true)) > 0;
     $has_questions = count($questions) > 0;
     $weight = array_sum(array_map('intval', array_column($questions, 'weight')));
     $has_scoring = $has_questions && $weight === 100;
@@ -154,7 +159,7 @@ function campaign_setup_state($campaign, $questions, $application_fields) {
         'weight' => $weight,
         'remaining_weight' => max(0, 100 - $weight),
         'ready_to_preview' => $has_apply,
-        'ready_to_activate' => $has_details && $has_apply && $has_questions && $has_scoring,
+        'ready_to_activate' => $has_details && $has_questions && $has_scoring,
         'integration_pending' => false,
     ];
 }
@@ -445,6 +450,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'campaign_activated');
         header("Location: campaigns.php?msg=activated"); exit;
     }
+
+    if ($action === 'deactivate') {
+        db_execute("UPDATE campaigns SET status='paused' WHERE id=? AND org_id=? AND status='active'", [$campaign_id,$user['org_id']], 'ii');
+        audit_log($user['org_id'], $user['user_id'] ?? null, 'campaign', $campaign_id, 'campaign_deactivated');
+        header("Location: campaigns.php?msg=deactivated"); exit;
+    }
 }
 
 if ($action === 'delete_question' && $campaign_id) {
@@ -686,6 +697,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
 .ca.purple{border-color:#DDD6FE;color:#6D28D9;background:#F5F3FF}.ca.purple:hover{border-color:#7C3AED;background:#EDE9FE}
 .ca.red{border-color:#FECACA;color:#DC2626;background:#FFF5F5}.ca.red:hover{border-color:#DC2626;background:#FEE2E2}
 .ca.activate{border-color:#A7F3D0;color:#065F46;background:#ECFDF5}.ca.activate:hover{border-color:#10B981;background:#D1FAE5}
+.ca.deactivate{border-color:#FDE68A;color:#92400E;background:#FFFBEB}.ca.deactivate:hover{border-color:#F59E0B;background:#FEF3C7}
 .ca-badge{background:#7C3AED;color:#fff;border-radius:5px;padding:0px 5px;font-size:9px;font-weight:800;line-height:16px}
 /* Empty */
 .cl-empty{padding:48px 24px;text-align:center;color:#94A3B8}
@@ -809,6 +821,12 @@ if ($editing_question && !empty($editing_question['options_json'])) {
       <form style="display:inline;margin:0" method="POST" action="/campaigns?action=activate&id=<?= $c['id'] ?>">
         <?= csrf_input() ?>
         <button type="submit" class="ca activate"><i class="fa-solid fa-play fa-xs"></i> Activate</button>
+      </form>
+      <?php endif; ?>
+      <?php if ($can_manage_campaigns && $st === 'active'): ?>
+      <form style="display:inline;margin:0" method="POST" action="/campaigns?action=deactivate&id=<?= $c['id'] ?>" onsubmit="return confirm('Deactivate this campaign? The apply link will stop accepting new applications.')">
+        <?= csrf_input() ?>
+        <button type="submit" class="ca deactivate"><i class="fa-solid fa-pause fa-xs"></i> Deactivate</button>
       </form>
       <?php endif; ?>
       <?php if ($can_manage_campaigns): ?>
@@ -1750,15 +1768,17 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')closeEqModal
     $std_never_saved = ($_camp_cfg === null); // never saved via toggle = all ON by default
     $active_std_keys = $_camp_cfg ?? [];
     // Organize template fields into sections
+    // Fields that are always shown regardless of config (required for core flow)
+    $std_always_on = ['phone','email','role_applied','engagement_type','declaration_confirmation'];
     $std_sections = [
         'Personal Info'      => ['salutation','first_name','last_name','dob','city','relocate','relocate_time'],
-        'Contact'            => ['phone_code','other_country_code','phone','email'],
-        'Education & Source' => ['college','college_other','source','source_other','role_applied'],
-        'Work Experience'    => ['engagement_type','english_level','years_exp','industry','industry_other','exp_type','exp_desc'],
+        'Contact'            => ['phone','email'],           // phone_code/other_country_code are sub-fields, always shown
+        'Education & Source' => ['college','source','role_applied'],  // *_other sub-fields shown conditionally
+        'Work Experience'    => ['engagement_type','english_level','years_exp','industry','exp_type','exp_desc'],
         'Compensation'       => ['current_salary','expected_salary'],
         'Availability'       => ['tenure','joining_date','flex_hours'],
         'Work Readiness'     => ['laptop','internet','location','commute'],
-        'Documents'          => ['resume','photo','video_option','video_link','video_file','portfolio'],
+        'Documents'          => ['resume','video_option','portfolio'], // video_link/video_file are sub-fields of video_option
         'Consent'            => ['ai_test_willing','declaration_confirmation'],
     ];
     // Build key→label/type map from legacy template
@@ -1783,13 +1803,15 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')closeEqModal
             $meta = $std_field_meta[$sk] ?? ['label'=>$sk,'type'=>'text'];
             $is_checked = $std_never_saved ? true : in_array($sk, $active_std_keys, true);
           ?>
-          <label class="std-toggle">
-            <input type="checkbox" name="std_fields[]" value="<?= htmlspecialchars($sk) ?>"<?= $is_checked ? ' checked' : '' ?>>
+          <?php $is_always = in_array($sk, $std_always_on, true); ?>
+          <label class="std-toggle" <?= $is_always ? 'style="opacity:.65;cursor:not-allowed"' : '' ?>>
+            <input type="checkbox" name="std_fields[]" value="<?= htmlspecialchars($sk) ?>"<?= ($is_checked || $is_always) ? ' checked' : '' ?><?= $is_always ? ' disabled' : '' ?>>
+            <?php if ($is_always): ?><input type="hidden" name="std_fields[]" value="<?= htmlspecialchars($sk) ?>"><?php endif; ?>
             <div class="std-toggle-card">
               <div class="std-toggle-name">
                 <span class="tgl-check">✓</span>
                 <?= htmlspecialchars($meta['label']) ?>
-                <?php if (in_array($sk, ['phone','email'], true)): ?><span style="font-size:9px;background:#FEF3C7;color:#92400E;border-radius:4px;padding:1px 5px;font-weight:800">REQUIRED</span><?php endif; ?>
+                <?php if ($is_always): ?><span style="font-size:9px;background:#FEF3C7;color:#92400E;border-radius:4px;padding:1px 5px;font-weight:800;letter-spacing:.2px">ALWAYS ON</span><?php endif; ?>
               </div>
               <div class="std-toggle-meta">
                 <code><?= htmlspecialchars($sk) ?></code>

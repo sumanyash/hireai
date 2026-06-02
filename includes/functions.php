@@ -9,9 +9,9 @@ function json_response($data, $code = 200) {
     exit;
 }
 
-function make_jwt($user_id, $role, $org_id) {
+function make_jwt($user_id, $role, $org_id, $expiry_seconds = 86400) {
     $header  = rtrim(strtr(base64_encode(json_encode(['alg'=>'HS256','typ'=>'JWT'])), '+/', '-_'), '=');
-    $payload = rtrim(strtr(base64_encode(json_encode(['user_id'=>$user_id,'role'=>$role,'org_id'=>$org_id,'exp'=>time()+86400])), '+/', '-_'), '=');
+    $payload = rtrim(strtr(base64_encode(json_encode(['user_id'=>$user_id,'role'=>$role,'org_id'=>$org_id,'exp'=>time()+(int)$expiry_seconds])), '+/', '-_'), '=');
     $sig     = rtrim(strtr(base64_encode(hash_hmac('sha256', "$header.$payload", JWT_SECRET, true)), '+/', '-_'), '=');
     return "$header.$payload.$sig";
 }

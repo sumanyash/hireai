@@ -25,13 +25,13 @@ if ($ref_token !== '') {
 $campaign = null;
 if ($campaign_id) {
     $campaign = db_fetch_one(
-        "SELECT * FROM campaigns WHERE id=? AND status IN ('active','draft','paused')",
+        "SELECT * FROM campaigns WHERE id=? AND status IN ('active','draft','paused','completed')",
         [$campaign_id],
         'i'
     );
 } elseif ($token) {
     $campaign = db_fetch_one(
-        "SELECT * FROM campaigns WHERE share_token=? AND status IN ('active','draft','paused')",
+        "SELECT * FROM campaigns WHERE share_token=? AND status IN ('active','draft','paused','completed')",
         [$token],
         's'
     );
@@ -637,7 +637,33 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
 .jd-card-icon{font-size:22px;margin-bottom:6px}
 .jd-card-title{font-size:13px;font-weight:600;color:var(--text)}
 .jd-card-sub{font-size:11px;color:var(--muted);margin-top:2px}
+/* ── Duplicate warning ── */
+.dup-warn{margin-top:8px;padding:10px 14px;border-radius:10px;background:#FFF1F2;border:1.5px solid #FECDD3;color:#BE123C;font-size:13px;font-weight:600;display:flex;align-items:flex-start;gap:9px;line-height:1.5;animation:dupFadeIn .2s ease}
+@keyframes dupFadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.dup-warn-icon{font-size:16px;flex-shrink:0;margin-top:1px}
+/* ── Custom date input (single field, DD/MM/YYYY mask) ── */
+.dw-outer{position:relative}
+.dw-input{width:100%;padding:11px 42px 11px 16px;border:1.5px solid var(--border-color,#dde3ef);border-radius:12px;background:var(--surface,#EEF2FB);color:var(--text,#1a2a4a);font-size:15px;font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s;letter-spacing:.5px}
+.dw-input:focus{border-color:var(--accent,#4F7CFF);box-shadow:0 0 0 3px rgba(79,124,255,.12);background:#fff}
+.dw-cal-icon{position:absolute;right:13px;top:50%;transform:translateY(-50%);color:var(--muted,#7a8ab0);cursor:pointer;display:flex;align-items:center;transition:color .15s}
+.dw-cal-icon:hover{color:var(--accent,#4F7CFF)}
+/* ── Flatpickr calendar theme ── */
+.flatpickr-calendar{font-family:inherit;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.2);border:1.5px solid #dde3ef;z-index:99999!important}
+.flatpickr-months .flatpickr-month{background:#4f7cff;border-radius:12px 12px 0 0;height:44px}
+.flatpickr-current-month{font-size:14px;font-weight:700;color:#fff;padding-top:10px}
+.flatpickr-monthDropdown-months{background:#4f7cff;color:#fff;font-weight:700}
+.flatpickr-prev-month,.flatpickr-next-month{color:#fff!important;fill:#fff!important;padding-top:10px}
+.flatpickr-prev-month svg,.flatpickr-next-month svg{fill:#fff}
+.flatpickr-weekday{background:#f0f4ff;color:#4f7cff;font-weight:700;font-size:11px}
+.flatpickr-day{border-radius:8px;font-size:13px;font-weight:500;color:#374151}
+.flatpickr-day:hover{background:#e8eeff;border-color:#c7d5ff;color:#2a54c7}
+.flatpickr-day.selected,.flatpickr-day.selected:hover{background:#4f7cff;border-color:#4f7cff;color:#fff;font-weight:700}
+.flatpickr-day.today{border-color:#4f7cff;color:#4f7cff;font-weight:700}
+.flatpickr-day.today.selected{color:#fff}
+.flatpickr-day.flatpickr-disabled,.flatpickr-day.flatpickr-disabled:hover{color:#CBD5E1}
   </style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 </head>
 <body>
 
@@ -663,14 +689,36 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
   <p class="header-sub">Apply for: <strong><?=htmlspecialchars($job_role)?></strong> &nbsp;·&nbsp; Please complete all sections carefully.</p>
 </div>
 
-<?php if ($campaign && $campaign['status'] === 'draft'): ?>
-<div style="background:#FEF3C7;border-bottom:1px solid #FDE68A;padding:10px 20px;text-align:center;font-size:13px;font-weight:600;color:#92400E">
-  <i class="fa-solid fa-eye" style="margin-right:6px"></i> Preview Mode — This form is not yet live. Submissions are disabled until the campaign is activated.
+<?php
+$_camp_status = $campaign ? ($campaign['status'] ?? '') : '';
+$_is_closed   = in_array($_camp_status, ['paused','completed'], true);
+$_is_draft    = $_camp_status === 'draft';
+?>
+<?php if ($_is_closed): ?>
+<!-- ══ CAMPAIGN CLOSED PAGE ═══════════════════════════════════════════════ -->
+<div style="min-height:70vh;display:flex;align-items:center;justify-content:center;padding:40px 20px">
+  <div style="text-align:center;max-width:460px">
+    <div style="font-size:56px;margin-bottom:20px"><?= $_camp_status === 'completed' ? '🏁' : '⏸️' ?></div>
+    <h2 style="font-size:22px;font-weight:800;color:var(--text-primary,#0F172A);margin-bottom:10px">
+      <?= $_camp_status === 'completed' ? 'Campaign Completed' : 'Applications Paused' ?>
+    </h2>
+    <p style="font-size:15px;color:#64748B;line-height:1.65;margin-bottom:28px">
+      <?php if ($_camp_status === 'completed'): ?>
+        This campaign has concluded and is no longer accepting applications. Thank you for your interest — please check back for future openings.
+      <?php else: ?>
+        This campaign is temporarily paused and not accepting new applications at the moment. Please check back later or contact the team for updates.
+      <?php endif; ?>
+    </p>
+    <div style="font-size:13px;color:#94A3B8;font-weight:600"><?= htmlspecialchars($org_name) ?> · <?= htmlspecialchars($job_role) ?></div>
+  </div>
 </div>
+<?php include __DIR__ . '/includes/footer.php'; ?>
+</body></html>
+<?php exit; ?>
 <?php endif; ?>
-<?php if ($campaign && $campaign['status'] === 'paused'): ?>
-<div style="background:#FEF2F2;border-bottom:1px solid #FECACA;padding:10px 20px;text-align:center;font-size:13px;font-weight:600;color:#991B1B">
-  <i class="fa-solid fa-pause-circle" style="margin-right:6px"></i> This campaign is currently paused and not accepting new applications.
+<?php if ($_is_draft): ?>
+<div style="background:#FEF3C7;border-bottom:1px solid #FDE68A;padding:10px 20px;text-align:center;font-size:13px;font-weight:700;color:#92400E">
+  <i class="fa-solid fa-eye" style="margin-right:6px"></i> Preview Mode — This form is not yet live. Submissions will be rejected until the campaign is activated.
 </div>
 <?php endif; ?>
 
@@ -768,7 +816,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
             <div class="upload-title"><?= htmlspecialchars($field['placeholder'] ?: 'Click to upload file') ?></div>
             <div class="upload-sub">PDF, DOCX, image, or video · Max 20 MB</div>
             <div class="file-name" id="<?= $fieldId ?>Name"></div>
-            <input type="file" id="<?= $fieldId ?>" data-app-field="<?= $fid ?>" accept="<?= htmlspecialchars($accept) ?>" onchange="showFileName('<?= $fieldId ?>','<?= $fieldId ?>Name')">
+            <input type="file" id="<?= $fieldId ?>" data-app-field="<?= $fid ?>" accept="<?= htmlspecialchars($accept) ?>" onclick="event.stopPropagation()" onchange="showFileName('<?= $fieldId ?>','<?= $fieldId ?>Name')">
           </div>
         <?php else:
           $inputType = in_array($type, ['number','date','email','url'], true) ? $type : ($type === 'decimal' ? 'number' : ($type === 'phone' ? 'tel' : 'text'));
@@ -840,7 +888,14 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
       </div>
       <?php endif; ?>
       <?php if (is_std_on('dob')): ?>
-      <div class="field"><label for="dob">Date of Birth <span class="req">*</span></label><input type="date" id="dob"></div>
+      <div class="field">
+        <label>Date of Birth <span class="req">*</span></label>
+        <div class="dw-outer">
+          <input class="dw-input" type="text" id="dob-display" placeholder="DD/MM/YYYY" readonly autocomplete="off">
+          <span class="dw-cal-icon" id="dob-cal-icon"><svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+        </div>
+        <input type="hidden" id="dob">
+      </div>
       <?php endif; ?>
       <?php if (is_std_on('city')): ?>
       <div class="field-row" style="align-items:start">
@@ -852,45 +907,51 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
         <select id="relocateTime"><option value="">Select</option><option>Immediate</option><option>Within 15 days</option><option>Within 1 month</option><option>Within 3 months</option><option>More than 3 months</option></select>
       </div>
       <?php endif; ?>
-      <div id="phoneRow" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;margin-top:20px">
+      <!-- Phone row: combobox (editable + selectable) + number -->
+      <style>
+      .cc-wrap{position:relative;width:100%}
+      .cc-input{width:100%;padding:9px 32px 9px 12px;border:1.5px solid var(--border-color,#E2E8F0);border-radius:9px;font-size:13px;font-family:inherit;background:#FAFBFC;color:#0F172A;outline:none;transition:border-color .15s,box-shadow .15s;cursor:pointer}
+      .cc-input:focus{border-color:#7C3AED;box-shadow:0 0 0 3px rgba(124,58,237,.1);background:#fff}
+      .cc-arrow{position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:#94A3B8;font-size:11px;transition:transform .15s}
+      .cc-wrap.open .cc-arrow{transform:translateY(-50%) rotate(180deg)}
+      .cc-dropdown{position:absolute;top:calc(100% + 5px);left:0;right:0;background:#fff;border:1.5px solid #E2E8F0;border-radius:11px;box-shadow:0 8px 28px rgba(0,0,0,.13);z-index:999;max-height:240px;overflow-y:auto;display:none}
+      .cc-wrap.open .cc-dropdown{display:block}
+      .cc-option{padding:9px 13px;font-size:13px;cursor:pointer;transition:background .1s;display:flex;align-items:center;gap:8px;color:#0F172A}
+      .cc-option:hover,.cc-option.active{background:#F5F3FF;color:#6D28D9}
+      .cc-option.selected{background:#EDE9FE;font-weight:700;color:#5B21B6}
+      .cc-sep{height:1px;background:#F1F5F9;margin:4px 0}
+      </style>
+      <div style="display:grid;grid-template-columns:210px 1fr;gap:14px;align-items:start;margin-top:20px">
         <div class="field" style="margin-bottom:0">
-          <label for="phoneCode">Phone Code <span class="req">*</span></label>
-          <select id="phoneCode" onchange="handlePhoneCodeChange()">
-            <option value="+91">+91 (India)</option>
-            <option value="other">Other</option>
-          </select>
-        </div>
-        <div class="field" id="otherCountryCol" style="display:none;margin-bottom:0">
-          <label for="otherCountryCode">Country <span class="req">*</span></label>
-          <select id="otherCountryCode" onchange="handleOtherCountryChange()">
-            <option value="">Select country</option>
-            <option value="+1:10:10">+1 (USA / Canada)</option>
-            <option value="+44:10:10">+44 (United Kingdom)</option>
-            <option value="+49:10:11">+49 (Germany)</option>
-            <option value="+33:9:9">+33 (France)</option>
-            <option value="+966:9:9">+966 (Saudi Arabia)</option>
-            <option value="+81:10:11">+81 (Japan)</option>
-            <option value="+55:10:11">+55 (Brazil)</option>
-            <option value="+27:9:9">+27 (South Africa)</option>
-            <option value="+94:9:9">+94 (Sri Lanka)</option>
-            <option value="+60:9:10">+60 (Malaysia)</option>
-            <option value="+44:10:10">+44 (UK)</option>
-            <option value="+61:9:9">+61 (Australia)</option>
-            <option value="+971:9:9">+971 (UAE)</option>
-            <option value="+65:8:8">+65 (Singapore)</option>
-            <option value="+92:10:10">+92 (Pakistan)</option>
-            <option value="+880:10:10">+880 (Bangladesh)</option>
-            <option value="+977:9:10">+977 (Nepal)</option>
-          </select>
+          <label>Country Code <span class="req">*</span></label>
+          <div class="cc-wrap" id="ccWrap">
+            <input type="text" id="ccInput" class="cc-input" value="🇮🇳 +91 India"
+              placeholder="Type or select…"
+              autocomplete="off"
+              oninput="ccFilter()"
+              onfocus="ccOpen()"
+            >
+            <span class="cc-arrow">▼</span>
+            <div class="cc-dropdown" id="ccDropdown"></div>
+          </div>
+          <!-- Resolved hidden value -->
+          <input type="hidden" id="phoneCode" value="+91">
+          <p class="field-hint" id="otherCountryHint" style="margin-top:4px"></p>
         </div>
         <div class="field" id="phoneNumberCol" style="margin-bottom:0">
           <label for="phone">Phone Number <span class="req">*</span></label>
-          <input type="tel" id="phone" placeholder="10-digit number" maxlength="10">
-          <p class="field-hint" id="phoneHint">Must be exactly 10 digits for India (+91).</p>
-          <p class="field-hint" id="otherCountryHint" style="display:none"></p>
+          <input type="tel" id="phone" placeholder="10-digit mobile number" maxlength="10"
+            onblur="checkDuplicate('phone')">
+          <p class="field-hint" id="phoneHint">10-digit number — no country code needed.</p>
+          <div class="dup-warn" id="phoneWarn" style="display:none"></div>
         </div>
       </div>
-      <div class="field" style="margin-top:20px"><label for="email">Email ID <span class="req">*</span></label><input type="email" id="email" placeholder="you@example.com"></div>
+      <div class="field" style="margin-top:20px">
+        <label for="email">Email ID <span class="req">*</span></label>
+        <input type="email" id="email" placeholder="you@example.com"
+          onblur="checkDuplicate('email')">
+        <div class="dup-warn" id="emailWarn" style="display:none"></div>
+      </div>
       <?php if (is_std_on('college')): ?>
       <div class="field">
         <label for="college">College / University <span class="req">*</span></label>
@@ -1125,14 +1186,16 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
       <div class="field-row">
         <?php if (is_std_on('current_salary')): ?>
         <div class="field">
-          <label for="currentSalary">Current Salary / Stipend (Per Month)</label>
-          <input type="text" id="currentSalary" placeholder="e.g. ₹15,000/month or N/A">
+          <label for="currentSalary">Current Salary / Stipend <span style="font-weight:400;color:var(--muted)">(₹ / month)</span></label>
+          <input type="number" id="currentSalary" placeholder="e.g. 15000" min="0" step="1" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+          <p class="field-hint">Numbers only · enter monthly amount in ₹ · leave blank if not applicable</p>
         </div>
         <?php endif; ?>
         <?php if (is_std_on('expected_salary')): ?>
         <div class="field">
-          <label for="expectedSalary">Expected Salary / Stipend (Per Month) <span class="req">*</span></label>
-          <input type="text" id="expectedSalary" placeholder="Mention realistic figures (in ₹)">
+          <label for="expectedSalary">Expected Salary / Stipend <span style="font-weight:400;color:var(--muted)">(₹ / month)</span> <span class="req">*</span></label>
+          <input type="number" id="expectedSalary" placeholder="e.g. 20000" min="0" step="1" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+          <p class="field-hint">Numbers only · enter monthly amount in ₹</p>
         </div>
         <?php endif; ?>
       </div>
@@ -1154,21 +1217,30 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
       <?php if (is_std_on('tenure')): ?>
       <div class="field" id="tenureField">
         <label for="tenure">Internship / Training Tenure <span class="req">*</span></label>
-        <select id="tenure">
+        <select id="tenure" onchange="handleTenureChange()">
           <option value="">Select Tenure</option>
           <option value="6 months">6 Months</option>
           <option value="9 months">9 Months</option>
           <option value="12 months">12 Months</option>
           <option value="18 months">18 Months</option>
           <option value="24 months">24 Months</option>
+          <option value="other">Other – specify</option>
         </select>
+      </div>
+      <div class="field" id="tenureOtherField" style="display:none">
+        <label for="tenureOther">Specify Tenure <span class="req">*</span></label>
+        <input type="text" id="tenureOther" placeholder="e.g. 3 months, 6 weeks…">
       </div>
       <?php endif; ?>
       <div class="field-row">
         <?php if (is_std_on('joining_date')): ?>
         <div class="field">
           <label for="joiningDate">Preferred Joining Date <span class="req">*</span></label>
-          <input type="date" id="joiningDate">
+          <div class="dw-outer">
+            <input class="dw-input" type="text" id="joiningDate-display" placeholder="DD/MM/YYYY" readonly autocomplete="off">
+            <span class="dw-cal-icon" id="jd-cal-icon"><svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+          </div>
+          <input type="hidden" id="joiningDate">
         </div>
         <?php endif; ?>
         <?php if (is_std_on('flex_hours')): ?>
@@ -1265,7 +1337,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <div class="upload-title">Click to upload Resume / CV</div>
           <div class="upload-sub">PDF or DOCX only · Max 10 MB</div>
           <div class="file-name" id="resumeFileName"></div>
-          <input type="file" id="resumeFile" accept=".pdf,.docx" onchange="showFileName('resumeFile','resumeFileName')">
+          <input type="file" id="resumeFile" accept=".pdf,.docx" onclick="event.stopPropagation()" onchange="showFileName('resumeFile','resumeFileName')">
         </div>
       </div>
       <?php endif; ?>
@@ -1285,7 +1357,7 @@ input[type=radio]:checked+span,input[type=checkbox]:checked+span{color:var(--acc
           <div class="upload-title">Click to upload Video</div>
           <div class="upload-sub">MP4, MOV or AVI · Max 15 MB</div>
           <div class="file-name" id="videoFileName"></div>
-          <input type="file" id="videoFile" accept=".mp4,.mov,.avi" onchange="showFileName('videoFile','videoFileName')">
+          <input type="file" id="videoFile" accept=".mp4,.mov,.avi" onclick="event.stopPropagation()" onchange="showFileName('videoFile','videoFileName')">
         </div>
       </div>
       <?php endif; ?>
@@ -1510,8 +1582,23 @@ function gotoSection(id) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function nextSection(cur) {
+async function nextSection(cur) {
+  // For section 1, run duplicate checks first (in case user skipped blur)
+  if (cur === 1) {
+    await Promise.all([checkDuplicate('phone'), checkDuplicate('email')]);
+  }
   const e = (DYNAMIC_APPLY && cur === 1) ? validateDynamicFields() : (validators[cur] || (() => []))();
+  // Block section 1 advance if a duplicate warning is visible
+  if (cur === 1) {
+    const phoneWarn = document.getElementById('phoneWarn');
+    const emailWarn = document.getElementById('emailWarn');
+    if (phoneWarn?.style.display !== 'none' && phoneWarn?.innerHTML) {
+      e.push('This phone number is already registered. Please use a different number or contact HR.');
+    }
+    if (emailWarn?.style.display !== 'none' && emailWarn?.innerHTML) {
+      e.push('This email is already registered. Please use a different email or contact HR.');
+    }
+  }
   showBanner('val-banner-' + cur, e);
   if (!e.length) gotoSection('section-' + (cur + 1));
 }
@@ -1678,7 +1765,9 @@ function dynamicConditionalErrors() {
     if (!String(dynamicValueByKey('relocate') || '').trim()) e.push('Comfortable to Relocate is required');
     if (dynamicValueByKey('relocate') === 'Yes' && !String(dynamicValueByKey('relocate_time') || '').trim()) e.push('Relocation Time is required');
   }
-  if (String(dynamicValueByKey('phone_code')).toLowerCase().includes('other') && !String(dynamicValueByKey('other_country_code') || '').trim()) e.push('Country Code is required');
+  // Validate: hidden phoneCode must have a value (always set from dropdown or manual input)
+  const _phoneCode = (document.getElementById('phoneCode')?.value || '').trim();
+  if (!_phoneCode) e.push('Please select or enter a country code.');
   if (String(dynamicValueByKey('college')).toLowerCase().includes('other') && !String(dynamicValueByKey('college_other') || '').trim()) e.push('Specify College / University is required');
   if (String(dynamicValueByKey('source')).toLowerCase().includes('other') && !String(dynamicValueByKey('source_other') || '').trim()) e.push('Please specify source is required');
   if (String(dynamicValueByKey('industry')).toLowerCase().includes('other') && !String(dynamicValueByKey('industry_other') || '').trim()) e.push('Specify Industry is required');
@@ -1830,6 +1919,7 @@ const validators = {
     const e = [];
     const et = v('engagementType');
     if (el('tenure') && et !== 'Employment' && !v('tenure')) e.push('Internship / training tenure is required.');
+    if (el('tenure') && et !== 'Employment' && v('tenure') === 'other' && !v('tenureOther').trim()) e.push('Please specify your internship tenure.');
     if (el('joiningDate')) { const joiningErr = dateError('Preferred joining date', v('joiningDate'), { min: todayYmd() }); if (joiningErr) e.push(joiningErr); }
     if (el('flexHours') && !v('flexHours')) e.push('Flexible hours preference is required.');
     return e;
@@ -1882,7 +1972,7 @@ function updateRemuneration(type) {
   
   if (!type) {
     box.style.display = 'none';
-    tf.style.display = 'block';
+    if (tf) tf.style.display = 'none'; // hide by default until engagement type chosen
     return;
   }
   
@@ -1925,21 +2015,190 @@ function handleRelocateChange() {
   document.getElementById('relocateTimeRow').style.display = v('relocate') === 'Yes' ? 'block' : 'none';
 }
 
-function handlePhoneCodeChange() {
-  const o = v('phoneCode') === 'other';
-  document.getElementById('otherCountryCol').style.display = o ? 'block' : 'none';
-  document.getElementById('phoneHint').style.display = o ? 'none' : 'block';
-  document.getElementById('otherCountryHint').style.display = o ? 'block' : 'none';
-  document.getElementById('phone').maxLength = o ? 15 : 10;
+// ── Country Code Combobox ────────────────────────────────────────────────────
+const CC_OPTIONS = [
+  {label:'🇮🇳 +91 India',      code:'+91', min:10, max:10},
+  {label:'🇺🇸 +1 USA/Canada',  code:'+1',  min:10, max:10},
+  {label:'🇬🇧 +44 UK',         code:'+44', min:10, max:10},
+  {label:'🇦🇪 +971 UAE',        code:'+971',min:9,  max:9},
+  {label:'🇸🇬 +65 Singapore',   code:'+65', min:8,  max:8},
+  {label:'🇲🇾 +60 Malaysia',    code:'+60', min:9,  max:10},
+  {label:'🇦🇺 +61 Australia',   code:'+61', min:9,  max:9},
+  {label:'🇩🇪 +49 Germany',     code:'+49', min:10, max:11},
+  {label:'🇫🇷 +33 France',      code:'+33', min:9,  max:9},
+  {label:'🇸🇦 +966 Saudi Arabia',code:'+966',min:9, max:9},
+  {label:'🇯🇵 +81 Japan',       code:'+81', min:10, max:11},
+  {label:'🇧🇷 +55 Brazil',      code:'+55', min:10, max:11},
+  {label:'🇿🇦 +27 South Africa', code:'+27', min:9,  max:9},
+  {label:'🇱🇰 +94 Sri Lanka',   code:'+94', min:9,  max:9},
+  {label:'🇵🇰 +92 Pakistan',    code:'+92', min:10, max:10},
+  {label:'🇧🇩 +880 Bangladesh', code:'+880',min:10, max:10},
+  {label:'🇳🇵 +977 Nepal',      code:'+977',min:9,  max:10},
+];
+let _ccSelected = CC_OPTIONS[0]; // India default
+
+function ccApply(opt) {
+  _ccSelected = opt;
+  const inp = document.getElementById('ccInput');
+  if (inp) inp.value = opt.label;
+  document.getElementById('phoneCode').value = opt.code;
+  const isIndia = opt.code === '+91';
+  const hint = document.getElementById('otherCountryHint');
+  const ph   = document.getElementById('phoneHint');
+  const phoneEl = document.getElementById('phone');
+  if (hint) hint.textContent = isIndia ? '' : `Enter ${opt.min}–${opt.max} digit number`;
+  if (ph)   ph.style.display  = isIndia ? 'block' : 'none';
+  if (phoneEl) {
+    phoneEl.maxLength   = opt.max;
+    phoneEl.placeholder = isIndia ? '10-digit mobile number' : 'Phone number';
+  }
+  ccClose();
 }
 
-function handleOtherCountryChange() {
-  const sel = document.getElementById('otherCountryCode');
-  const val = sel.value;
-  if (!val) return;
-  const [, min, max] = val.split(':');
-  document.getElementById('otherCountryHint').textContent = `Enter ${min}–${max} digit number`;
-  document.getElementById('phone').maxLength = parseInt(max);
+function ccRenderList(query) {
+  const drop = document.getElementById('ccDropdown');
+  if (!drop) return;
+  const q = (query || '').toLowerCase();
+  const matches = CC_OPTIONS.filter(o => !q || o.label.toLowerCase().includes(q) || o.code.includes(q));
+  drop.innerHTML = '';
+  matches.forEach((opt, i) => {
+    const d = document.createElement('div');
+    d.className = 'cc-option' + (opt === _ccSelected ? ' selected' : '');
+    d.textContent = opt.label;
+    d.onmousedown = (e) => { e.preventDefault(); ccApply(opt); };
+    drop.appendChild(d);
+  });
+  // "Use what I typed" option when query looks like a dial code
+  if (q && (q.startsWith('+') || /^\d/.test(q))) {
+    const sep = document.createElement('div'); sep.className = 'cc-sep'; drop.appendChild(sep);
+    const d = document.createElement('div');
+    d.className = 'cc-option';
+    const raw = q.startsWith('+') ? q : '+' + q;
+    d.textContent = '✏️ Use "' + raw + '" as code';
+    d.onmousedown = (e) => {
+      e.preventDefault();
+      document.getElementById('phoneCode').value = raw;
+      document.getElementById('ccInput').value = raw;
+      const phoneEl = document.getElementById('phone');
+      if (phoneEl) { phoneEl.maxLength = 15; phoneEl.placeholder = 'Phone number'; }
+      const ph = document.getElementById('phoneHint');
+      if (ph) ph.style.display = 'none';
+      _ccSelected = null;
+      ccClose();
+    };
+    drop.appendChild(d);
+  }
+}
+
+function ccFilter() {
+  const inp = document.getElementById('ccInput');
+  const raw = inp ? inp.value.trim() : '';
+  // If typed something that doesn't match a known label, treat as manual code
+  if (raw && !CC_OPTIONS.some(o => o.label === raw)) {
+    document.getElementById('phoneCode').value = raw.startsWith('+') ? raw : (raw ? '+' + raw : '');
+  }
+  ccRenderList(raw);
+  ccOpen();
+}
+
+function ccOpen() {
+  const wrap = document.getElementById('ccWrap');
+  if (wrap) wrap.classList.add('open');
+  ccRenderList(document.getElementById('ccInput')?.value || '');
+}
+
+function ccClose() {
+  const wrap = document.getElementById('ccWrap');
+  if (wrap) wrap.classList.remove('open');
+  // If input is blank or invalid, restore selected or India
+  const inp = document.getElementById('ccInput');
+  if (inp && !inp.value.trim()) { ccApply(CC_OPTIONS[0]); }
+}
+
+document.addEventListener('click', (e) => {
+  if (!document.getElementById('ccWrap')?.contains(e.target)) ccClose();
+});
+
+function handlePhoneCodeChange() { /* handled by combobox */ }
+function handleOtherCountryChange() { /* handled by combobox */ }
+function handleManualCode() { /* handled by combobox */ }
+
+// dwMask / dwKey removed — Flatpickr handles all date input
+
+// ── Duplicate phone / email check ────────────────────────────────────────────
+const _dupCache = {};
+async function checkDuplicate(field) {
+  const campId = <?= (int)($campaign_id ?? 0) ?>;
+  if (!campId) return;
+
+  let value = '';
+  let warnEl = null;
+
+  if (field === 'phone') {
+    const code = document.getElementById('phoneCode')?.value || '+91';
+    const num  = (document.getElementById('phone')?.value || '').trim();
+    if (num.length < 8) return; // too short to be meaningful
+    value = code + num;
+    warnEl = document.getElementById('phoneWarn');
+  } else {
+    value = (document.getElementById('email')?.value || '').trim().toLowerCase();
+    if (!value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return;
+    warnEl = document.getElementById('emailWarn');
+  }
+
+  if (!warnEl) return;
+
+  // Clear any previous warning for this field
+  warnEl.style.display = 'none';
+  warnEl.innerHTML = '';
+
+  // Cache to avoid re-hitting server for same value
+  const cacheKey = field + ':' + value;
+  if (_dupCache[cacheKey] !== undefined) {
+    if (_dupCache[cacheKey]) showDupWarn(field, warnEl);
+    return;
+  }
+
+  try {
+    const params = new URLSearchParams({ campaign_id: campId });
+    if (field === 'phone') {
+      params.set('phone', (document.getElementById('phone')?.value || '').trim());
+    } else {
+      params.set('email', value);
+    }
+    const res  = await fetch('/api/check_duplicate.php?' + params.toString());
+    const data = await res.json();
+    _dupCache[cacheKey] = !!data.exists;
+    if (data.exists) showDupWarn(field, warnEl);
+  } catch(e) { /* silent — don't block form on network error */ }
+}
+
+function showDupWarn(field, warnEl) {
+  const msg = field === 'phone'
+    ? 'This phone number is already registered for this campaign. Please use a different number or <strong>contact HR</strong> for assistance.'
+    : 'This email address is already registered for this campaign. Please use a different email or <strong>contact HR</strong> for assistance.';
+  warnEl.innerHTML = '<span class="dup-warn-icon">⚠️</span><span>' + msg + '</span>';
+  warnEl.style.display = 'flex';
+
+  // Mark the input as visually invalid
+  const inputId = field === 'phone' ? 'phone' : 'email';
+  const inp = document.getElementById(inputId);
+  if (inp) { inp.style.borderColor = '#FECDD3'; inp.style.boxShadow = '0 0 0 3px rgba(239,68,68,.1)'; }
+
+  // Reset border on next input
+  warnEl.closest('.field')?.querySelector('input')?.addEventListener('input', function() {
+    this.style.borderColor = '';
+    this.style.boxShadow   = '';
+    warnEl.style.display   = 'none';
+    warnEl.innerHTML       = '';
+  }, { once: true });
+}
+
+function handleTenureChange() {
+  const isOther = v('tenure') === 'other';
+  const otherField = document.getElementById('tenureOtherField');
+  if (otherField) otherField.style.display = isOther ? 'block' : 'none';
+  if (!isOther && document.getElementById('tenureOther')) document.getElementById('tenureOther').value = '';
 }
 
 function handleCollegeChange() {
@@ -1983,8 +2242,22 @@ function handleIndustryChange() {
 
 function toggleVideoInput() {
   const o = v('videoOption');
-  document.getElementById('videoLinkDiv').style.display = o === 'link' ? 'block' : 'none';
-  document.getElementById('videoUploadDiv').style.display = o === 'upload' ? 'block' : 'none';
+  const linkDiv   = document.getElementById('videoLinkDiv');
+  const uploadDiv = document.getElementById('videoUploadDiv');
+  if (!linkDiv || !uploadDiv) return;
+  linkDiv.style.display   = o === 'link'   ? 'block' : 'none';
+  uploadDiv.style.display = o === 'upload' ? 'block' : 'none';
+  // Clear the inactive input so stale data isn't submitted
+  if (o !== 'link') {
+    const li = document.getElementById('videoLinkInput');
+    if (li) li.value = '';
+  }
+  if (o !== 'upload') {
+    const fi = document.getElementById('videoFile');
+    if (fi) { fi.value = ''; }
+    const fn = document.getElementById('videoFileName');
+    if (fn) fn.textContent = '';
+  }
 }
 
 function showFileName(inputId, displayId) {
@@ -2063,7 +2336,7 @@ async function submitForm() {
       exp_desc: g('internshipDesc'),
       current_salary: g('currentSalary'),
       expected_salary: g('expectedSalary'),
-      tenure: g('tenure'),
+      tenure: v('tenure') === 'other' ? g('tenureOther') : g('tenure'),
       joining_date: g('joiningDate'),
       flex_hours: g('flexHours'),
       laptop: g('laptop'),
@@ -2228,18 +2501,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const phoneInput = document.getElementById('phone');
   if (phoneInput) phoneInput.addEventListener('input', () => {
-    if (v('phoneCode') === '+91') {
+    const code = document.getElementById('phoneCode')?.value || '+91';
+    if (code === '+91') {
       const i = document.getElementById('phone');
       i.value = i.value.replace(/\D/g, '').slice(0, 10);
     }
     document.getElementById('phone').classList.remove('input-invalid');
   });
   
-  const today = todayYmd();
-  const joiningDate = document.getElementById('joiningDate');
-  const dob = document.getElementById('dob');
-  if (joiningDate) joiningDate.min = today;
-  if (dob) { dob.min = '1900-01-01'; dob.max = today; }
+  // date min/max now enforced via PHP attributes on the dw-seg inputs, not JS
+
+  // Init country code combobox — India default
+  if (document.getElementById('ccInput')) ccApply(CC_OPTIONS[0]);
+
+  // Sync tenure visibility to whichever engagement type is already selected
+  const engEl = document.getElementById('engagementType');
+  if (engEl) updateRemuneration(engEl.value || '');
 });
 
 
@@ -2405,6 +2682,47 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 updateProgress();
+</script>
+
+<script>
+function initDatePicker(displayId, hiddenId, opts) {
+  const display = document.getElementById(displayId);
+  const hidden  = document.getElementById(hiddenId);
+  if (!display || !hidden) return null;
+  const fp = flatpickr(display, Object.assign({
+    dateFormat  : 'd/m/Y',
+    allowInput  : false,
+    disableMobile: false,
+    onChange(dates) {
+      if (!dates[0]) { hidden.value = ''; return; }
+      const d = dates[0];
+      hidden.value = d.getFullYear() + '-'
+        + String(d.getMonth()+1).padStart(2,'0') + '-'
+        + String(d.getDate()).padStart(2,'0');
+    },
+    onClose() { display.blur(); }
+  }, opts));
+  // Both the input field AND the calendar icon open the picker
+  display.addEventListener('click', () => fp.open());
+  document.getElementById(displayId.replace('-display','-cal-icon'))
+    ?.addEventListener('click', () => fp.toggle());
+  return fp;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  const today = new Date();
+  const maxJd  = new Date(); maxJd.setFullYear(maxJd.getFullYear() + 5);
+
+  initDatePicker('dob-display', 'dob', {
+    maxDate : today,
+    minDate : '01/01/1900',
+  });
+
+  initDatePicker('joiningDate-display', 'joiningDate', {
+    minDate : today,
+    maxDate : maxJd,
+  });
+});
 </script>
 
 </body>

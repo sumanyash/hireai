@@ -1370,15 +1370,24 @@ function startFaceGateCheck() {
     btn.disabled = true;
     btn.textContent = 'Verifying face — please wait…';
 
-    const img = await captureFaceFrameFrom(document.getElementById('fg-video'));
-    if (!img) {
-      // No video ready yet — retry
+    const frame = captureFrame(document.getElementById('fg-video'));
+    if (!frame) {
+      // Video not ready yet — retry
       _faceGateTimer = setTimeout(check, 2000);
       return;
     }
+    // Brightness pre-filter: dark frame = no face, don't waste an API call
+    if (frame.brightness < 25) {
+      badge.className = 'fg-status-badge fail';
+      badge.textContent = '💡 Too dark — improve lighting';
+      btn.disabled = true;
+      btn.textContent = 'Too dark — please improve lighting';
+      _faceGateTimer = setTimeout(check, 2500);
+      return;
+    }
     const fd = new FormData();
+    fd.append('image', frame.dataUrl);
     fd.append('token', TOKEN);
-    fd.append('image', img);
     fd.append('question_no', 0);
     try {
       const r = await fetch('api/check_face.php', { method: 'POST', body: fd });
@@ -1422,16 +1431,30 @@ function faceGateProceed() {
   startFaceDetection();
 }
 
+function frameBrightness(canvas) {
+  // Sample centre 50%×60% of frame — where a face would be
+  const ctx = canvas.getContext('2d');
+  const x = Math.floor(canvas.width * 0.25), y = Math.floor(canvas.height * 0.1);
+  const w = Math.floor(canvas.width * 0.5),  h = Math.floor(canvas.height * 0.6);
+  const d = ctx.getImageData(x, y, w, h).data;
+  let sum = 0;
+  for (let i = 0; i < d.length; i += 16) sum += (d[i] + d[i+1] + d[i+2]) / 3;
+  return sum / (d.length / 16);
+}
+
+// Returns { dataUrl, brightness } or null if video not ready
+function captureFrame(videoEl) {
+  try {
+    if (!videoEl || !videoEl.videoWidth) return null;
+    const c = document.createElement('canvas');
+    c.width = 320; c.height = 240;
+    c.getContext('2d').drawImage(videoEl, 0, 0, 320, 240);
+    return { dataUrl: c.toDataURL('image/jpeg', 0.7), brightness: frameBrightness(c) };
+  } catch(e) { return null; }
+}
+
 function captureFaceFrameFrom(videoEl) {
-  return new Promise(resolve => {
-    try {
-      if (!videoEl || !videoEl.videoWidth) return resolve(null);
-      const c = document.createElement('canvas');
-      c.width = 320; c.height = 240;
-      c.getContext('2d').drawImage(videoEl, 0, 0, 320, 240);
-      resolve(c.toDataURL('image/jpeg', 0.7));
-    } catch(e) { resolve(null); }
-  });
+  return Promise.resolve(captureFrame(videoEl)?.dataUrl ?? null);
 }
 
 function captureFaceFrame() {
@@ -1440,11 +1463,24 @@ function captureFaceFrame() {
 
 async function checkFaceOrTerminate(qNo, isRecheck) {
   if (_interviewTerminated) return;
-  const img = await captureFaceFrame();
-  if (!img) return; // no video — skip silently
+  const frame = captureFrame(document.getElementById('video-el'));
+  if (!frame) return; // no video — skip silently
+
+  // Dark frame = face definitely not visible — treat same as API failure
+  if (frame.brightness < 25) {
+    logCheat('Dark frame (brightness ' + Math.round(frame.brightness) + ') after Q' + qNo);
+    _faceFailCount++;
+    if (isRecheck) {
+      terminateInterview('Your camera appeared blocked or too dark on consecutive checks. The interview has been terminated.');
+    } else {
+      showFaceWarning(qNo);
+    }
+    return;
+  }
+
   const fd = new FormData();
   fd.append('token', TOKEN);
-  fd.append('image', img);
+  fd.append('image', frame.dataUrl);
   fd.append('question_no', qNo);
   try {
     const r = await fetch('api/check_face.php', { method: 'POST', body: fd });

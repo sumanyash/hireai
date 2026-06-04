@@ -9,7 +9,7 @@ if (!$token) { http_response_code(404); die('Invalid link'); }
 $candidate = db_fetch_one(
     "SELECT c.*, camp.name as campaign_name, camp.job_role, camp.el_agent_id,
      camp.num_questions, camp.max_duration_minutes, camp.passing_score, camp.language,
-     o.name as org_name
+     o.name as org_name, o.logo_url
      FROM candidates c
      JOIN campaigns camp ON c.campaign_id=camp.id
      JOIN organizations o ON c.org_id=o.id
@@ -65,8 +65,9 @@ body{font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;backgroun
   padding:0 24px;height:58px;display:flex;align-items:center;justify-content:space-between;
   flex-shrink:0;z-index:100;box-shadow:0 1px 4px rgba(0,0,0,.06);
 }
-.hdr-logo{font-size:18px;font-weight:800;letter-spacing:-.3px;color:var(--text)}
-.hdr-logo span{color:var(--blue)}
+.hdr-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+.hdr-logo img{height:36px;width:auto;object-fit:contain}
+.hdr-logo-text{font-size:17px;font-weight:800;letter-spacing:-.3px;color:var(--text)}
 .hdr-meta{display:flex;flex-direction:column;align-items:flex-end;gap:1px}
 .hdr-campaign{font-size:12px;font-weight:700;color:var(--text)}
 .hdr-role{font-size:11px;color:var(--muted)}
@@ -372,7 +373,10 @@ body{font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;backgroun
 
 <!-- ══ HEADER ════════════════════════════════════════════════════════════════ -->
 <div class="hdr">
-  <div class="hdr-logo">Hire<span>AI</span></div>
+  <div class="hdr-logo">
+    <?php $logoUrl = !empty($candidate['logo_url']) ? $candidate['logo_url'] : 'https://www.avyukta.in/assets/images/logoo.png'; ?>
+    <img src="<?= htmlspecialchars($logoUrl) ?>" alt="<?= htmlspecialchars($candidate['org_name'] ?? 'Avyukta') ?>">
+  </div>
   <div class="hdr-actions">
     <div id="rec-badge" class="rec-badge" style="display:none">
       <div class="rec-dot"></div>REC

@@ -51,25 +51,25 @@ $total_q = count($questions);
 /* ══ RESET & BASE ════════════════════════════════════════════════════════════ */
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{
-  --bg:#060D1A;--surface:#0D1B2E;--surface2:#112240;--border:#1B3055;
-  --blue:#2563EB;--blue2:#3B82F6;--cyan:#06B6D4;--green:#10B981;--red:#EF4444;
-  --orange:#F59E0B;--text:#F1F5F9;--muted:#64748B;--muted2:#94A3B8;
-  --radius:14px;--shadow:0 8px 32px rgba(0,0,0,.45);
+  --bg:#F0F4F8;--surface:#FFFFFF;--surface2:#F8FAFC;--border:#E2E8F0;
+  --blue:#2563EB;--blue2:#3B82F6;--cyan:#0891B2;--green:#059669;--red:#DC2626;
+  --orange:#D97706;--text:#0F172A;--muted:#64748B;--muted2:#94A3B8;
+  --radius:14px;--shadow:0 4px 24px rgba(0,0,0,.09);
 }
 html,body{height:100%;overflow:hidden}
-body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column}
+body{font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column}
 
 /* ══ HEADER ══════════════════════════════════════════════════════════════════ */
 .hdr{
-  background:var(--surface);border-bottom:1px solid var(--border);
-  padding:0 20px;height:56px;display:flex;align-items:center;justify-content:space-between;
-  flex-shrink:0;z-index:100;
+  background:#fff;border-bottom:1px solid var(--border);
+  padding:0 24px;height:58px;display:flex;align-items:center;justify-content:space-between;
+  flex-shrink:0;z-index:100;box-shadow:0 1px 4px rgba(0,0,0,.06);
 }
-.hdr-logo{font-size:18px;font-weight:800;letter-spacing:-.3px}
-.hdr-logo span{color:var(--blue2)}
+.hdr-logo{font-size:18px;font-weight:800;letter-spacing:-.3px;color:var(--text)}
+.hdr-logo span{color:var(--blue)}
 .hdr-meta{display:flex;flex-direction:column;align-items:flex-end;gap:1px}
-.hdr-campaign{font-size:12px;font-weight:600;color:var(--text)}
-.hdr-role{font-size:11px;color:var(--muted2)}
+.hdr-campaign{font-size:12px;font-weight:700;color:var(--text)}
+.hdr-role{font-size:11px;color:var(--muted)}
 .hdr-actions{display:flex;align-items:center;gap:10px}
 .rec-badge{display:flex;align-items:center;gap:5px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;color:#F87171}
 .rec-dot{width:7px;height:7px;background:#EF4444;border-radius:50%;animation:blink 1s infinite}
@@ -89,7 +89,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 
 /* RIGHT — camera sidebar */
 .cam-col{
-  width:260px;flex-shrink:0;background:var(--surface);border-left:1px solid var(--border);
+  width:260px;flex-shrink:0;background:#fff;border-left:1.5px solid var(--border);
   display:flex;flex-direction:column;overflow:hidden;
 }
 @media(max-width:680px){
@@ -101,13 +101,13 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 
 /* ══ PROGRESS ════════════════════════════════════════════════════════════════ */
 .progress-bar-wrap{
-  background:var(--surface);border-bottom:1px solid var(--border);
-  padding:10px 20px;flex-shrink:0;
+  background:#fff;border-bottom:1px solid var(--border);
+  padding:10px 24px;flex-shrink:0;
 }
 .progress-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
 .progress-label{font-size:12px;font-weight:700;color:var(--text)}
 .progress-pct{font-size:11px;color:var(--muted2)}
-.progress-track{background:var(--border);border-radius:99px;height:4px;overflow:hidden}
+.progress-track{background:#E2E8F0;border-radius:99px;height:5px;overflow:hidden}
 .progress-fill{height:4px;border-radius:99px;background:linear-gradient(90deg,var(--blue),var(--cyan));transition:width .5s ease}
 .step-dots{display:flex;gap:5px;margin-top:8px}
 .step-dot{width:8px;height:8px;border-radius:50%;background:var(--border);transition:all .3s;flex-shrink:0}
@@ -116,12 +116,12 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 
 /* ══ QUESTION CARD ═══════════════════════════════════════════════════════════ */
 .q-card{
-  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
-  overflow:hidden;margin-bottom:16px;
+  background:#fff;border:1.5px solid var(--border);border-radius:var(--radius);
+  overflow:hidden;margin-bottom:16px;box-shadow:var(--shadow);
 }
 .q-card-top{
-  background:linear-gradient(135deg,rgba(37,99,235,.15),rgba(6,182,212,.08));
-  border-bottom:1px solid var(--border);padding:18px 20px;
+  background:linear-gradient(135deg,#EFF6FF,#F0F9FF);
+  border-bottom:1px solid #DBEAFE;padding:18px 20px;
 }
 .q-meta{display:flex;align-items:center;gap:8px;margin-bottom:10px}
 .q-num-badge{background:var(--blue);color:#fff;font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;letter-spacing:.5px}
@@ -131,7 +131,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 .q-card-body{padding:20px}
 
 /* ══ TIMER ═══════════════════════════════════════════════════════════════════ */
-.timer-row{display:flex;align-items:center;gap:14px;margin-bottom:20px;padding:12px 16px;background:rgba(255,255,255,.03);border-radius:10px;border:1px solid var(--border)}
+.timer-row{display:flex;align-items:center;gap:14px;margin-bottom:20px;padding:12px 16px;background:#F8FAFC;border-radius:10px;border:1px solid var(--border)}
 .timer-ring{position:relative;width:52px;height:52px;flex-shrink:0}
 .timer-svg{transform:rotate(-90deg)}
 .timer-bg{fill:none;stroke:var(--border);stroke-width:3}
@@ -145,12 +145,12 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 .timer-sub{font-size:11px;color:var(--muted)}
 
 /* ══ ANSWER TABS ═════════════════════════════════════════════════════════════ */
-.answer-tabs{display:flex;gap:6px;margin-bottom:14px;background:rgba(255,255,255,.04);padding:4px;border-radius:10px}
-.atab{flex:1;padding:8px 12px;border-radius:7px;border:none;background:transparent;color:var(--muted2);cursor:pointer;font-size:13px;font-weight:600;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:5px}
-.atab.active{background:var(--blue);color:#fff;box-shadow:0 2px 8px rgba(37,99,235,.4)}
+.answer-tabs{display:flex;gap:6px;margin-bottom:14px;background:#F1F5F9;padding:4px;border-radius:10px;border:1px solid var(--border)}
+.atab{flex:1;padding:8px 12px;border-radius:7px;border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:13px;font-weight:600;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:5px}
+.atab.active{background:var(--blue);color:#fff;box-shadow:0 2px 8px rgba(37,99,235,.35)}
 
 /* ══ VOICE RECORDER ══════════════════════════════════════════════════════════ */
-.voice-panel{background:rgba(255,255,255,.03);border-radius:12px;border:1px solid var(--border);padding:24px;text-align:center}
+.voice-panel{background:#F8FAFC;border-radius:12px;border:1.5px solid var(--border);padding:24px;text-align:center}
 .voice-btn-wrap{position:relative;width:72px;height:72px;margin:0 auto 14px}
 .voice-btn{width:72px;height:72px;border-radius:50%;border:none;background:var(--blue);color:#fff;font-size:28px;cursor:pointer;transition:all .25s;display:flex;align-items:center;justify-content:center;position:relative;z-index:1}
 .voice-btn:hover{transform:scale(1.06);background:#1D4ED8}
@@ -173,8 +173,8 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 .voice-wave span:nth-child(5){animation-delay:.4s}
 @keyframes wave{0%,100%{height:4px}50%{height:24px}}
 .voice-status{font-size:12px;color:var(--muted2);margin-bottom:8px}
-/* Auto-start countdown banner */
-.autostart-banner{background:rgba(37,99,235,.15);border:1px solid rgba(37,99,235,.3);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;font-weight:700;color:var(--blue2);display:flex;align-items:center;gap:8px;justify-content:center}
+/* Tap-to-record banner */
+.autostart-banner{background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;font-weight:700;color:#1D4ED8;display:flex;align-items:center;gap:8px;justify-content:center}
 .autostart-banner.hidden{display:none}
 /* Locked tab (audio-only questions hide text tab) */
 .atab.locked{display:none}
@@ -182,24 +182,25 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 
 /* ══ TEXT ANSWER ═════════════════════════════════════════════════════════════ */
 .text-answer{
-  width:100%;background:rgba(255,255,255,.03);border:1.5px solid var(--border);
+  width:100%;background:#fff;border:1.5px solid var(--border);
   border-radius:10px;color:var(--text);padding:14px;font-size:14px;resize:none;
-  min-height:120px;outline:none;font-family:inherit;transition:border-color .2s;line-height:1.6;
+  min-height:120px;outline:none;font-family:inherit;transition:border-color .2s,box-shadow .2s;line-height:1.6;
 }
-.text-answer:focus{border-color:var(--blue);background:rgba(37,99,235,.05)}
+.text-answer:focus{border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
 .text-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px}
 .dynamic-answer{display:flex;flex-direction:column;gap:10px}
 .dynamic-answer > input,.dynamic-answer select{
-  width:100%;background:rgba(255,255,255,.03);border:1.5px solid var(--border);
+  width:100%;background:#fff;border:1.5px solid var(--border);
   border-radius:10px;color:var(--text);padding:13px 14px;font-size:14px;outline:none;font-family:inherit;
 }
 .dynamic-answer select option{color:#111827}
 .choice-list{display:flex;flex-direction:column;gap:8px}
-.choice-item{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;color:var(--text);cursor:pointer}
+.choice-item{display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;color:var(--text);cursor:pointer;transition:border-color .15s,background .15s}
+.choice-item:hover{border-color:#93C5FD;background:#EFF6FF}
 .choice-item input{width:18px;height:18px;flex:0 0 18px;accent-color:var(--blue)}
-.choice-item:has(input:checked){border-color:var(--blue);background:rgba(37,99,235,.16)}
-.choice-prefix{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;border-radius:999px;background:rgba(37,99,235,.18);color:#93c5fd;font-weight:800;font-size:12px}
-.choice-empty{border:1px dashed var(--border);border-radius:12px;padding:12px;color:var(--muted);background:rgba(255,255,255,.03)}
+.choice-item:has(input:checked){border-color:var(--blue);background:#EFF6FF}
+.choice-prefix{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;border-radius:999px;background:#DBEAFE;color:#1D4ED8;font-weight:800;font-size:12px}
+.choice-empty{border:1px dashed var(--border);border-radius:12px;padding:12px;color:var(--muted);background:#F8FAFC}
 .share-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px}
 .share-btn{border:none;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer;color:#fff;display:inline-flex;align-items:center;gap:7px;text-decoration:none}
 .share-wa{background:#16A34A}.share-mail{background:#2563EB}.share-copy{background:#7C3AED}
@@ -213,7 +214,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
   display:flex;align-items:center;justify-content:center;gap:8px;
 }
 .btn-next:hover{transform:translateY(-1px);box-shadow:0 6px 28px rgba(37,99,235,.45)}
-.btn-next:disabled{background:var(--surface2);box-shadow:none;cursor:not-allowed;transform:none;color:var(--muted)}
+.btn-next:disabled{background:#CBD5E1;box-shadow:none;cursor:not-allowed;transform:none;color:#94A3B8}
 
 /* ══ CAMERA PANEL ════════════════════════════════════════════════════════════ */
 .cam-video-wrap{position:relative;background:#000;aspect-ratio:4/3;overflow:hidden;flex-shrink:0}
@@ -225,89 +226,95 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 .cam-status-text{font-size:11px;color:var(--muted2)}
 .cam-status-text strong{color:var(--text);display:block;font-size:12px;margin-bottom:1px}
 /* Question navigator */
-.q-nav{padding:14px;border-top:1px solid var(--border)}
+.q-nav{padding:14px;border-top:1.5px solid var(--border)}
 .q-nav-title{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
 .q-nav-dots{display:flex;flex-wrap:wrap;gap:5px}
-.q-nav-dot{width:28px;height:28px;border-radius:8px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--muted);border:none;cursor:default}
-.q-nav-dot.done{background:rgba(16,185,129,.2);color:var(--green);border:1px solid rgba(16,185,129,.3)}
-.q-nav-dot.active{background:var(--blue);color:#fff}
+.q-nav-dot{width:28px;height:28px;border-radius:8px;background:#F1F5F9;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--muted);border:1.5px solid var(--border);cursor:default}
+.q-nav-dot.done{background:#DCFCE7;color:#15803D;border-color:#86EFAC}
+.q-nav-dot.active{background:var(--blue);color:#fff;border-color:var(--blue)}
 
 /* ══ NETWORK TOAST ═══════════════════════════════════════════════════════════ */
-.net-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e3a5f;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;pointer-events:none;transition:opacity .4s;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.4)}
-.net-warn{background:#92400E}
+.net-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0F172A;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;pointer-events:none;transition:opacity .4s;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.25)}
+.net-warn{background:#B45309}
 .net-info{background:#1D4ED8}
 
-/* ══ PERMISSION SCREEN ════════════════════════════════════════════════════════ */
-.perm-screen{
-  flex:1;display:flex;align-items:center;justify-content:center;padding:24px;overflow-y:auto;
+/* ══ PERMISSION SCREEN — full-page bright ════════════════════════════════════ */
+.perm-screen{flex:1;display:flex;overflow-y:auto;background:var(--bg)}
+.perm-layout{display:flex;width:100%;min-height:100%}
+/* Left panel */
+.perm-left{
+  flex:1;display:flex;flex-direction:column;justify-content:center;
+  padding:48px 52px;max-width:580px;
 }
-.perm-card{
-  background:
-    radial-gradient(circle at top left,rgba(37,99,235,.18),transparent 32%),
-    linear-gradient(180deg,rgba(30,41,59,.98),rgba(15,23,42,.98));
-  border:1px solid rgba(96,165,250,.22);border-radius:24px;
-  padding:34px 30px;max-width:560px;width:100%;text-align:center;
-  box-shadow:0 28px 90px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.05);
+/* Right panel — instructions */
+.perm-right{
+  flex:1;background:#fff;border-left:1.5px solid var(--border);
+  display:flex;flex-direction:column;justify-content:center;padding:48px 52px;
+}
+@media(max-width:860px){
+  .perm-layout{flex-direction:column}
+  .perm-right{border-left:none;border-top:1.5px solid var(--border);padding:32px 24px}
+  .perm-left{padding:32px 24px;max-width:100%}
 }
 .perm-icon{
-  width:74px;height:74px;margin:0 auto 16px;border-radius:22px;
+  width:64px;height:64px;border-radius:18px;
   display:flex;align-items:center;justify-content:center;
-  background:linear-gradient(135deg,rgba(37,99,235,.24),rgba(124,58,237,.18));
-  border:1px solid rgba(147,197,253,.22);font-size:34px;line-height:1;
-  box-shadow:0 14px 34px rgba(37,99,235,.16)
+  background:linear-gradient(135deg,#EFF6FF,#DBEAFE);
+  border:1.5px solid #BFDBFE;font-size:30px;margin-bottom:18px;
+  box-shadow:0 4px 16px rgba(37,99,235,.15)
 }
 .perm-kicker{
-  display:inline-flex;align-items:center;gap:8px;margin-bottom:10px;
-  padding:6px 10px;border-radius:999px;background:rgba(245,158,11,.12);
-  border:1px solid rgba(245,158,11,.24);color:#FCD34D;font-size:11px;
+  display:inline-flex;align-items:center;gap:6px;margin-bottom:12px;
+  padding:5px 12px;border-radius:999px;background:#FEF9C3;
+  border:1px solid #FDE68A;color:#92400E;font-size:11px;
   font-weight:800;letter-spacing:.08em;text-transform:uppercase
 }
-.perm-title{font-size:26px;font-weight:900;letter-spacing:-.4px;margin-bottom:8px}
-.perm-desc{font-size:14px;color:var(--muted2);line-height:1.7;margin:0 auto 18px;max-width:430px}
+.perm-title{font-size:28px;font-weight:900;letter-spacing:-.5px;color:var(--text);margin-bottom:8px}
+.perm-desc{font-size:14px;color:var(--muted);line-height:1.7;margin-bottom:20px}
 .perm-must{
-  background:rgba(239,68,68,.1);border:1px solid rgba(248,113,113,.26);
-  color:#FECACA;border-radius:12px;padding:11px 13px;font-size:12px;
-  line-height:1.5;margin-bottom:14px;text-align:left
+  background:#FFF1F2;border:1.5px solid #FECDD3;
+  color:#9F1239;border-radius:12px;padding:12px 14px;font-size:12.5px;
+  line-height:1.6;margin-bottom:16px;
 }
-.perm-checks{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;text-align:left}
+.perm-checks{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}
 .perm-check{
   display:flex;align-items:center;gap:12px;padding:12px 14px;
-  background:rgba(255,255,255,.045);border:1px solid rgba(148,163,184,.18);border-radius:12px;
-  transition:all .3s;
+  background:#F8FAFC;border:1.5px solid var(--border);border-radius:12px;transition:all .3s;
 }
-.perm-check.ok{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.25)}
-.perm-check.err{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.25)}
+.perm-check.ok{background:#ECFDF5;border-color:#86EFAC}
+.perm-check.err{background:#FEF2F2;border-color:#FECACA}
 .perm-check-icon{font-size:20px;width:28px;text-align:center;flex-shrink:0}
-.perm-check-text{font-size:13px;font-weight:600;color:var(--text)}
-.perm-check-sub{font-size:11px;color:var(--muted2);margin-top:1px}
-.perm-error{color:#F87171;font-size:12px;min-height:18px;margin:8px 0;font-weight:600}
-.mobile-permission-note{display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);color:#FCD34D;border-radius:10px;padding:12px 14px;font-size:12px;line-height:1.5;margin-bottom:14px;text-align:left}
-.consent-row{display:flex;gap:10px;text-align:left;background:rgba(255,255,255,.045);border:1px solid rgba(148,163,184,.18);border-radius:12px;padding:13px 14px;font-size:12px;color:var(--muted2);line-height:1.5;margin:12px 0}
+.perm-check-text{font-size:13px;font-weight:700;color:var(--text)}
+.perm-check-sub{font-size:11px;color:var(--muted);margin-top:1px}
+.perm-error{color:#DC2626;font-size:12px;min-height:18px;margin:8px 0;font-weight:600}
+.mobile-permission-note{display:none;background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:10px;padding:12px 14px;font-size:12px;line-height:1.5;margin-bottom:14px}
+.consent-row{display:flex;gap:10px;background:#F8FAFC;border:1.5px solid var(--border);border-radius:12px;padding:13px 14px;font-size:12.5px;color:var(--muted);line-height:1.5;margin:14px 0;cursor:pointer}
+.consent-row input{accent-color:var(--blue);width:16px;height:16px;flex-shrink:0;margin-top:1px}
 .btn-allow{
-  width:100%;padding:15px;background:linear-gradient(135deg,#2563EB,#7C3AED);
-  color:#fff;border:none;border-radius:11px;font-size:15px;font-weight:700;
+  width:100%;padding:16px;background:linear-gradient(135deg,#2563EB,#1D4ED8);
+  color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:800;
   cursor:pointer;transition:all .2s;box-shadow:0 4px 20px rgba(37,99,235,.35);
+  letter-spacing:-.2px;
 }
-.btn-allow:hover{transform:translateY(-1px)}
-@media(max-width:620px){.perm-card{padding:24px 18px}.perm-checks{grid-template-columns:1fr}.perm-title{font-size:22px}}
-.btn-allow:disabled{background:var(--surface2);box-shadow:none;cursor:not-allowed;transform:none}
-.instructions-box{
-  background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;
-  padding:14px;text-align:left;margin-top:16px;
-}
-.instructions-title{font-size:11px;font-weight:800;color:var(--cyan);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
-.instructions-list{list-style:none;display:flex;flex-direction:column;gap:5px}
-.instructions-list li{font-size:12px;color:var(--muted2);display:flex;align-items:flex-start;gap:7px;line-height:1.5}
-.instructions-list li::before{content:'›';color:var(--blue2);font-weight:700;flex-shrink:0;margin-top:1px}
+.btn-allow:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(37,99,235,.45)}
+.btn-allow:disabled{background:#CBD5E1;box-shadow:none;cursor:not-allowed;transform:none;color:#94A3B8}
+/* Right panel instructions */
+.instructions-box{background:transparent;border:none;padding:0;text-align:left}
+.instructions-title{font-size:13px;font-weight:800;color:var(--blue);text-transform:uppercase;letter-spacing:.6px;margin-bottom:16px;display:flex;align-items:center;gap:7px}
+.instructions-list{list-style:none;display:flex;flex-direction:column;gap:12px}
+.instructions-list li{font-size:14px;color:var(--text);display:flex;align-items:flex-start;gap:10px;line-height:1.55;padding:10px 14px;background:#F8FAFC;border-radius:10px;border:1px solid var(--border)}
+.instructions-list li::before{content:'✓';color:var(--green);font-weight:900;flex-shrink:0;margin-top:1px}
+.instructions-list li.warn{background:#FEF9C3;border-color:#FDE68A}
+.instructions-list li.warn::before{content:'⚠';color:var(--orange)}
 
 /* ══ COMPLETION SCREEN ════════════════════════════════════════════════════════ */
 .done-screen{
   flex:1;display:flex;align-items:center;justify-content:center;padding:24px;
 }
 .done-card{
-  background:var(--surface);border:1px solid var(--border);border-radius:20px;
-  padding:40px 32px;max-width:460px;width:100%;text-align:center;
-  box-shadow:0 24px 80px rgba(0,0,0,.4);
+  background:#fff;border:1.5px solid var(--border);border-radius:20px;
+  padding:40px 32px;max-width:480px;width:100%;text-align:center;
+  box-shadow:0 8px 40px rgba(0,0,0,.1);
 }
 .done-icon{font-size:64px;margin-bottom:20px;animation:pop .5s cubic-bezier(.175,.885,.32,1.275)}
 @keyframes pop{0%{transform:scale(0)}100%{transform:scale(1)}}
@@ -329,19 +336,19 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 /* Face gate modal */
 #face-gate{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:8000;display:none;align-items:center;justify-content:center;padding:20px}
 #face-gate.active{display:flex;animation:fadeIn .3s ease}
-.fg-card{background:#0D1B2E;border:1.5px solid #1B3055;border-radius:20px;padding:32px 28px;max-width:520px;width:100%;text-align:center;box-shadow:0 32px 80px rgba(0,0,0,.7)}
-.fg-video-wrap{position:relative;width:100%;aspect-ratio:4/3;background:#000;border-radius:14px;overflow:hidden;margin-bottom:18px;border:2px solid #1B3055}
+.fg-card{background:#fff;border:1.5px solid var(--border);border-radius:20px;padding:32px 28px;max-width:540px;width:100%;text-align:center;box-shadow:0 12px 48px rgba(0,0,0,.12)}
+.fg-video-wrap{position:relative;width:100%;aspect-ratio:4/3;background:#0F172A;border-radius:14px;overflow:hidden;margin-bottom:18px;border:2px solid #E2E8F0}
 .fg-video-wrap video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
-.fg-status-badge{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);border:1.5px solid #374151;border-radius:99px;padding:5px 14px;font-size:12px;font-weight:700;color:#9CA3AF;white-space:nowrap;backdrop-filter:blur(6px);transition:all .3s}
-.fg-status-badge.checking{border-color:#3B82F6;color:#93C5FD}
-.fg-status-badge.fail{border-color:#EF4444;color:#FCA5A5}
-.fg-status-badge.ok{border-color:#10B981;color:#6EE7B7}
-.fg-warning{background:rgba(239,68,68,.1);border:1.5px solid rgba(239,68,68,.3);border-radius:12px;padding:14px 18px;margin-bottom:18px;font-size:13px;color:#FCA5A5;line-height:1.6;text-align:left}
-.fg-warning strong{color:#F87171;display:block;margin-bottom:4px;font-size:14px}
-.fg-btn{width:100%;padding:14px;border-radius:12px;border:none;font-size:15px;font-weight:800;cursor:pointer;transition:all .2s;letter-spacing:-.2px}
-.fg-btn:disabled{background:#1B3055;color:#4B5563;cursor:not-allowed}
-.fg-btn.ready{background:linear-gradient(135deg,#059669,#10B981);color:#fff;box-shadow:0 6px 24px rgba(16,185,129,.4)}
-.fg-btn.ready:hover{transform:translateY(-1px);box-shadow:0 8px 32px rgba(16,185,129,.5)}
+.fg-status-badge{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.65);border:1.5px solid rgba(255,255,255,.2);border-radius:99px;padding:5px 14px;font-size:12px;font-weight:700;color:#fff;white-space:nowrap;backdrop-filter:blur(8px);transition:all .3s}
+.fg-status-badge.checking{border-color:#93C5FD;color:#BFDBFE}
+.fg-status-badge.fail{border-color:#FCA5A5;color:#FECACA}
+.fg-status-badge.ok{border-color:#86EFAC;color:#DCFCE7}
+.fg-warning{background:#FFF1F2;border:1.5px solid #FECDD3;border-radius:12px;padding:14px 18px;margin-bottom:18px;font-size:13px;color:#9F1239;line-height:1.6;text-align:left}
+.fg-warning strong{color:#BE123C;display:block;margin-bottom:4px;font-size:14px}
+.fg-btn{width:100%;padding:15px;border-radius:12px;border:none;font-size:15px;font-weight:800;cursor:pointer;transition:all .2s;letter-spacing:-.2px}
+.fg-btn:disabled{background:#F1F5F9;color:#94A3B8;cursor:not-allowed;border:1.5px solid #E2E8F0}
+.fg-btn.ready{background:linear-gradient(135deg,#059669,#10B981);color:#fff;box-shadow:0 6px 24px rgba(5,150,105,.35)}
+.fg-btn.ready:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(5,150,105,.5)}
 
 /* ══ MEDIA QUERIES ═══════════════════════════════════════════════════════════ */
 @media(max-width:680px){
@@ -428,8 +435,8 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 <!-- ══ FACE GATE MODAL ════════════════════════════════════════════════════════ -->
 <div id="face-gate">
   <div class="fg-card">
-    <div style="font-size:13px;font-weight:700;color:#6EE7B7;letter-spacing:.5px;margin-bottom:10px">IDENTITY VERIFICATION</div>
-    <div style="font-size:20px;font-weight:800;color:#F1F5F9;margin-bottom:6px">Position Your Face in the Camera</div>
+    <div style="font-size:12px;font-weight:800;color:#059669;letter-spacing:.6px;text-transform:uppercase;margin-bottom:10px">IDENTITY VERIFICATION</div>
+    <div style="font-size:21px;font-weight:900;color:#0F172A;margin-bottom:6px">Position Your Face in the Camera</div>
     <div style="font-size:13px;color:#64748B;margin-bottom:16px">We need to verify you are present before the test begins</div>
     <div class="fg-video-wrap">
       <video id="fg-video" autoplay muted playsinline></video>
@@ -444,63 +451,76 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
     <button class="fg-btn" id="fg-start-btn" disabled onclick="faceGateProceed()">
       Verifying face — please wait…
     </button>
-    <div style="font-size:11px;color:#374151;margin-top:10px">Make sure your face is fully visible, well-lit, and centered before proceeding</div>
+    <div style="font-size:11px;color:#94A3B8;margin-top:10px">Make sure your face is fully visible, well-lit, and centered before proceeding</div>
   </div>
 </div>
 
 <!-- ══ PERMISSION SCREEN ═════════════════════════════════════════════════════ -->
 <div class="app-body" id="perm-screen">
   <div class="perm-screen">
-    <div class="perm-card">
-      <div class="perm-icon">🎙️</div>
-      <div class="perm-kicker">Mandatory AI Test</div>
-      <div style="display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:4px">
-        <svg width="20" height="20" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="6" fill="url(#ng)"/><text x="16" y="22" font-family='Arial Black' font-size="14" font-weight="900" fill="white" text-anchor="middle">A</text><defs><linearGradient id="ng" x1="0" y1="0" x2="32" y2="32"><stop offset="0%" stop-color="#6B21A8"/><stop offset="100%" stop-color="#2563EB"/></linearGradient></defs></svg>
-        <span style="font-size:13px;color:#9CA3AF">Powered by <strong style="color:#A78BFA">Avyukta Intellicall</strong></span>
-      </div>
-      <div class="perm-title">Before We Begin</div>
-      <div class="perm-desc">You selected the AI test in your application. Complete this interview to finish the hiring step.</div>
-      <div class="perm-must"><strong>Camera and microphone permission is compulsory.</strong> The test will not start until both permissions and recording consent are allowed.</div>
-      <div class="mobile-permission-note">On mobile, your browser will show a camera and microphone permission popup. Tap Allow to continue the test.</div>
+    <div class="perm-layout">
 
-      <div class="perm-checks">
-        <div class="perm-check" id="pc-camera">
-          <div class="perm-check-icon">📷</div>
-          <div>
-            <div class="perm-check-text">Camera Access</div>
-            <div class="perm-check-sub">Required for identity verification</div>
+      <!-- LEFT: permissions + consent + button -->
+      <div class="perm-left">
+        <div class="perm-icon">🎙️</div>
+        <div class="perm-kicker">🔒 Mandatory AI Test</div>
+        <div class="perm-title">Before We Begin</div>
+        <div class="perm-desc">Complete this AI interview to finish your hiring process. Camera and microphone are required throughout the test.</div>
+
+        <div class="perm-must">
+          <strong>📸 Camera &amp; microphone permission is compulsory.</strong><br>
+          The test will not start until both are allowed and your face is verified.
+        </div>
+        <div class="mobile-permission-note">On mobile, tap <strong>Allow</strong> when your browser asks for camera &amp; microphone access.</div>
+
+        <div class="perm-checks">
+          <div class="perm-check" id="pc-camera">
+            <div class="perm-check-icon">📷</div>
+            <div>
+              <div class="perm-check-text">Camera Access</div>
+              <div class="perm-check-sub">Identity verification</div>
+            </div>
+          </div>
+          <div class="perm-check" id="pc-mic">
+            <div class="perm-check-icon">🎤</div>
+            <div>
+              <div class="perm-check-text">Microphone Access</div>
+              <div class="perm-check-sub">Voice answers</div>
+            </div>
           </div>
         </div>
-        <div class="perm-check" id="pc-mic">
-          <div class="perm-check-icon">🎤</div>
-          <div>
-            <div class="perm-check-text">Microphone Access</div>
-            <div class="perm-check-sub">Required for voice answers</div>
-          </div>
+
+        <label class="consent-row">
+          <input type="checkbox" id="recording-consent">
+          <span>I consent to voice/video recording and understand my responses may be reviewed by the hiring team for recruitment evaluation.</span>
+        </label>
+        <div class="perm-error" id="perm-error"></div>
+        <button class="btn-allow" id="allow-btn" onclick="requestPermissions()">
+          Allow Camera &amp; Mic — Start Test →
+        </button>
+
+        <div style="margin-top:14px;font-size:12px;color:var(--muted);text-align:center;display:flex;align-items:center;justify-content:center;gap:6px">
+          <svg width="14" height="14" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="6" fill="url(#pg)"/><text x="16" y="22" font-family='Arial Black' font-size="14" font-weight="900" fill="white" text-anchor="middle">A</text><defs><linearGradient id="pg" x1="0" y1="0" x2="32" y2="32"><stop offset="0%" stop-color="#6B21A8"/><stop offset="100%" stop-color="#2563EB"/></linearGradient></defs></svg>
+          Powered by <strong style="color:var(--blue)">Avyukta Intellicall</strong>
         </div>
       </div>
 
-      <label class="consent-row">
-        <input type="checkbox" id="recording-consent">
-        <span>I consent to voice/video recording and understand my responses may be reviewed by the hiring team for recruitment evaluation.</span>
-      </label>
-      <div class="perm-error" id="perm-error"></div>
-      <button class="btn-allow" id="allow-btn" onclick="requestPermissions()">
-        Allow Camera &amp; Mic - Start Test →
-      </button>
-
-      <div class="instructions-box">
-        <div class="instructions-title">📋 Interview Instructions</div>
-        <ul class="instructions-list">
-          <li><?= $total_q ?> questions — 3 minutes each to answer</li>
-          <li>Answer by <strong>voice</strong> 🎤 or <strong>typing</strong> ⌨️ — your choice</li>
-          <li>Stay in frame with your face clearly visible</li>
-          <li>Find a quiet place with good lighting</li>
-          <li>Your session is being recorded</li>
-          <li style="color:#FCA5A5;font-weight:600">⚠️ Do not copy-paste answers — all paste actions are logged and flagged for integrity review</li>
-          <li style="color:#FCA5A5">Pasting text over 20 characters will be marked as a violation in your report</li>
-        </ul>
+      <!-- RIGHT: interview instructions -->
+      <div class="perm-right">
+        <div class="instructions-box">
+          <div class="instructions-title">📋 Interview Instructions</div>
+          <ul class="instructions-list">
+            <li><?= $total_q ?> questions — 3 minutes each to answer</li>
+            <li>Answer by <strong>voice 🎤</strong> or <strong>typing ⌨️</strong> — tap the button to start recording</li>
+            <li>Sit directly in front of the camera with your <strong>face clearly visible</strong></li>
+            <li>Find a <strong>quiet, well-lit place</strong> before starting</li>
+            <li>Your session is being recorded end-to-end</li>
+            <li>Face detection runs after every question — absence will <strong>terminate your test</strong></li>
+            <li class="warn">Do not copy-paste answers — all paste actions are logged and flagged for integrity review</li>
+          </ul>
+        </div>
       </div>
+
     </div>
   </div>
 </div>
@@ -841,39 +861,13 @@ function loadQuestion(index) {
 
   if (isAudioQ) {
     switchTab('voice');
-    // Show idle pulse + blue ripples while countdown runs
+    // Show idle ripples — user taps button to start recording (no auto-start)
     document.getElementById('idle-ripple1').style.display = 'block';
     document.getElementById('idle-ripple2').style.display = 'block';
     document.getElementById('voice-btn').classList.add('idle-pulse');
-    document.getElementById('autostart-banner').classList.remove('hidden');
-
-    // 3-second countdown then auto-start
-    let countdown = 3;
     const banner = document.getElementById('autostart-text');
-    banner.textContent = '🎙️ Recording starts in ' + countdown + '…';
-    window._autoStartCountdown = setInterval(() => {
-      countdown--;
-      if (countdown > 0) {
-        banner.textContent = '🎙️ Recording starts in ' + countdown + '…';
-      } else {
-        clearInterval(window._autoStartCountdown);
-        window._autoStartCountdown = null;
-      }
-    }, 1000);
-
-    window._autoStartTimer = setTimeout(() => {
-      window._autoStartTimer = null;
-      // Hide idle indicators
-      document.getElementById('idle-ripple1').style.display = 'none';
-      document.getElementById('idle-ripple2').style.display = 'none';
-      document.getElementById('voice-btn').classList.remove('idle-pulse');
-      document.getElementById('autostart-banner').classList.add('hidden');
-      // Auto-start if still on this question and not already recording
-      if (!isRecording && audioChunks.length === 0) {
-        startRecording();
-        showNetToast('🔴 Recording started automatically', 'info');
-      }
-    }, 3000);
+    banner.textContent = '🎙️ Tap the button below to start recording';
+    document.getElementById('autostart-banner').classList.remove('hidden');
   } else {
     switchTab('text');
   }

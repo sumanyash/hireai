@@ -1875,7 +1875,14 @@ const validators = {
     if (el('salutation') && !v('salutation')) e.push('Salutation required');
     if (el('firstName') && !v('firstName').trim()) e.push('First name required');
     if (el('lastName') && !v('lastName').trim()) e.push('Last name required');
-    if (el('dob')) { const dobErr = dateError('Date of birth', v('dob'), { max: todayYmd() }); if (dobErr) e.push(dobErr); }
+    if (el('dob')) {
+      const dobVal = v('dob');
+      const maxDobYmd = (() => { const d = new Date(); d.setFullYear(d.getFullYear()-18); return d.toISOString().slice(0,10); })();
+      const dobErr = dateError('Date of birth', dobVal, { max: maxDobYmd });
+      if (dobErr) {
+        e.push(dobVal && dobVal > maxDobYmd ? 'You must be at least 18 years old to apply.' : dobErr);
+      }
+    }
     if (el('currentCity') && !v('currentCity').trim()) e.push('Current city required');
     if (el('phone')) { const pe = validatePhone(); if (pe) e.push(pe); }
     if (el('email') && !isStrictEmail(v('email'))) e.push('Valid email required');
@@ -2713,8 +2720,9 @@ document.addEventListener('DOMContentLoaded', function() {
   const today = new Date();
   const maxJd  = new Date(); maxJd.setFullYear(maxJd.getFullYear() + 5);
 
+  const maxDob = new Date(); maxDob.setFullYear(maxDob.getFullYear() - 18);
   initDatePicker('dob-display', 'dob', {
-    maxDate : today,
+    maxDate : maxDob,
     minDate : '01/01/1900',
   });
 

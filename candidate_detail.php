@@ -381,6 +381,24 @@ $toast         = $_GET['toast'] ?? '';
 <?php include __DIR__ . '/includes/nav.php'; ?>
 <div class="main-content">
 
+<?php
+$isTerminated       = !empty($cheat['terminated']);
+$terminationReason  = $cheat['termination_reason'] ?? 'face_not_detected';
+?>
+<?php if ($isTerminated): ?>
+<div style="background:#FEF2F2;border:2px solid #FECACA;border-radius:14px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:flex-start;gap:14px">
+  <div style="font-size:28px;flex-shrink:0">🚫</div>
+  <div>
+    <div style="font-size:15px;font-weight:800;color:#DC2626;margin-bottom:4px">Interview Terminated — Integrity Violation</div>
+    <div style="font-size:13px;color:#991B1B;line-height:1.6">
+      This candidate's interview was <strong>automatically terminated</strong> because their face was not detected on consecutive checks.
+      Reason recorded: <strong><?= htmlspecialchars(str_replace('_',' ',$terminationReason)) ?></strong>.
+      The session has been completed and flagged in the integrity report.
+    </div>
+  </div>
+</div>
+<?php endif; ?>
+
 <?php if ($toast): ?>
 <div class="toast toast-success" id="toastEl">
   <i class="fa-solid fa-circle-check"></i>
@@ -660,7 +678,13 @@ $toast         = $_GET['toast'] ?? '';
   $totalFlagCount = $rawTab + $rawCopy;
 
   // Overall risk — based only on real signals
-  if ($totalFlagCount === 0 && $rawFace === 0 && empty($perQuestionFlags)) {
+  if ($isTerminated) {
+    $riskLevel = 'critical';
+    $riskLabel = 'Terminated — Face Not Detected';
+    $riskSub   = 'Interview was automatically terminated due to face detection failure';
+    $riskColor = '#BE123C'; $riskBg = '#FFF1F2'; $riskBd = '#FECDD3'; $riskIconClr = '#F43F5E';
+    $riskIcon  = 'fa-ban';
+  } elseif ($totalFlagCount === 0 && $rawFace === 0 && empty($perQuestionFlags)) {
     $riskLevel = 'clean';
     $riskLabel = 'Clean Interview';   $riskSub = 'No suspicious activity detected';
     $riskColor = '#065F46'; $riskBg = '#ECFDF5'; $riskBd = '#A7F3D0'; $riskIconClr = '#10B981';

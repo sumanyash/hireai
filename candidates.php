@@ -46,10 +46,13 @@ $types  = $btypes;
 if ($active_status !== 'all') { $where .= " AND c.status=?"; $params[] = $active_status; $types .= 's'; }
 
 $candidates = db_fetch_all(
-    "SELECT c.*, camp.name campaign_name, camp.job_role, ir.total_score, ir.max_score, ir.pass_fail, ir.ai_summary, ir.id result_id
+    "SELECT c.*, camp.name campaign_name, camp.job_role, ir.total_score, ir.max_score, ir.pass_fail, ir.ai_summary, ir.id result_id,
+            sess.cheat_summary
      FROM candidates c
      LEFT JOIN campaigns camp ON c.campaign_id=camp.id
      LEFT JOIN interview_results ir ON c.id=ir.candidate_id
+     LEFT JOIN interview_sessions sess ON sess.candidate_id=c.id
+         AND sess.id=(SELECT MAX(s2.id) FROM interview_sessions s2 WHERE s2.candidate_id=c.id AND s2.status='completed')
      WHERE $where ORDER BY $sort_sql",
     $params, $types
 );
@@ -644,8 +647,16 @@ $avatarPalette = [
       <td class="<?= $hiddenClass ?>" data-column="<?= $colKey ?>" data-filter-value="<?= htmlspecialchars($c['campaign_name'] ?? '') ?>" style="font-size:12px;color:var(--gray2);max-width:180px">
         <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><?= htmlspecialchars($c['campaign_name'] ?? '—') ?></div>
       </td>
-      <?php elseif ($col['key'] === 'status'): ?>
-      <td class="<?= $hiddenClass ?>" data-column="<?= $colKey ?>" data-filter-value="<?= htmlspecialchars($c['status'] ?? '') ?>"><span class="badge badge-<?= $c['status'] ?>"><?= ucfirst(str_replace('_', ' ', $c['status'])) ?></span></td>
+      <?php elseif ($col['key'] === 'status'):
+        $cs = json_decode($c['cheat_summary'] ?? '{}', true);
+        $isTerminated = !empty($cs['terminated']);
+      ?>
+      <td class="<?= $hiddenClass ?>" data-column="<?= $colKey ?>" data-filter-value="<?= htmlspecialchars($c['status'] ?? '') ?>">
+        <span class="badge badge-<?= $c['status'] ?>"><?= ucfirst(str_replace('_', ' ', $c['status'])) ?></span>
+        <?php if ($isTerminated): ?>
+        <span style="display:inline-flex;align-items:center;gap:3px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;border-radius:99px;padding:2px 7px;font-size:10px;font-weight:800;margin-left:4px;white-space:nowrap">🚫 Terminated</span>
+        <?php endif; ?>
+      </td>
       <?php elseif ($col['key'] === 'score'): ?>
       <td class="<?= $hiddenClass ?>" data-column="<?= $colKey ?>" data-filter-value="<?= htmlspecialchars((string)($score ?? '')) ?>">
         <?php if ($score !== null): ?>

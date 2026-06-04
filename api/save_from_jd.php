@@ -22,7 +22,7 @@ $app_fields   = (array)($input['application_fields']??[]);
 $num_questions= max(1,count($questions));
 
 if (!$name || !$job_role) json_response(['error'=>'Campaign name and job role are required'],400);
-if (count($questions) < 1) json_response(['error'=>'At least one question is required'],400);
+if (count($questions) < 10) json_response(['error'=>'At least 10 questions are required'],400);
 
 $share_token = bin2hex(random_bytes(12));
 $db = get_db();
@@ -91,6 +91,15 @@ try {
         );
         $field_order++;
     }
+
+    // Auto-save default standard field config so apply form shows all fields immediately
+    // without requiring a manual "Save Field Configuration" click.
+    $default_std_fields = ['salutation','first_name','last_name','dob','city','relocate','relocate_time',
+        'phone','email','college','source','engagement_type','english_level','years_exp','industry',
+        'exp_type','exp_desc','current_salary','expected_salary','tenure','joining_date',
+        'flex_hours','laptop','internet','commute','resume','photo','video_option','portfolio',
+        'ai_test_willing','role_applied','declaration_confirmation'];
+    db_execute("UPDATE campaigns SET apply_form_config=? WHERE id=?", [json_encode($default_std_fields), $campaign_id], 'si');
 
     $db->commit();
     audit_log($org_id,$user_id,'campaign',$campaign_id,'ai_created_from_jd',['name'=>$name,'questions'=>count($questions),'fields'=>$field_order-1]);

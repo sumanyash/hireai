@@ -41,13 +41,17 @@
 │   ├── call_webhook.php       # Inbound AI-call result webhook (Avya dialer)
 │   ├── change_password.php    # POST: change own password
 │   ├── upload_audio.php       # POST: upload audio answer
-│   └── upload_video.php       # POST: upload video answer
+│   ├── upload_video.php       # POST: upload video answer
+│   ├── check_duplicate.php    # GET: real-time phone/email duplicate check (apply form)
+│   └── check_face.php         # POST: Gemini Vision face-presence check (interview)
 │
 ├── includes/
 │   ├── config.php             # Constants (DB, JWT, API keys via .env)
 │   ├── db.php                 # MySQLi helpers (get_db, db_fetch_all, db_fetch_one, db_execute)
 │   ├── functions.php          # JWT, CSRF, auth, credits, WhatsApp send, audit_log
 │   ├── helpers.php            # normalize_phone, HMAC verify, login lock, upload validation, pagination
+│   ├── forgot_password.php    # PUBLIC — password reset request form
+│   └── reset_password.php     # PUBLIC — password reset with token
 │   ├── auth_check.php         # Validates JWT session → $user array
 │   ├── head.php               # <meta> + CSS vars + base styles + navbar CSS
 │   ├── nav.php                # <nav> HTML + Change Password modal
@@ -109,7 +113,8 @@
 | el_agent_id | VARCHAR(150) | ElevenLabs voice agent |
 | passing_score | INT | default 70 |
 | max_duration_minutes | INT | default 15 |
-| num_questions | INT | default 6 |
+| num_questions | INT | default 10 (AI builder generates exactly 10) |
+| apply_form_config | JSON | enabled standard field keys; NULL = all-on default |
 | language | ENUM | english / hinglish / hindi |
 | status | ENUM | draft / active / paused / completed |
 

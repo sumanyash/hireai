@@ -100,7 +100,7 @@ textarea.pf-input{resize:vertical;min-height:72px}
 <div id="loading-overlay">
   <div class="loading-spinner"></div>
   <div class="loading-text" id="loading-text">Analyzing Job Description…</div>
-  <div class="loading-sub">Gemini is generating your campaign</div>
+  <div class="loading-sub">Avyukta AI is generating your campaign</div>
 </div>
 
 <div class="main-content">
@@ -206,7 +206,7 @@ async function generateCampaign() {
   if (jd.length < 30) { showToast('Please paste a job description first (min 30 characters).','error'); return; }
   const btn = document.getElementById('generateBtn');
   btn.disabled = true;
-  showLoading('Analyzing Job Description…', 'Gemini is generating your campaign configuration');
+  showLoading('Analyzing Job Description…', 'Avyukta AI is generating your campaign configuration');
   try {
     const r = await fetch('/api/generate_campaign.php', {
       method: 'POST',
@@ -535,7 +535,7 @@ async function createCampaign() {
   const data = collectData();
   if (!data.campaign_name) { showToast('Campaign name is required','error'); return; }
   if (!data.job_role) { showToast('Job role is required','error'); return; }
-  if (data.questions.length < 1) { showToast('Add at least one question','error'); return; }
+  if (data.questions.length < 10) { showToast(`At least 10 questions required (currently ${data.questions.length})`, 'error'); return; }
 
   const totalW = data.questions.reduce((s,q) => s + q.weight, 0);
   if (totalW !== 100) { showToast(`Question weights must sum to 100 (currently ${totalW})`, 'error'); return; }

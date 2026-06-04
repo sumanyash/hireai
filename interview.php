@@ -325,6 +325,23 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 /* ══ SPINNER ═════════════════════════════════════════════════════════════════ */
 .spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+@keyframes faceAlertIn{from{opacity:0;transform:translate(-50%,-50%) scale(.9)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+/* Face gate modal */
+#face-gate{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:8000;display:none;align-items:center;justify-content:center;padding:20px}
+#face-gate.active{display:flex;animation:fadeIn .3s ease}
+.fg-card{background:#0D1B2E;border:1.5px solid #1B3055;border-radius:20px;padding:32px 28px;max-width:520px;width:100%;text-align:center;box-shadow:0 32px 80px rgba(0,0,0,.7)}
+.fg-video-wrap{position:relative;width:100%;aspect-ratio:4/3;background:#000;border-radius:14px;overflow:hidden;margin-bottom:18px;border:2px solid #1B3055}
+.fg-video-wrap video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.fg-status-badge{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);border:1.5px solid #374151;border-radius:99px;padding:5px 14px;font-size:12px;font-weight:700;color:#9CA3AF;white-space:nowrap;backdrop-filter:blur(6px);transition:all .3s}
+.fg-status-badge.checking{border-color:#3B82F6;color:#93C5FD}
+.fg-status-badge.fail{border-color:#EF4444;color:#FCA5A5}
+.fg-status-badge.ok{border-color:#10B981;color:#6EE7B7}
+.fg-warning{background:rgba(239,68,68,.1);border:1.5px solid rgba(239,68,68,.3);border-radius:12px;padding:14px 18px;margin-bottom:18px;font-size:13px;color:#FCA5A5;line-height:1.6;text-align:left}
+.fg-warning strong{color:#F87171;display:block;margin-bottom:4px;font-size:14px}
+.fg-btn{width:100%;padding:14px;border-radius:12px;border:none;font-size:15px;font-weight:800;cursor:pointer;transition:all .2s;letter-spacing:-.2px}
+.fg-btn:disabled{background:#1B3055;color:#4B5563;cursor:not-allowed}
+.fg-btn.ready{background:linear-gradient(135deg,#059669,#10B981);color:#fff;box-shadow:0 6px 24px rgba(16,185,129,.4)}
+.fg-btn.ready:hover{transform:translateY(-1px);box-shadow:0 8px 32px rgba(16,185,129,.5)}
 
 /* ══ MEDIA QUERIES ═══════════════════════════════════════════════════════════ */
 @media(max-width:680px){
@@ -392,6 +409,29 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 </div>
 
 <?php else: ?>
+
+<!-- ══ FACE GATE MODAL ════════════════════════════════════════════════════════ -->
+<div id="face-gate">
+  <div class="fg-card">
+    <div style="font-size:13px;font-weight:700;color:#6EE7B7;letter-spacing:.5px;margin-bottom:10px">IDENTITY VERIFICATION</div>
+    <div style="font-size:20px;font-weight:800;color:#F1F5F9;margin-bottom:6px">Position Your Face in the Camera</div>
+    <div style="font-size:13px;color:#64748B;margin-bottom:16px">We need to verify you are present before the test begins</div>
+    <div class="fg-video-wrap">
+      <video id="fg-video" autoplay muted playsinline></video>
+      <div class="fg-status-badge checking" id="fg-badge">🔍 Verifying face…</div>
+    </div>
+    <div class="fg-warning">
+      <strong>⚠️ Critical Notice</strong>
+      Your face must be <strong>clearly visible and centered</strong> in the camera throughout the entire test.
+      Candidates found absent or not in front of the camera will be <strong>automatically disqualified</strong>
+      and their test will be marked as rejected. Face checks happen after every question.
+    </div>
+    <button class="fg-btn" id="fg-start-btn" disabled onclick="faceGateProceed()">
+      Verifying face — please wait…
+    </button>
+    <div style="font-size:11px;color:#374151;margin-top:10px">Make sure your face is fully visible, well-lit, and centered before proceeding</div>
+  </div>
+</div>
 
 <!-- ══ PERMISSION SCREEN ═════════════════════════════════════════════════════ -->
 <div class="app-body" id="perm-screen">
@@ -663,13 +703,12 @@ async function requestPermissions() {
       throw new Error('Video recording could not start. Please use latest Chrome/Edge and allow camera permission.');
     }
     await createSession();
-    setTimeout(() => {
-      document.getElementById('perm-screen').style.display = 'none';
-      document.getElementById('interview-screen').style.display = 'flex';
-      loadQuestion(0);
-      startAntiCheat();
-      startFaceDetection();
-    }, 600);
+    // Show face gate — mirror stream to gate video, verify face before starting
+    const fgVideo = document.getElementById('fg-video');
+    fgVideo.srcObject = mediaStream;
+    document.getElementById('perm-screen').style.display = 'none';
+    document.getElementById('face-gate').classList.add('active');
+    startFaceGateCheck();
   } catch (e) {
     err.textContent = e.name === 'NotAllowedError'
       ? '❌ Permission denied. Please allow camera & microphone in your browser settings.'
@@ -1098,6 +1137,26 @@ async function nextQuestion(allowBlank = false) {
   answers.push(answer);
   await saveAnswer(answer);
   copyCount = 0;
+
+  // Fire face check in background — non-blocking, shows popup only if no face found
+  const qNoForFace = currentQ + 1;
+  captureFaceFrame().then(img => {
+    if (!img) return;
+    const fd = new FormData();
+    fd.append('token', TOKEN);
+    fd.append('image', img);
+    fd.append('question_no', qNoForFace);
+    fetch('api/check_face.php', { method: 'POST', body: fd })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d && d.face === false) {
+          logCheat('Face not visible after Q' + qNoForFace);
+          showFaceAlert();
+        }
+      })
+      .catch(() => {});
+  });
+
   btn.disabled = false;
   loadQuestion(resolveNextQuestionIndex(textAnswer));
 }
@@ -1287,6 +1346,115 @@ function startFaceDetection() {
 
 function logCheat(msg) {
   cheatLog.push({ time: new Date().toISOString(), msg, question: currentQ + 1 });
+}
+
+let _faceGateTimer = null;
+
+function startFaceGateCheck() {
+  const badge  = document.getElementById('fg-badge');
+  const btn    = document.getElementById('fg-start-btn');
+  let attempts = 0;
+
+  async function check() {
+    attempts++;
+    badge.className = 'fg-status-badge checking';
+    badge.textContent = '🔍 Verifying face…';
+    btn.disabled = true;
+    btn.textContent = 'Verifying face — please wait…';
+
+    const img = await captureFaceFrameFrom(document.getElementById('fg-video'));
+    if (!img) {
+      // No video ready yet — retry
+      _faceGateTimer = setTimeout(check, 2000);
+      return;
+    }
+    const fd = new FormData();
+    fd.append('token', TOKEN);
+    fd.append('image', img);
+    fd.append('question_no', 0);
+    try {
+      const r = await fetch('api/check_face.php', { method: 'POST', body: fd });
+      const d = r.ok ? await r.json() : null;
+      if (d && d.face === true) {
+        badge.className = 'fg-status-badge ok';
+        badge.textContent = '✅ Face detected — ready!';
+        btn.disabled = false;
+        btn.className = 'fg-btn ready';
+        btn.textContent = '✅ Face Verified — Start Interview →';
+      } else {
+        badge.className = 'fg-status-badge fail';
+        badge.textContent = '❌ Face not detected — adjust position';
+        btn.disabled = true;
+        btn.textContent = 'Face not detected — adjusting…';
+        _faceGateTimer = setTimeout(check, 3000);
+      }
+    } catch(e) {
+      // On network error fallback after 2 retries — don't block forever
+      if (attempts >= 3) {
+        badge.className = 'fg-status-badge ok';
+        badge.textContent = '⚠️ Verification skipped';
+        btn.disabled = false;
+        btn.className = 'fg-btn ready';
+        btn.textContent = 'Start Interview →';
+      } else {
+        _faceGateTimer = setTimeout(check, 2500);
+      }
+    }
+  }
+  // Wait for video to be ready, then start checking
+  setTimeout(check, 1200);
+}
+
+function faceGateProceed() {
+  clearTimeout(_faceGateTimer);
+  document.getElementById('face-gate').classList.remove('active');
+  document.getElementById('interview-screen').style.display = 'flex';
+  loadQuestion(0);
+  startAntiCheat();
+  startFaceDetection();
+}
+
+function captureFaceFrameFrom(videoEl) {
+  return new Promise(resolve => {
+    try {
+      if (!videoEl || !videoEl.videoWidth) return resolve(null);
+      const c = document.createElement('canvas');
+      c.width = 320; c.height = 240;
+      c.getContext('2d').drawImage(videoEl, 0, 0, 320, 240);
+      resolve(c.toDataURL('image/jpeg', 0.7));
+    } catch(e) { resolve(null); }
+  });
+}
+
+function captureFaceFrame() {
+  return captureFaceFrameFrom(document.getElementById('video-el'));
+}
+
+function showFaceAlert() {
+  // Remove any existing face alert
+  document.querySelectorAll('.face-alert').forEach(el => el.remove());
+  const el = document.createElement('div');
+  el.className = 'face-alert';
+  el.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    background:#0D1B2E;border:2px solid #F59E0B;border-radius:18px;
+    padding:28px 36px;z-index:9999;text-align:center;max-width:400px;width:90%;
+    box-shadow:0 24px 64px rgba(0,0,0,.85);animation:faceAlertIn .25s cubic-bezier(.4,0,.2,1)`;
+  el.innerHTML = `
+    <div style="font-size:42px;margin-bottom:12px">📷</div>
+    <div style="font-size:17px;font-weight:800;color:#F59E0B;margin-bottom:8px">Face Not Detected</div>
+    <div style="font-size:13px;color:#94A3B8;line-height:1.7;margin-bottom:20px">
+      Your face was not visible during the last question.<br>
+      Please ensure you are <strong style="color:#E2E8F0">sitting directly in front of the camera</strong><br>
+      with your face clearly visible throughout the interview.
+    </div>
+    <div style="font-size:11px;color:#64748B;margin-bottom:18px">⚠️ This has been logged in your integrity report.</div>
+    <button onclick="this.closest('.face-alert').remove()" style="background:linear-gradient(135deg,#B45309,#F59E0B);
+      color:#fff;border:none;border-radius:9px;padding:11px 28px;font-size:14px;font-weight:700;cursor:pointer;">
+      I Understand — I'm Back
+    </button>`;
+  document.body.appendChild(el);
+  // Auto-dismiss after 15 seconds
+  setTimeout(() => { if (el.parentElement) el.remove(); }, 15000);
 }
 
 function showPasteAlert(charCount) {

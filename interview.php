@@ -410,6 +410,21 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--
 
 <?php else: ?>
 
+<!-- ══ TERMINATION SCREEN ════════════════════════════════════════════════════ -->
+<div class="app-body" id="termination-screen" style="display:none;align-items:center;justify-content:center;background:var(--bg)">
+  <div style="text-align:center;max-width:480px;padding:40px 24px">
+    <div style="font-size:64px;margin-bottom:20px">🚫</div>
+    <div style="font-size:22px;font-weight:800;color:#EF4444;margin-bottom:10px">Interview Terminated</div>
+    <div style="font-size:14px;color:#94A3B8;line-height:1.7;margin-bottom:8px" id="termination-reason">
+      Your face was not detected during the interview.
+    </div>
+    <div style="font-size:13px;color:#64748B;line-height:1.6;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:12px;padding:14px 18px;margin-top:16px">
+      This interview session has been marked as <strong style="color:#FCA5A5">terminated due to integrity violation</strong>.
+      If you believe this is an error, please contact the recruiter directly.
+    </div>
+  </div>
+</div>
+
 <!-- ══ FACE GATE MODAL ════════════════════════════════════════════════════════ -->
 <div id="face-gate">
   <div class="fg-card">
@@ -661,6 +676,7 @@ let videoRecorder = null, videoChunks = [];
 let isRecording = false, sessionId = null, interviewStartTime = Date.now();
 let answers = [], currentMode = 'voice';
 let copyCount = 0, tabSwitchCount = 0, cheatLog = [];
+let _faceFailCount = 0, _faceRecheckTimer = null, _interviewTerminated = false;
 
 function pickSupportedMime(candidates) {
   if (!window.MediaRecorder) return '';
@@ -696,6 +712,13 @@ async function requestPermissions() {
     if (!hasCamera) throw new Error('Camera is required to start the test. Please allow camera permission and try again.');
     if (!hasMic) throw new Error('Microphone is required. Please allow microphone permission and try again.');
     document.getElementById('video-el').srcObject = mediaStream;
+    // Detect camera being turned off / blocked mid-interview
+    mediaStream.getVideoTracks().forEach(track => {
+      track.addEventListener('ended', () => {
+        logCheat('Camera track ended — camera disconnected or blocked');
+        terminateInterview('Camera was disconnected or blocked during the test.');
+      });
+    });
     document.getElementById('pc-camera').className = 'perm-check ok';
     document.getElementById('pc-mic').className    = 'perm-check ok';
     document.getElementById('rec-badge').style.display = 'flex';
@@ -1138,24 +1161,9 @@ async function nextQuestion(allowBlank = false) {
   await saveAnswer(answer);
   copyCount = 0;
 
-  // Fire face check in background — non-blocking, shows popup only if no face found
+  // Face check after each question — terminate on consecutive failure
   const qNoForFace = currentQ + 1;
-  captureFaceFrame().then(img => {
-    if (!img) return;
-    const fd = new FormData();
-    fd.append('token', TOKEN);
-    fd.append('image', img);
-    fd.append('question_no', qNoForFace);
-    fetch('api/check_face.php', { method: 'POST', body: fd })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (d && d.face === false) {
-          logCheat('Face not visible after Q' + qNoForFace);
-          showFaceAlert();
-        }
-      })
-      .catch(() => {});
-  });
+  checkFaceOrTerminate(qNoForFace, false);
 
   btn.disabled = false;
   loadQuestion(resolveNextQuestionIndex(textAnswer));
@@ -1430,31 +1438,109 @@ function captureFaceFrame() {
   return captureFaceFrameFrom(document.getElementById('video-el'));
 }
 
-function showFaceAlert() {
-  // Remove any existing face alert
+async function checkFaceOrTerminate(qNo, isRecheck) {
+  if (_interviewTerminated) return;
+  const img = await captureFaceFrame();
+  if (!img) return; // no video — skip silently
+  const fd = new FormData();
+  fd.append('token', TOKEN);
+  fd.append('image', img);
+  fd.append('question_no', qNo);
+  try {
+    const r = await fetch('api/check_face.php', { method: 'POST', body: fd });
+    const d = r.ok ? await r.json() : null;
+    if (d && d.face === false) {
+      logCheat((isRecheck ? 'Re-check failed' : 'Face not visible') + ' after Q' + qNo);
+      _faceFailCount++;
+      if (isRecheck) {
+        // Second consecutive failure → terminate
+        terminateInterview('Your face was not visible on two consecutive checks. The interview has been terminated to ensure test integrity.');
+      } else {
+        // First failure → show warning with re-check countdown
+        showFaceWarning(qNo);
+      }
+    } else {
+      _faceFailCount = 0;
+      // Clear any existing face warning
+      document.querySelectorAll('.face-alert').forEach(el => el.remove());
+    }
+  } catch(e) {
+    _faceFailCount = 0; // network error — don't penalise
+  }
+}
+
+function showFaceWarning(qNo) {
   document.querySelectorAll('.face-alert').forEach(el => el.remove());
   const el = document.createElement('div');
   el.className = 'face-alert';
   el.style.cssText = `position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-    background:#0D1B2E;border:2px solid #F59E0B;border-radius:18px;
-    padding:28px 36px;z-index:9999;text-align:center;max-width:400px;width:90%;
-    box-shadow:0 24px 64px rgba(0,0,0,.85);animation:faceAlertIn .25s cubic-bezier(.4,0,.2,1)`;
+    background:#0D1B2E;border:2px solid #EF4444;border-radius:18px;
+    padding:28px 36px;z-index:9999;text-align:center;max-width:420px;width:90%;
+    box-shadow:0 24px 64px rgba(0,0,0,.9);animation:faceAlertIn .25s cubic-bezier(.4,0,.2,1)`;
+  let secs = 15;
   el.innerHTML = `
-    <div style="font-size:42px;margin-bottom:12px">📷</div>
-    <div style="font-size:17px;font-weight:800;color:#F59E0B;margin-bottom:8px">Face Not Detected</div>
-    <div style="font-size:13px;color:#94A3B8;line-height:1.7;margin-bottom:20px">
-      Your face was not visible during the last question.<br>
-      Please ensure you are <strong style="color:#E2E8F0">sitting directly in front of the camera</strong><br>
-      with your face clearly visible throughout the interview.
+    <div style="font-size:42px;margin-bottom:12px">🚨</div>
+    <div style="font-size:17px;font-weight:800;color:#EF4444;margin-bottom:8px">Face Not Detected!</div>
+    <div style="font-size:13px;color:#94A3B8;line-height:1.7;margin-bottom:12px">
+      Your face was <strong style="color:#FCA5A5">not visible</strong> during the last question.<br>
+      Please sit directly in front of the camera now.<br><br>
+      <strong style="color:#FCA5A5">⚠️ If your face is not detected again, your interview will be automatically terminated.</strong>
     </div>
-    <div style="font-size:11px;color:#64748B;margin-bottom:18px">⚠️ This has been logged in your integrity report.</div>
-    <button onclick="this.closest('.face-alert').remove()" style="background:linear-gradient(135deg,#B45309,#F59E0B);
-      color:#fff;border:none;border-radius:9px;padding:11px 28px;font-size:14px;font-weight:700;cursor:pointer;">
-      I Understand — I'm Back
-    </button>`;
+    <div style="font-size:24px;font-weight:900;color:#EF4444;margin-bottom:14px" id="face-warn-countdown">${secs}s</div>
+    <div style="font-size:11px;color:#64748B">Re-checking automatically in ${secs} seconds…</div>`;
   document.body.appendChild(el);
-  // Auto-dismiss after 15 seconds
-  setTimeout(() => { if (el.parentElement) el.remove(); }, 15000);
+  const tick = setInterval(() => {
+    secs--;
+    const cd = document.getElementById('face-warn-countdown');
+    if (cd) cd.textContent = secs + 's';
+    if (secs <= 0) {
+      clearInterval(tick);
+      el.remove();
+      checkFaceOrTerminate(qNo, true); // re-check
+    }
+  }, 1000);
+}
+
+async function terminateInterview(reason) {
+  if (_interviewTerminated) return;
+  _interviewTerminated = true;
+  clearTimeout(_faceRecheckTimer);
+  clearInterval(timerInt);
+  document.querySelectorAll('.face-alert').forEach(el => el.remove());
+
+  // Show termination screen
+  document.getElementById('interview-screen').style.display = 'none';
+  document.getElementById('face-gate').classList.remove('active');
+  const ts = document.getElementById('termination-screen');
+  ts.style.display = 'flex';
+  if (reason) document.getElementById('termination-reason').textContent = reason;
+
+  // Complete session on backend with termination flag
+  logCheat('TERMINATED: ' + (reason || 'face not detected'));
+  const payload = JSON.stringify({
+    token: TOKEN, session_id: sessionId, answers,
+    duration_seconds: Math.round((Date.now() - interviewStartTime) / 1000),
+    cheat_summary: {
+      tab_switches      : tabSwitchCount,
+      face_away         : _faceFailCount,
+      copy_paste        : answers.reduce((s, a) => s + (a.copy_count || 0), 0),
+      total_flags       : cheatLog.length,
+      terminated        : true,
+      termination_reason: 'face_not_detected',
+      cheat_log         : cheatLog,
+    },
+  });
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon('api/interview.php?action=complete_interview', new Blob([payload], { type: 'application/json' }));
+  } else {
+    fetch('api/interview.php?action=complete_interview', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload
+    }).catch(() => {});
+  }
+
+  // Stop recording and camera
+  if (isRecording) { try { if (videoRecorder?.state !== 'inactive') videoRecorder.stop(); } catch(e) {} }
+  if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
 }
 
 function showPasteAlert(charCount) {

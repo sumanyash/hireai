@@ -671,12 +671,25 @@ body{font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;backgroun
       You will receive a <strong>WhatsApp message</strong> from our team shortly.
     </div>
     <div class="done-badge">✅ Responses Submitted</div>
-    <div class="share-row">
-      <a id="share-wa" class="share-btn share-wa" target="_blank" rel="noopener">WhatsApp</a>
-      <a id="share-mail" class="share-btn share-mail">Email</a>
-      <button class="share-btn share-copy" onclick="copyReferral()">Copy Link</button>
+
+    <!-- Close / leave guidance -->
+    <div style="margin:20px 0;background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:12px;padding:14px 16px;text-align:left;display:flex;align-items:flex-start;gap:12px">
+      <span style="font-size:22px;flex-shrink:0">👍</span>
+      <div>
+        <div style="font-size:14px;font-weight:700;color:#15803D;margin-bottom:4px">You're all done — you can safely close this tab</div>
+        <div style="font-size:12px;color:#166534;line-height:1.6">Your responses have been saved. You do not need to keep this page open. Close or navigate away whenever you're ready.</div>
+      </div>
     </div>
-    <div class="powered-by">Powered by <strong>HireAI</strong> — Avyukta Intellicall</div>
+    <button onclick="window.close()" style="width:100%;padding:13px;background:linear-gradient(135deg,#059669,#10B981);color:#fff;border:none;border-radius:11px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(5,150,105,.3);margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:7px">
+      ✕ Close This Tab
+    </button>
+
+    <div class="share-row">
+      <a id="share-wa" class="share-btn share-wa" target="_blank" rel="noopener">Share WhatsApp</a>
+      <a id="share-mail" class="share-btn share-mail">Share Email</a>
+      <button class="share-btn share-copy" onclick="copyReferral()">Copy Referral Link</button>
+    </div>
+    <div class="powered-by" style="background:#F8FAFC;border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:16px;font-size:11px;color:var(--muted);text-align:center">Powered by <strong style="color:var(--blue)">Avyukta Intellicall</strong></div>
   </div>
 </div>
 

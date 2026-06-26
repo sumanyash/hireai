@@ -11,6 +11,33 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     http_response_code(405); echo json_encode(['error' => 'Method not allowed']); exit;
 }
 
+// IP rate limiting: max 60 checks per minute
+(function() {
+    $ip   = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+    $ip   = trim(explode(',', $ip)[0]);
+    $key  = 'dupchk_' . hash('sha256', $ip);
+    $file = sys_get_temp_dir() . '/hireai_dupchk_rl.json';
+    $fh   = fopen($file, 'c+');
+    if ($fh) {
+        flock($fh, LOCK_EX);
+        $data = json_decode(stream_get_contents($fh) ?: '{}', true);
+        if (!is_array($data)) $data = [];
+        $now  = time();
+        $row  = $data[$key] ?? ['count' => 0, 'window_start' => $now];
+        if ($now - $row['window_start'] > 60) { $row = ['count' => 0, 'window_start' => $now]; }
+        $row['count']++;
+        $data[$key] = $row;
+        ftruncate($fh, 0); rewind($fh);
+        fwrite($fh, json_encode($data));
+        flock($fh, LOCK_UN); fclose($fh);
+        if ($row['count'] > 60) {
+            http_response_code(429);
+            echo json_encode(['exists' => false]);
+            exit;
+        }
+    }
+})();
+
 $campaign_id = (int)($_GET['campaign_id'] ?? 0);
 $phone       = trim($_GET['phone'] ?? '');
 $email       = strtolower(trim($_GET['email'] ?? ''));

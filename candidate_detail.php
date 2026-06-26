@@ -105,14 +105,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: candidate_detail.php?id=$id&toast=note_added"); exit;
     }
     if (isset($_POST['update_status'])) {
+        $allowed_statuses = ['pending','outreach_sent','interview_started','interview_completed','shortlisted','rejected','on_hold','terminated'];
+        $new_status = $_POST['status'] ?? '';
+        if (!in_array($new_status, $allowed_statuses, true)) {
+            header("Location: candidate_detail.php?id=$id&toast=invalid_status"); exit;
+        }
         db_execute("UPDATE candidates SET status=?, updated_at=NOW() WHERE id=?",
-            [$_POST['status'], $id], 'si');
+            [$new_status, $id], 'si');
         header("Location: candidate_detail.php?id=$id&toast=status_updated"); exit;
     }
     if (isset($_POST['override_score'])) {
+        $clamped_score = max(0, min(100, (int)$_POST['override_score']));
         db_execute(
             "UPDATE interview_results SET recruiter_override_score=?,recruiter_override_reason=?,overridden_by=? WHERE candidate_id=?",
-            [(int)$_POST['override_score'], $_POST['reason'], $user['user_id'], $id], 'isii'
+            [$clamped_score, $_POST['reason'], $user['user_id'], $id], 'isii'
         );
         header("Location: candidate_detail.php?id=$id&toast=score_updated"); exit;
     }

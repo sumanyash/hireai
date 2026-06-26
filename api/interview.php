@@ -61,12 +61,16 @@ if($action==='create_session'&&$method==='GET'){
     json_response(['error'=>'Interview locked — only one attempt allowed'],403);
   }
 
-  // Fresh start: pending or outreach_sent
-  $existing=db_fetch_one("SELECT id FROM interview_sessions WHERE candidate_id=? AND status='in_progress' ORDER BY id DESC LIMIT 1",[$c['id']],'i');
-  if($existing)json_response(['session_id'=>$existing['id']]);
-  $sid=db_insert("INSERT INTO interview_sessions (candidate_id,campaign_id,status,started_at) VALUES (?,?,'in_progress',NOW())",[$c['id'],$c['campaign_id']],'ii');
-  // Fix: was only WHERE status='pending' — outreach_sent candidates were never marked interview_started
+  // Fresh start: atomically claim status to prevent race condition (two concurrent tabs)
   db_execute("UPDATE candidates SET status='interview_started' WHERE id=? AND status IN ('pending','outreach_sent')",[$c['id']],'i');
+  $claimed = get_db()->affected_rows;
+  if($claimed === 0){
+    // Another concurrent request already started — return existing session
+    $existing=db_fetch_one("SELECT id FROM interview_sessions WHERE candidate_id=? AND status='in_progress' ORDER BY id DESC LIMIT 1",[$c['id']],'i');
+    if($existing)json_response(['session_id'=>$existing['id']]);
+    json_response(['error'=>'Interview session could not be started'],500);
+  }
+  $sid=db_insert("INSERT INTO interview_sessions (candidate_id,campaign_id,status,started_at) VALUES (?,?,'in_progress',NOW())",[$c['id'],$c['campaign_id']],'ii');
   json_response(['session_id'=>$sid]);
 }
 
@@ -135,7 +139,9 @@ if($method==='POST'&&($action==='webhook'||$action==='')){
       db_execute("UPDATE interview_sessions SET full_transcript=?,recording_url=?,duration_seconds=?,completed_at=NOW(),status='completed',el_conversation_id=? WHERE id=?",
         [$tr,$rec,$dur,$conv_id,$session['id']],'ssisi');
       db_execute("UPDATE candidates SET status='interview_completed' WHERE id=?",[$session['candidate_id']],'i');
-      exec("php ".escapeshellarg(__DIR__."/score.php")." {$session['candidate_id']} {$session['campaign_id']} > /tmp/score_{$session['candidate_id']}.log 2>&1 &");
+      $s_cid=(int)$session['candidate_id'];$s_cmp=(int)$session['campaign_id'];
+      $s_log=escapeshellarg("/tmp/score_{$s_cid}.log");
+      exec("php ".escapeshellarg(__DIR__."/score.php")." $s_cid $s_cmp > $s_log 2>&1 &");
     }
   }
   json_response(['status'=>'ok']);

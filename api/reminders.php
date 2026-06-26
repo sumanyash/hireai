@@ -21,10 +21,14 @@ if ($action === 'schedule' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
 if ($action === 'send_due') {
     $is_cli = php_sapi_name() === 'cli';
+    $remind_org_id = null;
     if (!$is_cli) {
         $user = verify_jwt();
         if (!$user) json_response(['error' => 'Unauthorized'], 401);
+        $remind_org_id = (int)$user['org_id'];
     }
+    // When called via HTTP, scope to authenticated user's org only
+    $org_filter = $remind_org_id ? "AND c.org_id=$remind_org_id" : '';
     $jobs = db_fetch_all(
         "SELECT r.*, c.name, c.phone, c.unique_token, c.org_id, c.link_expires_at, c.status AS candidate_status, camp.name AS campaign_name, camp.job_role
          FROM reminder_jobs r
@@ -33,6 +37,7 @@ if ($action === 'send_due') {
          WHERE r.status='pending' AND r.scheduled_at<=NOW()
            AND c.status IN ('pending','outreach_sent','interview_started')
            AND (c.link_expires_at IS NULL OR c.link_expires_at > NOW())
+           $org_filter
          ORDER BY r.scheduled_at ASC
          LIMIT 50"
     );

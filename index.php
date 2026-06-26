@@ -14,7 +14,8 @@ if (empty($_SESSION['token']) && !empty($_COOKIE['hire_remember'])) {
             // Issue a fresh 30-day token
             $new_token = make_jwt($db_user['id'], $db_user['role'], $db_user['org_id'], 86400 * 30);
             $_SESSION['token'] = $new_token;
-            $_SESSION['user']  = $db_user;
+            $safe_db_user = $db_user; unset($safe_db_user['password_hash']);
+            $_SESSION['user']  = $safe_db_user;
             setcookie('hire_remember', $new_token, time() + (86400 * 30), '/', '', true, true);
         } else {
             // User deactivated — clear stale cookie
@@ -76,7 +77,8 @@ if (time() < $locked_until) {
         $expiry = $remember_me ? (86400 * 30) : 86400;
         $token  = make_jwt($user['id'], $user['role'], $user['org_id'], $expiry);
         $_SESSION['token'] = $token;
-        $_SESSION['user']  = $user;
+        $safe_user = $user; unset($safe_user['password_hash']);
+        $_SESSION['user']  = $safe_user;
         if ($remember_me) {
             setcookie('hire_remember', $token, time() + (86400 * 30), '/', '', true, true);
         }

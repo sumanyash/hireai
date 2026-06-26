@@ -16,6 +16,47 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') { ob_end_clean(); echo json_encode(['
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/functions.php';
 
+// IP rate limiting: max 10 applications per IP per hour
+(function() {
+    $ip   = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+    $ip   = trim(explode(',', $ip)[0]);
+    $key  = 'apply_rl_' . hash('sha256', $ip);
+    $file = sys_get_temp_dir() . '/hireai_apply_rl.json';
+    $fh   = fopen($file, 'c+');
+    if ($fh) {
+        flock($fh, LOCK_EX);
+        $data = json_decode(stream_get_contents($fh) ?: '{}', true);
+        if (!is_array($data)) $data = [];
+        $now  = time();
+        $row  = $data[$key] ?? ['count' => 0, 'window_start' => $now];
+        if ($now - $row['window_start'] > 3600) { $row = ['count' => 0, 'window_start' => $now]; }
+        $row['count']++;
+        $data[$key] = $row;
+        ftruncate($fh, 0); rewind($fh);
+        fwrite($fh, json_encode($data));
+        flock($fh, LOCK_UN); fclose($fh);
+        if ($row['count'] > 10) {
+            ob_end_clean();
+            http_response_code(429);
+            echo json_encode(['success' => false, 'error' => 'Too many applications. Please try again later.']);
+            exit;
+        }
+    }
+})();
+
+// Allowed MIME types per upload category
+define('APPLY_MIME_DOC',   ['application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
+define('APPLY_MIME_IMAGE', ['image/jpeg','image/png','image/gif','image/webp']);
+define('APPLY_MIME_VIDEO', ['video/mp4','video/webm','video/quicktime','video/x-msvideo']);
+define('APPLY_MIME_ALL',   array_merge(APPLY_MIME_DOC, APPLY_MIME_IMAGE, APPLY_MIME_VIDEO));
+
+function apply_detect_mime(string $bytes): string {
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mime  = $finfo ? (finfo_buffer($finfo, $bytes) ?: '') : '';
+    if ($finfo) finfo_close($finfo);
+    return $mime;
+}
+
 $raw  = file_get_contents('php://input');
 $data = json_decode($raw, true);
 if (!is_array($data)) { ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Invalid JSON']); exit; }
@@ -214,8 +255,13 @@ if ($email === '' || !strict_email_apply($email)) {
 $dob = s($data, 'dob');
 if ($dob === '') $dob = dynamic_answer_by_keys($application_answers, ['dob','date_of_birth','birth_date']);
 // DOB and joining date are optional — only validate format if provided
-if ($dob !== '' && (!strict_date_apply($dob) || $dob > date('Y-m-d'))) {
-    apply_fail('Date of birth must be a valid date in YYYY-MM-DD format and cannot be in the future.');
+if ($dob !== '') {
+    $min_age_date = date('Y-m-d', strtotime('-18 years'));
+    if (!strict_date_apply($dob) || $dob > date('Y-m-d')) {
+        apply_fail('Date of birth must be a valid date in YYYY-MM-DD format and cannot be in the future.');
+    } elseif ($dob > $min_age_date) {
+        apply_fail('You must be at least 18 years old to apply.');
+    }
 }
 $data['dob'] = $dob;
 $joining_date = s($data, 'joining_date');
@@ -308,8 +354,10 @@ foreach ($clean_application_answers as $fid => &$answer) {
     if (!is_array($file) || empty($file['base64']) || empty($file['name'])) continue;
     $dec = base64_decode($file['base64'], true);
     if (!$dec || strlen($dec) > 20 * 1024 * 1024) continue;
-    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION)) ?: 'bin';
-    $safe_ext = preg_replace('/[^a-z0-9]/', '', $ext) ?: 'bin';
+    $mime = apply_detect_mime($dec);
+    if (!in_array($mime, APPLY_MIME_ALL, true)) continue;
+    $ext_map = ['application/pdf'=>'pdf','application/msword'=>'doc','application/vnd.openxmlformats-officedocument.wordprocessingml.document'=>'docx','image/jpeg'=>'jpg','image/png'=>'png','image/gif'=>'gif','image/webp'=>'webp','video/mp4'=>'mp4','video/webm'=>'webm','video/quicktime'=>'mov','video/x-msvideo'=>'avi'];
+    $safe_ext = $ext_map[$mime] ?? 'bin';
     $fn = 'app_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $safe_ext;
     if (file_put_contents($udir . 'application/' . $fn, $dec) !== false) {
         $path = 'uploads/application/' . $fn;
@@ -327,10 +375,14 @@ unset($answer);
 if (!empty($data['resume_base64']) && !empty($data['resume_name'])) {
     $dec = base64_decode($data['resume_base64'],true);
     if ($dec && strlen($dec) <= 20*1024*1024) {
-        $ext = strtolower(pathinfo($data['resume_name'],PATHINFO_EXTENSION)) ?: 'pdf';
-        $fn  = 'resume_'.time().'_'.bin2hex(random_bytes(4)).'.'.$ext;
-        if (file_put_contents($udir.'resumes/'.$fn,$dec) !== false)
-            $resume_path = 'uploads/resumes/'.$fn;
+        $mime = apply_detect_mime($dec);
+        if (in_array($mime, array_merge(APPLY_MIME_DOC, APPLY_MIME_IMAGE), true)) {
+            $ext_map = ['application/pdf'=>'pdf','application/msword'=>'doc','application/vnd.openxmlformats-officedocument.wordprocessingml.document'=>'docx','image/jpeg'=>'jpg','image/png'=>'png'];
+            $ext = $ext_map[$mime] ?? 'pdf';
+            $fn  = 'resume_'.time().'_'.bin2hex(random_bytes(4)).'.'.$ext;
+            if (file_put_contents($udir.'resumes/'.$fn,$dec) !== false)
+                $resume_path = 'uploads/resumes/'.$fn;
+        }
     }
 }
 if (s($data,'video_option') === 'link') {
@@ -338,10 +390,14 @@ if (s($data,'video_option') === 'link') {
 } elseif (s($data,'video_option') === 'upload' && !empty($data['video_base64'])) {
     $dec = base64_decode($data['video_base64'],true);
     if ($dec && strlen($dec) <= 50*1024*1024) {
-        $ext = strtolower(pathinfo($data['video_name'] ?? 'v.mp4',PATHINFO_EXTENSION)) ?: 'mp4';
-        $fn  = 'video_'.time().'_'.bin2hex(random_bytes(4)).'.'.$ext;
-        if (file_put_contents($udir.'videos/'.$fn,$dec) !== false)
-            $video_path = 'uploads/videos/'.$fn;
+        $mime = apply_detect_mime($dec);
+        if (in_array($mime, APPLY_MIME_VIDEO, true)) {
+            $ext_map = ['video/mp4'=>'mp4','video/webm'=>'webm','video/quicktime'=>'mov','video/x-msvideo'=>'avi'];
+            $ext = $ext_map[$mime] ?? 'mp4';
+            $fn  = 'video_'.time().'_'.bin2hex(random_bytes(4)).'.'.$ext;
+            if (file_put_contents($udir.'videos/'.$fn,$dec) !== false)
+                $video_path = 'uploads/videos/'.$fn;
+        }
     }
 }
 

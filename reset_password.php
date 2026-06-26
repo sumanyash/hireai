@@ -36,13 +36,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $tok_data) {
         $error = 'Passwords do not match.';
     } else {
         $hash = password_hash($new, PASSWORD_BCRYPT, ['cost' => 12]);
+        // Delete token BEFORE updating password to prevent concurrent reuse
+        @unlink(PW_RESET_DIR . 'u' . $user_id . '_' . $token . '.tok');
         db_execute("UPDATE users SET password_hash=? WHERE id=?", [$hash, $user_id], 'si');
         audit_log(
             db_fetch_one("SELECT org_id FROM users WHERE id=?", [$user_id], 'i')['org_id'] ?? 0,
             $user_id, 'user', $user_id, 'password_reset_via_link'
         );
-        // Invalidate the token
-        @unlink(PW_RESET_DIR . 'u' . $user_id . '_' . $token . '.tok');
         $success = true;
     }
 }

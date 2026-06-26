@@ -31,6 +31,8 @@ function verify_jwt($token = null) {
     if (!hash_equals($expected, $s)) return null;
     $data = json_decode(base64_decode(strtr($p, '-_', '+/')), true);
     if (!$data || $data['exp'] < time()) return null;
+    $hdr = json_decode(base64_decode(strtr($h, '-_', '+/')), true);
+    if (($hdr['alg'] ?? '') !== 'HS256') return null;
     return $data;
 }
 
@@ -136,19 +138,9 @@ function send_whatsapp($phone, $message, $context = []) {
 }
 
 function send_whatsapp_content($phone, $content, $context = [], $endpoint = null) {
-    if (CREDIT_ENFORCEMENT && !empty($context['org_id'])) {
-        $wallet = ensure_credit_wallet((int)$context['org_id']);
-        $needed = max(1, (int)($context['credits'] ?? 1));
-        $available = (int)($wallet['whatsapp_credits'] ?? 0);
-        if ($available < $needed) {
-            return [
-                'code' => 402,
-                'response' => 'Insufficient WhatsApp credits',
-                'error' => 'Insufficient WhatsApp credits',
-                'credit' => ['success' => false, 'balance' => $available],
-            ];
-        }
-    }
+    // Credit check removed from pre-send — deduct_credit() is atomic and handles
+    // insufficient balance via WHERE balance >= ? guard, avoiding the race condition
+    // of a non-atomic read-then-send pattern.
     if (!WA_API_URL || !WA_INSTANCE_ID || !WA_TOKEN) {
         $missing = [];
         if (!WA_API_URL) $missing[] = 'WA_API_URL';

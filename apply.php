@@ -25,13 +25,13 @@ if ($ref_token !== '') {
 $campaign = null;
 if ($campaign_id) {
     $campaign = db_fetch_one(
-        "SELECT * FROM campaigns WHERE id=? AND status IN ('active','draft','paused','completed')",
+        "SELECT * FROM campaigns WHERE id=? AND status='active'",
         [$campaign_id],
         'i'
     );
 } elseif ($token) {
     $campaign = db_fetch_one(
-        "SELECT * FROM campaigns WHERE share_token=? AND status IN ('active','draft','paused','completed')",
+        "SELECT * FROM campaigns WHERE share_token=? AND status='active'",
         [$token],
         's'
     );

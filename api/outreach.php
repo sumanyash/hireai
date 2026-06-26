@@ -332,7 +332,7 @@ if ($action === 'bulk_send') {
         ]);
         if ($result['code'] >= 200 && $result['code'] < 300) {
             $sent++;
-            db_execute("UPDATE candidates SET status='outreach_sent' WHERE id=?", [$id], 'i');
+            db_execute("UPDATE candidates SET status='outreach_sent' WHERE id=? AND org_id=?", [$id, $user['org_id']], 'ii');
         } else { $failed++; }
         db_execute("INSERT INTO outreach_log (candidate_id,campaign_id,channel,status) VALUES (?,?,'whatsapp',?)", [$id, $c['campaign_id'], $result['code']<300?'sent':'failed'], 'iis');
         usleep(500000); // 0.5s delay between messages

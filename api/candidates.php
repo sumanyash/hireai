@@ -60,32 +60,36 @@ function safe_candidate_reminder($candidate_id, $campaign_id) {
     }
 }
 
-function candidate_duplicate_exists($campaign_id, $phone, $email) {
+// Returns null if no duplicate, or ['campaign_id'=>X,'campaign_name'=>Y] of the conflicting record.
+function candidate_duplicate_check($org_id, $phone, $email, $exclude_id = null) {
     $phone = normalize_phone($phone);
     $email = strtolower(trim((string)$email));
     $conditions = [];
     $params = [];
     $types = '';
-    if ($phone !== '') { $conditions[] = "phone=?"; $params[] = $phone; $types .= 's'; }
-    if ($email !== '') { $conditions[] = "LOWER(email)=?"; $params[] = $email; $types .= 's'; }
-    if (empty($conditions)) return false;
+    if ($phone !== '') { $conditions[] = "c.phone=?"; $params[] = $phone; $types .= 's'; }
+    if ($email !== '') { $conditions[] = "LOWER(c.email)=?"; $params[] = $email; $types .= 's'; }
+    if (empty($conditions)) return null;
     $where = implode(' OR ', $conditions);
-    $row = db_fetch_one("SELECT id FROM candidates WHERE campaign_id=? AND ($where) LIMIT 1", array_merge([$campaign_id], $params), 'i' . $types);
-    return $row !== null;
+    $excludeClause = $exclude_id ? " AND c.id<>?" : "";
+    if ($exclude_id) { $params[] = $exclude_id; $types .= 'i'; }
+    $row = db_fetch_one(
+        "SELECT c.id, c.campaign_id, camp.name AS campaign_name
+         FROM candidates c
+         JOIN campaigns camp ON camp.id = c.campaign_id
+         WHERE c.org_id=? AND ($where){$excludeClause} LIMIT 1",
+        array_merge([$org_id], $params),
+        'i' . $types
+    );
+    return $row ?: null;
 }
 
-function candidate_duplicate_exists_for_update($campaign_id, $candidate_id, $phone, $email) {
-    $phone = normalize_phone($phone);
-    $email = strtolower(trim((string)$email));
-    $conditions = [];
-    $params = [];
-    $types = '';
-    if ($phone !== '') { $conditions[] = "phone=?"; $params[] = $phone; $types .= 's'; }
-    if ($email !== '') { $conditions[] = "LOWER(email)=?"; $params[] = $email; $types .= 's'; }
-    if (empty($conditions)) return false;
-    $where = implode(' OR ', $conditions);
-    $row = db_fetch_one("SELECT id FROM candidates WHERE campaign_id=? AND id<>? AND ($where) LIMIT 1", array_merge([$campaign_id, $candidate_id], $params), 'ii' . $types);
-    return $row !== null;
+function candidate_duplicate_exists($org_id, $phone, $email) {
+    return candidate_duplicate_check($org_id, $phone, $email) !== null;
+}
+
+function candidate_duplicate_exists_for_update($org_id, $candidate_id, $phone, $email) {
+    return candidate_duplicate_check($org_id, $phone, $email, $candidate_id) !== null;
 }
 
 function normalize_candidate_row($row) {
@@ -158,9 +162,13 @@ if ($action === 'add' && $method === 'POST') {
     $campaign = db_fetch_one("SELECT id FROM campaigns WHERE id=? AND org_id=?", [$campaign_id, $user['org_id']], 'ii');
     if (!$campaign) json_response(['error' => 'Campaign not found'], 404);
 
-    // Check duplicate by phone or email within campaign
-    if (candidate_duplicate_exists($campaign_id, $phone, $email)) {
-        json_response(['error' => 'Candidate with this phone or email already exists in campaign'], 409);
+    // Check duplicate by phone or email across all campaigns in this org
+    $dup = candidate_duplicate_check($user['org_id'], $phone, $email);
+    if ($dup) {
+        $msg = (int)$dup['campaign_id'] === $campaign_id
+            ? 'Candidate with this phone or email already exists in this campaign.'
+            : 'Candidate with this phone or email already exists in campaign "' . $dup['campaign_name'] . '".';
+        json_response(['error' => $msg], 409);
     }
 
     $token = bin2hex(random_bytes(16));
@@ -215,7 +223,7 @@ if ($action === 'bulk_import' && $method === 'POST') {
         $dedupe_key = strtolower($email ?: normalize_phone($phone));
         if ($dedupe_key && isset($seen[$dedupe_key])) { $dupes++; continue; }
         if ($dedupe_key) $seen[$dedupe_key] = true;
-        if (candidate_duplicate_exists($campaign_id, $phone, $email)) { $dupes++; continue; }
+        if (candidate_duplicate_exists($user['org_id'], $phone, $email)) { $dupes++; continue; }
 
         $token = bin2hex(random_bytes(16));
         try {
@@ -260,8 +268,12 @@ if ($action === 'update' && $method === 'POST') {
 
     $campaign = db_fetch_one("SELECT id FROM campaigns WHERE id=? AND org_id=?", [$campaign_id, $user['org_id']], 'ii');
     if (!$campaign) json_response(['error' => 'Campaign not found'], 404);
-    if (candidate_duplicate_exists_for_update($campaign_id, $candidate_id, $phone, $email)) {
-        json_response(['error' => 'Another candidate with this phone or email already exists in the selected campaign'], 409);
+    $dup_upd = candidate_duplicate_check($user['org_id'], $phone, $email, $candidate_id);
+    if ($dup_upd) {
+        $msg = (int)$dup_upd['campaign_id'] === $campaign_id
+            ? 'Another candidate with this phone or email already exists in this campaign.'
+            : 'Another candidate with this phone or email already exists in campaign "' . $dup_upd['campaign_name'] . '".';
+        json_response(['error' => $msg], 409);
     }
 
     db_execute(

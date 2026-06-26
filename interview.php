@@ -56,8 +56,8 @@ $total_q = count($questions);
   --orange:#D97706;--text:#0F172A;--muted:#64748B;--muted2:#94A3B8;
   --radius:14px;--shadow:0 4px 24px rgba(0,0,0,.09);
 }
-html,body{height:100%;overflow:hidden}
-body{font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column}
+html{height:100%;height:100dvh}
+body{height:100%;height:100dvh;font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;overflow:hidden}
 
 /* ══ HEADER ══════════════════════════════════════════════════════════════════ */
 .hdr{
@@ -84,7 +84,7 @@ body{font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;backgroun
   flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;
   padding:0;
 }
-.main-scroll{flex:1;overflow-y:auto;padding:20px;min-height:0;scroll-behavior:smooth}
+.main-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:20px;min-height:0;scroll-behavior:smooth}
 .main-scroll::-webkit-scrollbar{width:4px}
 .main-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
 
@@ -95,9 +95,18 @@ body{font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;backgroun
 }
 @media(max-width:680px){
   .app-body{flex-direction:column}
-  .cam-col{width:100%;height:200px;border-left:none;border-top:1px solid var(--border);flex-direction:row}
-  .cam-video-wrap{flex:0 0 160px;height:100%}
-  .cam-info{flex:1;padding:12px;justify-content:center}
+  .cam-col{width:100%;height:140px;border-left:none;border-top:1px solid var(--border);flex-direction:row;flex-shrink:0}
+  .cam-video-wrap{flex:0 0 120px;height:100%;aspect-ratio:unset}
+  .cam-info{flex:1;padding:10px 12px;justify-content:center}
+  .q-nav{display:none}
+  .main-scroll{padding:14px}
+}
+@media(max-width:480px){
+  .cam-col{height:110px}
+  .cam-video-wrap{flex:0 0 90px}
+  .cam-info{padding:8px 10px}
+  .cam-status-text strong{font-size:11px}
+  .cam-status-text span{font-size:10px}
 }
 
 /* ══ PROGRESS ════════════════════════════════════════════════════════════════ */
@@ -183,24 +192,26 @@ body{font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;backgroun
 
 /* ══ TEXT ANSWER ═════════════════════════════════════════════════════════════ */
 .text-answer{
-  width:100%;background:#fff;border:1.5px solid var(--border);
-  border-radius:10px;color:var(--text);padding:14px;font-size:14px;resize:none;
+  width:100%;min-width:0;background:#fff;border:1.5px solid var(--border);
+  border-radius:10px;color:var(--text);padding:14px;font-size:16px;resize:none;
   min-height:120px;outline:none;font-family:inherit;transition:border-color .2s,box-shadow .2s;line-height:1.6;
 }
 .text-answer:focus{border-color:var(--blue);background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
 .text-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px}
-.dynamic-answer{display:flex;flex-direction:column;gap:10px}
+.dynamic-answer{display:flex;flex-direction:column;gap:10px;width:100%;min-width:0}
 .dynamic-answer > input,.dynamic-answer select{
-  width:100%;background:#fff;border:1.5px solid var(--border);
-  border-radius:10px;color:var(--text);padding:13px 14px;font-size:14px;outline:none;font-family:inherit;
+  width:100%;min-width:0;background:#fff;border:1.5px solid var(--border);
+  border-radius:10px;color:var(--text);padding:13px 14px;font-size:16px;outline:none;font-family:inherit;
+  -webkit-appearance:none;appearance:none;
 }
+.dynamic-answer > input:focus,.dynamic-answer select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
 .dynamic-answer select option{color:#111827}
 .choice-list{display:flex;flex-direction:column;gap:8px}
-.choice-item{display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;color:var(--text);cursor:pointer;transition:border-color .15s,background .15s}
-.choice-item:hover{border-color:#93C5FD;background:#EFF6FF}
-.choice-item input{width:18px;height:18px;flex:0 0 18px;accent-color:var(--blue)}
+.choice-item{display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-size:15px;color:var(--text);cursor:pointer;transition:border-color .15s,background .15s;-webkit-tap-highlight-color:transparent}
+.choice-item:hover,.choice-item:active{border-color:#93C5FD;background:#EFF6FF}
+.choice-item input{width:20px;height:20px;flex:0 0 20px;accent-color:var(--blue)}
 .choice-item:has(input:checked){border-color:var(--blue);background:#EFF6FF}
-.choice-prefix{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;border-radius:999px;background:#DBEAFE;color:#1D4ED8;font-weight:800;font-size:12px}
+.choice-prefix{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;border-radius:999px;background:#DBEAFE;color:#1D4ED8;font-weight:800;font-size:12px;flex-shrink:0}
 .choice-empty{border:1px dashed var(--border);border-radius:12px;padding:12px;color:var(--muted);background:#F8FAFC}
 .share-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px}
 .share-btn{border:none;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer;color:#fff;display:inline-flex;align-items:center;gap:7px;text-decoration:none}
@@ -254,8 +265,25 @@ body{font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;backgroun
 }
 @media(max-width:860px){
   .perm-layout{flex-direction:column}
-  .perm-right{border-left:none;border-top:1.5px solid var(--border);padding:32px 24px}
-  .perm-left{padding:32px 24px;max-width:100%}
+  .perm-right{border-left:none;border-top:1.5px solid var(--border);padding:28px 20px}
+  .perm-left{padding:28px 20px;max-width:100%}
+}
+@media(max-width:540px){
+  .perm-left{padding:20px 16px}
+  .perm-right{padding:20px 16px}
+  .perm-title{font-size:22px}
+  .perm-checks{grid-template-columns:1fr 1fr}
+  .perm-check{padding:10px 12px;gap:8px}
+  .perm-check-text{font-size:12px}
+  .perm-check-sub{font-size:10px}
+  .instructions-list li{font-size:13px;padding:9px 12px}
+  .btn-allow{padding:14px;font-size:14px}
+}
+@media(max-width:380px){
+  .perm-left{padding:16px 14px}
+  .perm-right{padding:16px 14px}
+  .perm-checks{grid-template-columns:1fr}
+  .perm-title{font-size:20px}
 }
 .perm-icon{
   width:64px;height:64px;border-radius:18px;
@@ -354,18 +382,48 @@ body{font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;backgroun
 /* ══ MEDIA QUERIES ═══════════════════════════════════════════════════════════ */
 @media(max-width:680px){
   .q-text{font-size:15px}
-  .cam-col{height:180px}
-  .cam-info{display:none}
-  .cam-video-wrap{flex:1;height:100%;aspect-ratio:unset}
-  .main-scroll{padding:14px}
-  .q-nav{display:none}
   .mobile-permission-note{display:block}
+  .hdr{padding:0 14px;height:52px}
+  .hdr-logo img{height:30px}
+  .hdr-campaign{font-size:11px}
+  .hdr-role{display:none}
+  .timer-row{padding:10px 12px;margin-bottom:14px}
+  .voice-panel{padding:18px 14px}
+  .q-card-body{padding:16px}
+  .q-card-top{padding:14px 16px}
+  .text-answer{min-height:100px}
+  .btn-next{padding:13px;font-size:15px;margin-top:12px}
+  .progress-bar-wrap{padding:8px 14px}
+  .step-dots{display:none}
+}
+@media(max-width:480px){
+  .hdr{padding:0 10px;height:48px}
+  .hdr-logo img{height:26px}
+  .hdr-meta{display:none}
+  .q-text{font-size:14px;line-height:1.5}
+  .q-num-badge,.q-param-badge{font-size:9px;padding:2px 8px}
+  .q-meta{gap:6px;margin-bottom:8px}
+  .q-card-top{padding:12px 14px}
+  .q-card-body{padding:14px}
+  .main-scroll{padding:10px}
+  .btn-next{font-size:14px;padding:12px}
+  .timer-ring{width:44px;height:44px}
+  .timer-text{font-size:11px}
+  .voice-btn{width:62px;height:62px;font-size:24px}
+  .voice-btn-wrap{width:62px;height:62px}
+  .answer-tabs{padding:3px}
+  .atab{padding:7px 8px;font-size:12px}
+  .text-answer{font-size:16px;padding:12px;min-height:90px}
+  .dynamic-answer > input,.dynamic-answer select{padding:12px;font-size:16px}
+  .choice-item{padding:11px 12px;font-size:14px}
 }
 @media(max-width:380px){
-  .hdr{padding:0 12px}
-  .btn-next{font-size:14px;padding:12px}
-  .q-card-top{padding:14px}
-  .q-card-body{padding:14px}
+  .hdr{padding:0 8px;height:46px}
+  .q-card-top{padding:10px 12px}
+  .q-card-body{padding:12px}
+  .main-scroll{padding:8px}
+  .text-answer{padding:10px;font-size:16px}
+  .dynamic-answer > input,.dynamic-answer select{padding:10px;font-size:16px}
 }
 </style>
 </head>
@@ -521,6 +579,16 @@ body{font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;backgroun
             <li>Your session is being recorded end-to-end</li>
             <li>Face detection runs after every question — absence will <strong>terminate your test</strong></li>
             <li class="warn">Do not copy-paste answers — all paste actions are logged and flagged for integrity review</li>
+          </ul>
+        </div>
+
+        <div class="disclaimer-box">
+          <div class="instructions-title" style="margin-top:22px">⚠️ Disclaimer for Test Participants</div>
+          <ul class="instructions-list">
+            <li class="warn">Please keep your phone on <strong>Silent Mode</strong> during the test.</li>
+            <li class="warn">Ensure your device is connected to a <strong>stable Wi-Fi connection</strong> to prevent session expiry or interruptions.</li>
+            <li class="warn">Avoid answering <strong>incoming calls</strong> while the test is in progress, as this may disrupt the test session.</li>
+            <li class="warn">For the best experience, it is recommended to take the test on a <strong>laptop or desktop computer</strong>.</li>
           </ul>
         </div>
       </div>
@@ -1589,6 +1657,42 @@ async function terminateInterview(reason) {
   if (isRecording) { try { if (videoRecorder?.state !== 'inactive') videoRecorder.stop(); } catch(e) {} }
   if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
 }
+
+// ── MOBILE KEYBOARD / INPUT VISIBILITY FIX ──────────────────────────────────
+(function(){
+  // When an input/textarea is focused on mobile, scroll it into view above the keyboard
+  function scrollToFocused(el) {
+    if (!el) return;
+    setTimeout(function() {
+      try {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch(e) {
+        el.scrollIntoView(false);
+      }
+    }, 300);
+  }
+  document.addEventListener('focusin', function(e) {
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) {
+      scrollToFocused(t);
+    }
+  });
+  // Use visualViewport API (iOS 13+, Android 5+) to resize the layout when keyboard opens
+  if (window.visualViewport) {
+    function onViewportResize() {
+      const vvh = Math.round(window.visualViewport.height);
+      const body = document.body;
+      body.style.height = vvh + 'px';
+      // Re-scroll focused element into view
+      const focused = document.activeElement;
+      if (focused && (focused.tagName === 'INPUT' || focused.tagName === 'TEXTAREA' || focused.tagName === 'SELECT')) {
+        scrollToFocused(focused);
+      }
+    }
+    window.visualViewport.addEventListener('resize', onViewportResize);
+    window.visualViewport.addEventListener('scroll', onViewportResize);
+  }
+})();
 
 function showPasteAlert(charCount) {
   const alert = document.createElement('div');

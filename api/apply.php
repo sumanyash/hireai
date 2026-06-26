@@ -247,15 +247,21 @@ if ($ref_token !== '') {
     }
 }
 
-if ($campaign_id) {
+if ($campaign_id && $org_id) {
     $phone_norm = norm_phone_apply(s($data,'phone'));
-    $existing_rows = db_fetch_all("SELECT id,phone,email FROM candidates WHERE campaign_id=?", [$campaign_id], 'i');
+    // Org-wide duplicate check — one phone/email per org across all campaigns
+    $existing_rows = db_fetch_all(
+        "SELECT c.id, c.phone, c.email, camp.name AS campaign_name
+         FROM candidates c JOIN campaigns camp ON camp.id=c.campaign_id
+         WHERE c.org_id=?",
+        [$org_id], 'i'
+    );
     foreach ($existing_rows as $row) {
         if ($email !== '' && strtolower(trim($row['email'] ?? '')) === strtolower($email)) {
-            ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Already applied with this email.','duplicate'=>true]); exit;
+            ob_end_clean(); echo json_encode(['success'=>false,'error'=>'You have already applied with this email.','duplicate'=>true]); exit;
         }
         if ($phone_norm !== '' && norm_phone_apply($row['phone'] ?? '') === $phone_norm) {
-            ob_end_clean(); echo json_encode(['success'=>false,'error'=>'Already applied with this phone number.','duplicate'=>true]); exit;
+            ob_end_clean(); echo json_encode(['success'=>false,'error'=>'You have already applied with this phone number.','duplicate'=>true]); exit;
         }
     }
 }

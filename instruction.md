@@ -11,11 +11,13 @@
 - **DB:** MySQL `hireai` via MySQLi (see `includes/db.php`)
 - **Auth:** JWT in `$_SESSION['token']` · CSRF tokens on all POSTs · Login lock in flat file
 - **AI scoring:** Vertex AI → Gemini API → Groq (fallback chain, see `api/score.php`)
-- **Outreach:** WhatsApp via `WA_API_URL` (wa.clouddialer.in) · ElevenLabs for AI calls
+- **Face detection:** Gemini Vision via `api/check_face.php` (brightness pre-filter client-side)
+- **Outreach:** WhatsApp via `WA_API_URL` (wa.clouddialer.in) · Avya Dialer (`DIALER_API_URL`) for AI calls
 - **Credits:** `credit_wallets` table, deduction is atomic via `WHERE balance >= ?` + `affected_rows`
 - **Export token:** Uses `EXPORT_TOKEN_SECRET` (separate from `JWT_SECRET`)
-- **Public pages (no auth):** `apply.php`, `interview.php`, `api/apply.php`, `api/call_webhook.php`
-- **super_admin only:** `admins.php`, `audit_logs.php`
+- **Public pages (no auth):** `apply.php`, `interview.php`, `forgot_password.php`, `reset_password.php`, `api/apply.php`, `api/check_duplicate.php`, `api/check_face.php`, `api/call_webhook.php`
+- **super_admin only:** `admins.php`, `audit_logs.php`, `training.php`
+- **Self-contained pages:** `apply.php` and `interview.php` do NOT include `head.php` — they have their own `<head>` with inline styles
 
 ---
 
@@ -31,6 +33,9 @@
 8. **Candidate delete** must use a DB transaction and include `ai_call_results` in the cascade.
 9. **Scoring (api/score.php)** runs via CLI only in production; verify JWT when accessed over HTTP.
 10. **Webhook endpoints** (`call_webhook.php`, `api/interview.php?action=webhook`) use `verify_hmac_signature()` not JWT.
+11. **Standard apply form fields** are controlled by `campaigns.apply_form_config` JSON column — NOT stored in `application_fields` table. Custom campaign-specific fields go in `application_fields`.
+12. **Mobile inputs** must use `font-size:16px` minimum to prevent iOS Safari auto-zoom on focus.
+13. **Face checks** always default to `face:true` on network/API error — never block an interview due to a check_face.php failure.
 
 ---
 
@@ -57,16 +62,16 @@
 | 15 | PERF | `candidates.php` | Status pill counts: was loading all rows → now single GROUP BY query |
 | 16 | PERF | `includes/functions.php` | Removed `CREATE TABLE IF NOT EXISTS` DDL from `ensure_credit_wallet()` |
 | 17 | DB | `schema.sql` + live DB | Added missing indexes (8 tables) |
-| 18 | DB | `users` table + `schema.sql` | Added `admin` to role ENUM (was missing, only super_admin/hr/recruiter existed) |
+| 18 | DB | `users` table + `schema.sql` | Added `admin` to role ENUM (was missing) |
 | 19 | SCHEMA | `schema.sql` | Added missing `ai_call_results` table definition |
 | 20 | CODE | `api/score.php` | Moved `log_s()` to top of file; removed duplicate at bottom |
 | 21 | CODE | `includes/helpers.php` | Canonical `normalize_phone()` moved here; removed duplicate in `candidates.php` |
 | 22 | CODE | `includes/functions.php` | Dead `score_candidate()` (OpenAI) wrapped in block comment |
 | 23 | NGINX | `nginx.conf` | Added security headers: X-Frame-Options, X-Content-Type-Options, X-XSS-Protection, Referrer-Policy |
 | 24 | NGINX | `nginx.conf` | Blocked PHP execution in `/uploads/` directory |
-| 25 | NGINX | `nginx.conf` | `client_max_body_size` reduced from 150M → 25M to match PHP `upload_max_filesize` |
-| 26 | AUTO | `scripts/rescore_once.php`, crontab | Added `--on-hold` flag; cron at 2am daily, logs to `/tmp/rescore_onhold.log` |
-| 27 | OPS | live DB | Rescored 15 stuck `on_hold` candidates via Groq (Vertex AI was 404) |
+| 25 | NGINX | `nginx.conf` | `client_max_body_size` reduced from 150M → 25M |
+| 26 | AUTO | `scripts/rescore_once.php`, crontab | Added `--on-hold` flag; cron at 2am daily |
+| 27 | OPS | live DB | Rescored 15 stuck `on_hold` candidates via Groq |
 
 ---
 
@@ -74,60 +79,46 @@
 
 | # | Category | File(s) | What was fixed/added |
 |---|----------|---------|---------------------|
-| 28 | FEATURE | `api/score.php` | Added `transcribe_one` action: `GET ?action=transcribe_one&answer_id=X&candidate_id=Y` — transcribes a single voice answer via Groq Whisper, saves transcript to `interview_answers.text_answer`, returns `{success, transcript}`. Requires JWT auth + org ownership check. |
-| 29 | FEATURE | `candidate_detail.php` | Per-answer **"Analyze with AI"** button on every voice note that has no transcript yet (`!$ansText`). Clicking: (1) transcribes via `transcribe_one`, (2) shows transcript inline in the answer card, (3) auto-triggers full rescore, (4) reloads page. |
-| 30 | FEATURE | `candidate_detail.php` | **Q&A Sort bar** above the answer list: "Question #" (default), "Score High→Low", "Score Low→High". Client-side sort using `data-order` and `data-score` on each `.qa-item`. Sort state resets on page reload. |
-| 31 | FEATURE | `api/score.php` | Added `transcribe_voice_gemini()` using Vertex AI service account (same credentials as scoring). Added unified `transcribe_voice()` — tries Gemini first, falls back to Groq Whisper. All transcription call sites (loop + transcribe_one action) now use `transcribe_voice()`. Groq remains as fallback. |
-| 32 | REFACTOR | `api/score.php` | Extracted `resolve_audio_local_path()` helper — shared by Groq and Gemini transcription functions. |
-| 33 | FIX | `api/score.php` | Added `?async=1` action: fires `exec("php score.php $cid $cmp &")` and returns `{status:queued}` immediately. Prevents browser/nginx timeout on long scoring operations. Requires JWT + org ownership check. |
-| 34 | FIX | `candidate_detail.php` | `analyzeVoice()` now uses async scoring (fire-and-forget fetch `?async=1`) instead of waiting for full rescore. Page reloads after 12s. Eliminates "Network error" caused by chained 60-90s requests. |
-| 35 | FIX | `candidate_detail.php` | `rescoreCandidate()` (Score Voice button) switched to `?async=1` — returns in <1s, reloads after 12s. |
-| 41 | FIX | `apply.php`, `api/apply.php` | **Draft campaign apply form fix**: apply.php was only loading campaigns with `status='active'` — draft/paused campaigns returned null → no fields → legacy 9-step form. Changed queries to load `status IN ('active','draft','paused')`. Draft campaigns show a yellow preview banner; paused shows red. `api/apply.php` blocks actual submission for non-active campaigns. |
-| 40 | FIX | `apply.php`, `api/apply.php` | **Dynamic apply form enabled**: `$is_dynamic_apply` was hardcoded `false` — changed to `!empty($application_fields)`. Now any campaign with configured application_fields gets its own clean 2-step form (all fields → declaration). Legacy 9-step form remains for campaigns with no fields. Also: injected mandatory phone/email/name inputs when missing from campaign fields; fixed `api/apply.php` to make DOB, joining_date, expected_salary optional (only validate format if submitted — was always required before). |
-| 39 | FIX | `apply.php`, `api/generate_campaign.php`, `api/save_from_jd.php` | **Duplicate fields bug**: apply.php's `$default_apply_keys` was missing common aliases (`full_name`, `experience_years`, `current_ctc`, etc.) so AI-generated fields duplicated standard form steps. Fixed: (1) expanded `$default_apply_keys` with all common variants; (2) updated AI prompt to never generate standard fields; (3) `save_from_jd.php` now server-side rejects any field_key in the standard list. Also cleaned campaign 21's application_fields — removed 6 duplicate fields, kept 3 role-specific ones. |
-| 38 | FEATURE | `jd_builder.php`, `api/generate_campaign.php`, `api/save_from_jd.php` | **AI Campaign Builder from JD**: Admin pastes Job Description → Gemini generates campaign name, job role, description, 6 voice interview questions (weights summing to 100), and 6-9 application form fields. Phase 2 preview lets admin inline-edit everything before saving. One click creates campaign + questions + form in DB. Route: `/jd_builder`. Cost: ~₹0.06/generation (Gemini 2.5 Flash). |
-| 37 | REMOVED | `campaigns.php` | Permanently removed "Where should applications sync?" (integration_type dropdown) and "Connection URL / Sheet GID" (integration_endpoint input) from new/edit campaign form. Hidden inputs send `none`/empty to keep DB writes valid. Setup checklist CRM step removed, `integration_pending` hardcoded `false`, pending alert and activate-button message removed. Backend DB columns kept untouched. |
-| 36 | NOTE | `api/interview.php` | New interview completion (`complete_interview` action) ALREADY auto-runs score.php via `exec` in background. With Gemini transcription now in score.php, voice answers are transcribed+scored automatically for all new interviews — no admin action needed. Old candidates still have manual buttons. |
+| 28 | FEATURE | `api/score.php` | `transcribe_one` action: transcribes single voice answer via Groq Whisper |
+| 29 | FEATURE | `candidate_detail.php` | "Analyze with AI" button on voice answers without transcript |
+| 30 | FEATURE | `candidate_detail.php` | Q&A Sort bar: Question # / Score High→Low / Score Low→High |
+| 31 | FEATURE | `api/score.php` | `transcribe_voice_gemini()` + unified `transcribe_voice()` with Groq fallback |
+| 32 | REFACTOR | `api/score.php` | Extracted `resolve_audio_local_path()` helper |
+| 33 | FIX | `api/score.php` | `?async=1` action — fire-and-forget background scoring |
+| 34 | FIX | `candidate_detail.php` | `analyzeVoice()` uses async scoring; eliminates network timeout |
+| 35 | FIX | `candidate_detail.php` | `rescoreCandidate()` switched to `?async=1` |
+| 36 | NOTE | `api/interview.php` | `complete_interview` already auto-runs score.php — voice answers auto-transcribed |
+| 37 | REMOVED | `campaigns.php` | Removed integration_type / integration_endpoint from UI (DB columns kept) |
+| 38 | FEATURE | `jd_builder.php`, `api/generate_campaign.php`, `api/save_from_jd.php` | AI Campaign Builder from JD |
+| 39 | FIX | `apply.php`, `api/generate_campaign.php`, `api/save_from_jd.php` | Duplicate fields bug — expanded standard field exclusion list |
+| 40 | FIX | `apply.php`, `api/apply.php` | Dynamic apply form enabled; `$is_dynamic_apply` was hardcoded false |
+| 41 | FIX | `apply.php`, `api/apply.php` | Draft/paused campaigns now load correctly with preview banner |
 
 ---
 
-### 2026-05-28 — Apply Form Config + Mixed Question Types
-
-| # | Category | File(s) | What was fixed/added |
-|---|----------|---------|---------------------|
-| 42 | FEATURE | `campaigns.php` | **Standard Fields Toggle UI**: Apply Form view now shows all 40 standard fields (salutation, name, phone, email, DOB, city, relocate, experience, compensation, availability, work readiness, documents, consent) organized in 9 sections, each with an ON/OFF toggle checkbox. Replaces the old "Add Complete Apply Form" one-shot button. |
-| 43 | FEATURE | `campaigns.php` | **`save_apply_form_config` POST action**: Upserts standard fields in `application_fields` table based on toggle state — INSERT if enabled+not-exists, UPDATE `is_active=1` if enabled+exists, `is_active=0` if disabled. Custom fields (non-standard) are never touched. Fields default to ON when no config exists yet. |
-| 44 | NOTE | `apply.php` | No changes needed — the existing dynamic form already reads `application_fields` for the campaign and renders exactly those fields. The toggle UI + save handler is the only change needed. |
-| 45 | FEATURE | `api/generate_campaign.php` | **Mixed question types in JD AI generation**: Updated prompt to enforce Q1=MCQ, Q2=MCQ, Q3=short_answer, Q4=short_answer, Q5=voice_note, Q6=voice_note. Each question now has a `question_type` field (`mcq`/`short_answer`/`voice_note`). MCQ questions include `options` array (4 choices) and `correct_answer`. Response normalization maps: `mcq→dropdown`, `short_answer→textarea`, `voice_note→audio`. |
-| 46 | FEATURE | `api/save_from_jd.php` | Saves `options_json` for MCQ (dropdown) questions. Prepends `"Correct: X."` to `ideal_answer_hint` so AI scorer knows the right answer. INSERT now includes `options_json` column (type string `'issiissssi'`). |
-| 47 | FEATURE | `jd_builder.php` | Question cards now show a **Type selector** (MCQ/Short Answer/Voice Note) with color-coded badges. MCQ cards show expandable options textarea (4 lines) and correct-answer input. `collectData()` reads raw_type, options[], correct_answer from DOM and sends them to `save_from_jd.php`. |
-| 48 | FEATURE | `interview.php` | `dropdown` question type now renders as **A/B/C/D radio-button MCQ cards** (using existing `choice-list`/`choice-item` styles) instead of a `<select>` dropdown, when options are available. Falls back to `<select>` if no options exist. |
-
----
-
-### 2026-05-29 — Code Review Bug Fixes (6 items)
-
-| # | Severity | File(s) | What was fixed |
-|---|----------|---------|----------------|
-| 49 | BUG | `jd_builder.php` | **MCQ hint silently replaced by correct-answer**: `collectData()` used `metas[metas.length-1]` to read the hint input, but `.q-mcq-opts` always in DOM adds two extra `.q-meta-input` elements (options textarea + correct-answer input) making `metas[5]` = correct-answer. Fixed: added `name="q-param"`, `name="q-label"`, `name="q-hint"` to meta inputs; `collectData()` now uses named `querySelector` (`input[name="q-hint"]`) instead of positional index. |
-| 50 | BUG | `jd_builder.php` | **`renumberQuestions()` didn't update `qopts-N` IDs**: after removing a question, card indices shift but `qopts-N` div IDs stayed at original values, causing `getElementById('qopts-'+newIndex)` to return null → MCQ options and correct_answer saved empty. Fixed: `renumberQuestions()` now also updates `optsDiv.id = 'qopts-'+i` and the `onchange="onQTypeChange(this,N)"` attribute on the type select. |
-| 51 | BUG | `jd_builder.php` | **`onQTypeChange` and `collectData` used `getElementById('qopts-N')` which is brittle**: switched both to card-scoped `card.querySelector('.q-mcq-opts')` — immune to ID drift even if numbering is momentarily inconsistent. |
-| 52 | BUG | `api/apply.php` | **Null campaign bypassed status guard**: when `campaign_id=0` and no active campaign existed, code fell back to hardcoded `id=1`; if campaign 1 didn't exist `$campaign` was null, the status check `if ($campaign && ...)` was skipped, and INSERT proceeded with `org_id=1`. Fixed: removed the `id=1` hardcoded fallback; now fails with `apply_fail('No active campaign...')` immediately if no active campaign exists or if the given `campaign_id` resolves to null. |
-| 53 | BUG | `campaigns.php` | **`save_apply_form_config` ran 80 queries without a transaction**: a mid-loop DB error left `application_fields` partially updated. Fixed: wrapped the entire loop in `$db->begin_transaction()` / `commit()` / `rollback()` with error redirect on failure. |
-| 54 | BUG | `api/score.php` | **`async=1` passed user-supplied `$_GET['campaign_id']` to `exec()` instead of the DB-validated value**: an org user could supply any campaign_id to trigger bulk background processes. Fixed: SELECT now fetches `campaign_id` from the candidates row; `$db_campaign_id = (int)$cand_chk['campaign_id']` is used for exec; also added `escapeshellarg()` wrappers around both `$candidate_id` and `$db_campaign_id` in the exec string. |
-
----
-
-### 2026-05-30 — Apply Form Config Architecture Rewrite + Multi Bug Fix
+### 2026-05-28 — Apply Form Config Architecture Rewrite
 
 | # | Category | File(s) | What was fixed |
 |---|----------|---------|----------------|
-| 55 | ARCH | `campaigns.php`, `apply.php` | **Wrong approach for std fields**: Previous implementation stored standard fields in `application_fields` table → caused duplicate rows (74 instead of ~40), broke `$is_dynamic_apply` → killed the 9-step wizard, made unchecking ineffective (dupes survived disable). |
-| 56 | FIX | `campaigns.php` | **`save_apply_form_config` rewritten**: Now stores enabled field keys as JSON in `campaigns.apply_form_config` (column added via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`). Also DELETES all standard field rows from `application_fields` for the campaign (cleanup). No more application_fields mutations for standard fields. |
-| 57 | FIX | `campaigns.php` apply_form view | **Toggle state reads from JSON column**: `$active_std_keys` and `$std_never_saved` now derived from `$campaign['apply_form_config']` (JSON parse), not from `$application_fields` rows. |
-| 58 | FIX | `apply.php` | **`$is_dynamic_apply` fixed**: Was `!empty($application_fields)` which was true whenever standard fields were wrongly in the table → 2-step form. Now: `!$_has_std_form_cfg && !empty($custom_application_fields)` — 9-step wizard always used when std field config exists; 2-step form only for JD-builder campaigns with custom fields and no std config. |
-| 59 | FEATURE | `apply.php` | **`is_std_on($key)` PHP helper**: Returns `true` if the field key is enabled in `campaigns.apply_form_config`, or `true` by default if no config is saved. Each standard field in sections 1-8 of the 9-step wizard is now wrapped in `<?php if (is_std_on('key')): ?>...<?php endif; ?>`. |
-| 60 | FIX | `apply.php` | **JS validators fixed with `el(id)` helper**: Added `function el(id) { return !!document.getElementById(id); }`. All section validators (1-8) now check `el('fieldId') &&` before validating required fields — prevents "required" errors for fields that are not rendered by PHP (toggled off). |
+| 42 | FEATURE | `campaigns.php` | Standard Fields Toggle UI (40 fields, 9 sections, ON/OFF checkboxes) |
+| 43 | FEATURE | `campaigns.php` | `save_apply_form_config` saves JSON to `campaigns.apply_form_config` (not application_fields table) |
+| 44 | NOTE | `apply.php` | No changes needed — dynamic form already reads application_fields |
+| 45 | FEATURE | `api/generate_campaign.php` | Mixed question types: Q1-4 MCQ, Q5-7 short_answer, Q8-10 voice_note |
+| 46 | FEATURE | `api/save_from_jd.php` | Saves `options_json` for MCQ; prepends "Correct: X." to ideal_answer_hint |
+| 47 | FEATURE | `jd_builder.php` | Question type selector badge, MCQ options UI, correct-answer input |
+| 48 | FEATURE | `interview.php` | `dropdown` type renders as radio MCQ cards (not `<select>`) |
+| 49 | BUG | `jd_builder.php` | MCQ hint replaced by correct-answer — fixed with named input selectors |
+| 50 | BUG | `jd_builder.php` | `renumberQuestions()` didn't update `qopts-N` IDs → MCQ options saved empty |
+| 51 | BUG | `jd_builder.php` | `getElementById('qopts-N')` → card-scoped `querySelector('.q-mcq-opts')` |
+| 52 | BUG | `api/apply.php` | Null campaign bypassed status guard; removed hardcoded `id=1` fallback |
+| 53 | BUG | `campaigns.php` | `save_apply_form_config` ran 80 queries without transaction — wrapped in transaction |
+| 54 | BUG | `api/score.php` | `async=1` used user-supplied campaign_id; now uses DB-validated value + escapeshellarg |
+| 55 | ARCH | `campaigns.php`, `apply.php` | Standard fields moved from application_fields table → campaigns.apply_form_config JSON |
+| 56 | FIX | `campaigns.php` | `save_apply_form_config` rewritten to use JSON column |
+| 57 | FIX | `campaigns.php` | Toggle state reads from JSON column |
+| 58 | FIX | `apply.php` | `$is_dynamic_apply` fixed: wizard always used when std config exists |
+| 59 | FEATURE | `apply.php` | `is_std_on($key)` PHP helper for conditional field rendering |
+| 60 | FIX | `apply.php` | JS validators use `el(id)` helper to skip non-rendered fields |
 
 ---
 
@@ -135,13 +126,114 @@
 
 | # | Category | File(s) | What was changed |
 |---|----------|---------|-----------------|
-| 61 | FIX | `campaigns.php` | **Edit Question modal — background scroll locked**: Added `document.body.style.overflow='hidden'` on modal open and restored on close/Escape. Background page no longer scrolls while modal is visible. |
-| 62 | UI | `campaigns.php` | **Edit Question modal enlarged**: `max-width` 620px → 700px, border-radius 20px → 22px, internal padding increased to 28px in head/body/footer. |
-| 63 | UI | `campaigns.php` | **Add Question inline form compacted**: `qf-body` padding 20px → 16px 20px, grid gap 14px → 12px, all row margins 14px → 12px, question text textarea rows 3 → 2. Reduces page scroll length. |
-| 64 | BUG | `campaigns.php` | **Campaign Journey sidebar restored to right column**: Stray `</div>` was closing the `.journey-grid` container before the `<aside class="journey-card">`, causing it to render full-width below content. Removed the extra `</div>` so the aside is correctly the second grid column. |
-| 65 | FEATURE | `campaigns.php` | **Add Question converted to modal**: Removed inline `qf-card` form. Added big purple "+ Add Question" button in the questions table header. Added empty-state card when no questions exist. Built `.aq-overlay/.aq-modal` JS-driven modal (720px, same style as edit modal) with `openAddModal()` / `closeAddModal()`, body scroll lock, Escape key, and auto-focus on question text field. |
-| 66 | UI | `campaigns.php` | **"ElevenLabs Agent" → "Your AI Agent"**: Renamed label on the Edit Campaign form. |
-| 67 | REDESIGN | `analytics.php` | **Full enterprise analytics page redesign**: Dark gradient hero banner (`#0D1B2E→#2D1B69`) with 4 glassmorphism KPI cards (Total Candidates, Avg Score, Completion Rate, Selection Rate). Campaign/time filters styled for dark theme. Horizontal funnel with per-step conversion badges (green/amber), chevron arrows, color-coded icons. Chart.js charts enlarged to 280px with gradient fills, dark tooltips, and bold tick labels. AI Insights panel with contextual color-coded cards (green/amber/red/blue) based on actual data thresholds. Weakest Parameters with gradient bar fills and sample counts. Fully responsive. |
+| 61 | FIX | `campaigns.php` | Edit Question modal — background scroll locked while open |
+| 62 | UI | `campaigns.php` | Edit Question modal enlarged (max-width 700px) |
+| 63 | UI | `campaigns.php` | Add Question inline form compacted |
+| 64 | BUG | `campaigns.php` | Campaign Journey sidebar restored to right column (stray `</div>` fix) |
+| 65 | FEATURE | `campaigns.php` | Add Question converted to modal (.aq-overlay) with body scroll lock |
+| 66 | UI | `campaigns.php` | "ElevenLabs Agent" → "Your AI Agent" label (ElevenLabs later removed; Avya Dialer used instead) |
+| 67 | REDESIGN | `analytics.php` | Full enterprise analytics page redesign (dark hero, glassmorphism KPIs, gradient charts) |
+
+---
+
+### 2026-06-01 — Date Picker, Duplicate Check, Campaign Deactivate, JD Builder Fixes
+
+| # | Category | File(s) | What was fixed/added |
+|---|----------|---------|---------------------|
+| 68 | BUG | `apply.php` | Date picker (flatpickr) not working — flatpickr CSS+JS added directly to `<head>` (head.php not included) |
+| 69 | FEATURE | `api/check_duplicate.php` | New endpoint: real-time phone/email duplicate check for apply form |
+| 70 | FIX | `apply.php` | Duplicate phone/email → blocks Continue button with error; `nextSection()` made async |
+| 71 | FEATURE | `campaigns.php` | Campaign deactivate: active → paused (Deactivate button on active campaigns) |
+| 72 | FIX | `campaigns.php` | Campaign activation no longer blocked by missing custom fields; `$has_apply` checks apply_form_config OR defaults to true |
+| 73 | FIX | `api/generate_campaign.php` | `maxOutputTokens`: 4096 → 16384 (was truncating 10-question JSON) |
+| 74 | FIX | `api/generate_campaign.php` | Campaign name example changed to "Role Name at Company Name" (was getting "– 2024" suffix) |
+| 75 | FIX | `jd_builder.php` | Branding: "Gemini" → "Avyukta AI" |
+| 76 | FIX | `jd_builder.php` | Min 10 questions validation (was `< 1`) |
+| 77 | FIX | `api/save_from_jd.php` | Auto-saves default apply_form_config after campaign creation (prevents activation-blocked bug) |
+| 78 | FIX | `api/generate_campaign.php` | Prompt updated: exactly 10 questions (4 MCQ Q1-4, 3 short_answer Q5-7, 3 voice_note Q8-10) |
+
+---
+
+### 2026-06-01 — Face Detection + Interview Termination
+
+| # | Category | File(s) | What was added |
+|---|----------|---------|----------------|
+| 79 | FEATURE | `api/check_face.php` | New endpoint: Gemini Vision face detection (POST token+image+question_no) |
+| 80 | FEATURE | `interview.php` | Face Gate modal: identity verification before interview starts |
+| 81 | FEATURE | `interview.php` | Client-side brightness pre-filter: canvas centre 50%×60% sample; <25 = dark → reject without API call |
+| 82 | FEATURE | `interview.php` | `startFaceGateCheck()` — retries every 2.5-3s; 3 network failures → fallback pass |
+| 83 | FEATURE | `interview.php` | `checkFaceOrTerminate(qNo, isRecheck)` — called after each question |
+| 84 | FEATURE | `interview.php` | `showFaceWarning(qNo)` — 15s countdown then recheck (two-strike system) |
+| 85 | FEATURE | `interview.php` | `terminateInterview(reason)` — shows #termination-screen, posts cheat_summary.terminated=true |
+| 86 | FEATURE | `interview.php` | Camera track disconnect → immediate termination |
+| 87 | FEATURE | `api/interview.php` | `complete_interview` saves cheat_summary JSON to `interview_sessions` |
+| 88 | FEATURE | `candidates.php` | Red "🚫 Terminated" pill shown next to status badge when terminated |
+| 89 | FEATURE | `candidate_detail.php` | Red termination banner + Integrity = Critical Risk + "Terminated — Face Not Detected" label |
+
+---
+
+### 2026-06-02 — Interview UI Overhaul + Voice Recording
+
+| # | Category | File(s) | What was changed |
+|---|----------|---------|-----------------|
+| 90 | REDESIGN | `interview.php` | White/bright theme: `--bg:#F0F4F8`, `--surface:#FFFFFF`, `--text:#0F172A` |
+| 91 | UI | `interview.php` | Permission screen: full-page two-column layout (`.perm-left` / `.perm-right`) |
+| 92 | FIX | `interview.php` | Voice recording: removed 3s auto-start; now "Tap the button to start recording" |
+| 93 | UI | `interview.php` | Completion screen: green "Close This Tab" button + guidance text |
+| 94 | UI | `interview.php` | Header: org logo from `o.logo_url` or fallback `avyukta.in` logo |
+
+---
+
+### 2026-06-03 — DOB Validation + Terminated Badge + Disclaimer
+
+| # | Category | File(s) | What was added |
+|---|----------|---------|----------------|
+| 95 | FEATURE | `apply.php` | DOB validation: must be ≥18 years old (maxDate = today − 18 years via flatpickr + JS) |
+| 96 | UI | `interview.php` | Disclaimer for Test Participants section added to permission screen right panel (4 bullet points: Silent Mode, Wi-Fi, no calls, use laptop) |
+
+---
+
+### 2026-06-08 — Mobile Responsive Fixes
+
+| # | Category | File(s) | What was fixed |
+|---|----------|---------|----------------|
+| 97 | BUG | `interview.php` | iOS auto-zoom on input focus: all inputs/textareas changed to `font-size:16px` (< 16px triggers zoom) |
+| 98 | FIX | `interview.php` | `min-width:0` added to `.dynamic-answer` and all inputs to prevent flex overflow clipping |
+| 99 | FIX | `interview.php` | `height:100dvh` (dynamic viewport height) — adjusts when mobile keyboard opens |
+| 100 | FIX | `interview.php` | `visualViewport` resize listener — resizes body, scrolls focused input into view on keyboard open |
+| 101 | FIX | `interview.php` | `-webkit-overflow-scrolling:touch` on `.main-scroll` for smooth iOS scrolling |
+| 102 | UI | `interview.php` | Camera sidebar reduced: 200px → 140px (≤680px), 110px (≤480px) |
+| 103 | UI | `interview.php` | New breakpoints at 480px and 380px: compact header, smaller card padding, touch-friendly tap targets |
+| 104 | UI | `interview.php` | Permission screen responsive: 540px and 380px breakpoints for `.perm-left`/`.perm-right` padding, title size, grid columns |
+| 105 | BUG | `apply.php` | Phone field layout: `.phone-grid` CSS class with responsive columns (210px → 130px on ≤540px, 110px on ≤380px) |
+| 106 | FIX | `apply.php` | Country code combobox: `ccDisplayLabel()` shows compact "🇮🏼 +91" on mobile (≤540px), full label on desktop |
+| 107 | FIX | `apply.php` | `text-overflow:ellipsis` on `.cc-input` prevents overflow of long country names |
+| 108 | FIX | `apply.php` | `resize` event listener re-applies compact/full label on orientation change |
+
+---
+
+### 2026-06-08 — Training Guide + Nav Restriction
+
+| # | Category | File(s) | What was changed |
+|---|----------|---------|-----------------|
+| 109 | FEATURE | `training.php` (NEW) | Complete in-app User Guide page — 17 sections covering all platform features |
+| 110 | UI | `training.php` | Two-column layout: 232px sticky sidebar (scroll-spy, Font Awesome icons, grouped sections, print button) + scrollable content area |
+| 111 | UI | `training.php` | Hero: dark blue→purple gradient with eyebrow badge and feature pill tags |
+| 112 | UI | `training.php` | CSS component system: `card`, `tile` (feature tiles), `step` (numbered), `info` (color-coded), `wf-card`, `faq` (accordion), `flow` (pill chains), `tbl` |
+| 113 | UI | `training.php` | Content: Platform Overview (3-col tiles), Quick Start (5 steps), Role Permissions table, Campaigns, AI Builder, Apply Form, Candidates, Outreach, Interview Flow, Face Detection, Results, AI Scoring, Analytics, User Mgmt, Credits, 3 Workflow guides, 9 FAQs |
+| 114 | ROUTE | `index.php` | Added `'training' => 'training.php'` route |
+| 115 | ACCESS | `includes/nav.php` | Guide link moved inside `super_admin` block — only Super Admin can see Guide, Audit Logs, and Admins |
+
+---
+
+### 2026-06-12 — Org-wide Duplicate Check Fix
+
+| # | Category | File(s) | What was fixed |
+|---|----------|---------|----------------|
+| 116 | BUG | `api/candidates.php` | `candidate_duplicate_check()` now checks org-wide (all campaigns) instead of per-campaign; returns campaign name for better error message |
+| 117 | BUG | `api/candidates.php` | Merged `candidate_duplicate_exists` + `candidate_duplicate_exists_for_update` into single `candidate_duplicate_check()` with optional `exclude_id`; all call sites updated to pass `org_id` |
+| 118 | BUG | `api/check_duplicate.php` | Real-time apply form check now checks org-wide via JOIN on `campaigns.org_id` (was campaign-scoped only) |
+| 119 | BUG | `api/apply.php` | Public form submission duplicate check now queries all candidates in org (was `WHERE campaign_id=?`); error message improved |
 
 ---
 
@@ -149,7 +241,7 @@
 
 | # | Severity | Description | Fix needed |
 |---|----------|-------------|------------|
-| 1 | MEDIUM | Vertex AI returning 404 — `gemini-2.0-flash-001` not found in project `symbolic-surf-471213-m4` | Update `VERTEX_AI_MODEL` in `.env` to a valid model, or re-enable Vertex AI API in Google Cloud Console. Scoring currently falls back to Groq successfully. |
+| 1 | LOW | `schema.sql` still shows `num_questions INT DEFAULT 6` — live DB already has 10 as default for new campaigns | Update DEFAULT in schema.sql |
 
 ---
 
@@ -164,20 +256,21 @@ After every fix or change:
 
 ---
 
-## File Size Reference (for context on what's large)
+## File Size Reference
 
-| File | Size | Notes |
-|------|------|-------|
-| `apply.php` | ~100 KB | 9-step multi-page public form |
-| `campaigns.php` | ~98 KB | All campaign CRUD + question builder |
-| `candidate_detail.php` | ~89 KB | Detail view with inline audio/video |
-| `candidates.php` | ~74 KB | Paginated list with column toggles |
-| `interview.php` | ~60 KB | Full in-browser interview engine |
-| `outreach.php` | ~26 KB | WhatsApp + AI call console |
-| `credits.php` | ~17 KB | Wallet + transactions |
-| `admins.php` | ~18 KB | User management |
-| `includes/functions.php` | medium | Core utilities |
-| `includes/helpers.php` | medium | Security + login lock + pagination |
+| File | Lines | Notes |
+|------|-------|-------|
+| `apply.php` | ~2765 | 9-step wizard + 2-step dynamic form; self-contained (no head.php) |
+| `interview.php` | ~1721 | Full interview engine; self-contained; white theme; face detection |
+| `campaigns.php` | ~2123 | Campaign CRUD + questions + apply-form config + deactivate |
+| `candidates.php` | ~1474 | Paginated list + terminated badge |
+| `candidate_detail.php` | ~1753 | Q&A + recording + termination banner + async scoring |
+| `jd_builder.php` | ~600 | AI campaign builder UI |
+| `analytics.php` | ~532 | Redesigned enterprise analytics |
+| `api/score.php` | ~413 | Scoring pipeline (Vertex→Gemini→Groq) + async + transcription |
+| `api/apply.php` | ~477 | Application submission |
+| `training.php` | ~580 | In-app User Guide (super_admin only); 17 sections, sidebar nav, scroll-spy |
+| `admins.php` | ~462 | User management |
 
 ---
 
@@ -187,10 +280,10 @@ After every fix or change:
 DB_HOST, DB_USER, DB_PASS, DB_NAME
 JWT_SECRET                    # session JWTs
 EXPORT_TOKEN_SECRET           # CSV export tokens (separate from JWT_SECRET)
-INTERVIEW_WEBHOOK_SECRET      # ElevenLabs webhook HMAC
+INTERVIEW_WEBHOOK_SECRET      # interview session webhook HMAC
 CALL_WEBHOOK_SECRET           # Avya dialer webhook HMAC
 BASE_URL                      # e.g. https://hire.clouddialer.in
-EL_API_KEY, EL_AGENT_ID, EL_PHONE_NUMBER_ID
+# EL_API_KEY, EL_AGENT_ID, EL_PHONE_NUMBER_ID  ← ElevenLabs disabled; Avya Dialer used instead
 GEMINI_API_KEY, GEMINI_MODEL
 VERTEX_AI_PROJECT, VERTEX_AI_LOCATION, VERTEX_AI_MODEL
 GOOGLE_APPLICATION_CREDENTIALS

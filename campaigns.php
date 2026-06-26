@@ -131,7 +131,7 @@ function campaign_apply_link($campaign) {
 
 function campaign_setup_state($campaign, $questions, $application_fields) {
     $has_details = !empty($campaign['name']) && !empty($campaign['job_role']);
-    $has_agent = !empty($campaign['el_agent_id']) && $campaign['el_agent_id'] !== 'PASTE_YOUR_EL_AGENT_ID';
+    $has_agent = false; // ElevenLabs disabled — using Avya Dialer instead
     // Standard fields (name, email, phone, etc.) are always present by default,
     // so the apply form is ready even without custom extra fields.
     $std_cfg = $campaign['apply_form_config'] ?? null;
@@ -769,7 +769,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
   $applyLink  = campaign_apply_link($c);
   $hasForm    = (int)$c['apply_field_count'] > 0;
   $st         = $c['status'];
-  $agentShort = $c['el_agent_id'] ? (strlen($c['el_agent_id']) > 24 ? substr($c['el_agent_id'],0,24).'…' : $c['el_agent_id']) : null;
+  $agentShort = null; // ElevenLabs disabled
   $cands      = (int)$c['total_cands'];
 ?>
 <div class="cl-row" data-status="<?= htmlspecialchars($st) ?>">
@@ -1027,27 +1027,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
         </div>
       </div>
 
-      <!-- AI Voice -->
-      <div class="cf-section">
-        <div class="cf-section-label"><i class="fa-solid fa-robot fa-xs"></i> AI Voice Agent <span style="font-size:9px;font-weight:600;background:#FEF3C7;color:#92400E;border-radius:4px;padding:1px 5px;text-transform:none;letter-spacing:0">Optional</span></div>
-        <div class="cf-group">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-            <label class="cf-label" style="margin-bottom:0">Your AI Agent</label>
-            <span id="agent-loading" style="font-size:11px;color:#94A3B8">Loading agents…</span>
-          </div>
-          <select name="el_agent_id" id="agent-select" class="cf-select">
-            <option value="">No AI voice agent for now</option>
-            <?php if (!empty($campaign['el_agent_id'])): ?>
-            <option value="<?= htmlspecialchars($campaign['el_agent_id']) ?>" selected><?= htmlspecialchars($campaign['el_agent_id']) ?></option>
-            <?php endif; ?>
-          </select>
-          <div class="cf-hint">Select only when you need outbound AI voice calling for this campaign</div>
-          <div class="cf-agent-row">
-            <a class="cf-agent-btn" href="credits.php" target="_blank" rel="noopener"><i class="fa-solid fa-coins fa-xs"></i> Recharge / Balance</a>
-            <a class="cf-agent-btn" href="credits.php#pricing" target="_blank" rel="noopener"><i class="fa-solid fa-tags fa-xs"></i> AI Pricing</a>
-          </div>
-        </div>
-      </div>
+      <!-- AI Voice (ElevenLabs disabled — using Avya Dialer instead) -->
 
       <!-- Scoring -->
       <div class="cf-section" style="margin-bottom:28px">
@@ -1137,32 +1117,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
   </div>
 </div>
 
-  <script>
-  const currentAgentId = '<?= htmlspecialchars($campaign['el_agent_id'] ?? '') ?>';
-  async function loadAgents() {
-      try {
-          const r = await fetch('api/interview.php?action=get_agents');
-          const d = await r.json();
-          const sel = document.getElementById('agent-select');
-          document.getElementById('agent-loading').textContent = '';
-          if (d.error) { document.getElementById('agent-loading').textContent = '❌ ' + d.error; return; }
-          if (d.warning) { document.getElementById('agent-loading').textContent = '⚠️ ' + d.warning; return; }
-          // Clear and rebuild
-          sel.innerHTML = '<option value="">No AI voice agent for now</option>';
-          (d.agents || []).forEach(a => {
-              const opt = document.createElement('option');
-              opt.value = a.agent_id;
-              opt.textContent = a.name + ' (' + a.agent_id + ')';
-              if (a.agent_id === currentAgentId) opt.selected = true;
-              sel.appendChild(opt);
-          });
-          document.getElementById('agent-loading').textContent = (d.agents || []).length + ' AI agents loaded';
-      } catch(e) {
-          document.getElementById('agent-loading').textContent = '❌ Failed to load agents';
-      }
-  }
-  loadAgents();
-  </script>
+  <!-- ElevenLabs agent loader script disabled — using Avya Dialer instead -->
 
 <?php elseif ($action === 'questions' && $campaign): ?>
   <?php $applyLink = campaign_apply_link($campaign); ?>
@@ -1304,9 +1259,7 @@ if ($editing_question && !empty($editing_question['options_json'])) {
     <div class="qp-meta">
       <span class="qp-chip qp-chip-role"><i class="fa-solid fa-briefcase fa-xs"></i> <?= htmlspecialchars($campaign['job_role']) ?></span>
       <span class="qp-chip qp-chip-pass"><i class="fa-solid fa-bullseye fa-xs"></i> Pass <?= (int)$campaign['passing_score'] ?>/100</span>
-      <?php if ($campaign['el_agent_id']): ?>
-      <span class="qp-chip qp-chip-agent"><i class="fa-solid fa-robot fa-xs"></i> <?= htmlspecialchars(substr($campaign['el_agent_id'],0,24)) ?></span>
-      <?php else: ?><span class="qp-chip qp-chip-noagent"><i class="fa-solid fa-robot fa-xs"></i> No Agent</span><?php endif; ?>
+      <?php /* ElevenLabs agent chip disabled — using Avya Dialer */ ?>
     </div>
   </div>
   <div class="qp-actions">

@@ -910,7 +910,7 @@ $_is_draft    = $_camp_status === 'draft';
       <!-- Phone row: combobox (editable + selectable) + number -->
       <style>
       .cc-wrap{position:relative;width:100%}
-      .cc-input{width:100%;padding:9px 32px 9px 12px;border:1.5px solid var(--border-color,#E2E8F0);border-radius:9px;font-size:13px;font-family:inherit;background:#FAFBFC;color:#0F172A;outline:none;transition:border-color .15s,box-shadow .15s;cursor:pointer}
+      .cc-input{width:100%;padding:9px 32px 9px 12px;border:1.5px solid var(--border-color,#E2E8F0);border-radius:9px;font-size:13px;font-family:inherit;background:#FAFBFC;color:#0F172A;outline:none;transition:border-color .15s,box-shadow .15s;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .cc-input:focus{border-color:#7C3AED;box-shadow:0 0 0 3px rgba(124,58,237,.1);background:#fff}
       .cc-arrow{position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:#94A3B8;font-size:11px;transition:transform .15s}
       .cc-wrap.open .cc-arrow{transform:translateY(-50%) rotate(180deg)}
@@ -920,8 +920,18 @@ $_is_draft    = $_camp_status === 'draft';
       .cc-option:hover,.cc-option.active{background:#F5F3FF;color:#6D28D9}
       .cc-option.selected{background:#EDE9FE;font-weight:700;color:#5B21B6}
       .cc-sep{height:1px;background:#F1F5F9;margin:4px 0}
+      .phone-grid{display:grid;grid-template-columns:210px 1fr;gap:14px;align-items:start;margin-top:20px}
+      @media(max-width:540px){
+        .phone-grid{grid-template-columns:minmax(0,130px) 1fr;gap:10px}
+        .cc-input{font-size:12px;padding:9px 28px 9px 8px}
+        .cc-input-short::placeholder{font-size:12px}
+      }
+      @media(max-width:380px){
+        .phone-grid{grid-template-columns:minmax(0,110px) 1fr;gap:8px}
+        .cc-input{font-size:11px;padding:8px 24px 8px 7px}
+      }
       </style>
-      <div style="display:grid;grid-template-columns:210px 1fr;gap:14px;align-items:start;margin-top:20px">
+      <div class="phone-grid">
         <div class="field" style="margin-bottom:0">
           <label>Country Code <span class="req">*</span></label>
           <div class="cc-wrap" id="ccWrap">
@@ -2044,10 +2054,19 @@ const CC_OPTIONS = [
 ];
 let _ccSelected = CC_OPTIONS[0]; // India default
 
+function ccDisplayLabel(opt) {
+  // On narrow mobile screens show compact "🇮🇳 +91" instead of full "🇮🇳 +91 India"
+  if (window.innerWidth <= 540) {
+    const parts = opt.label.split(' ');
+    return parts.slice(0, 2).join(' '); // flag + code only
+  }
+  return opt.label;
+}
+
 function ccApply(opt) {
   _ccSelected = opt;
   const inp = document.getElementById('ccInput');
-  if (inp) inp.value = opt.label;
+  if (inp) inp.value = ccDisplayLabel(opt);
   document.getElementById('phoneCode').value = opt.code;
   const isIndia = opt.code === '+91';
   const hint = document.getElementById('otherCountryHint');
@@ -2518,8 +2537,17 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // date min/max now enforced via PHP attributes on the dw-seg inputs, not JS
 
-  // Init country code combobox — India default
+  // Init country code combobox — India default (compact label on mobile)
   if (document.getElementById('ccInput')) ccApply(CC_OPTIONS[0]);
+  // Re-apply compact/full label on orientation change
+  window.addEventListener('resize', () => {
+    if (_ccSelected) {
+      const inp = document.getElementById('ccInput');
+      if (inp && !document.getElementById('ccWrap')?.classList.contains('open')) {
+        inp.value = ccDisplayLabel(_ccSelected);
+      }
+    }
+  });
 
   // Sync tenure visibility to whichever engagement type is already selected
   const engEl = document.getElementById('engagementType');

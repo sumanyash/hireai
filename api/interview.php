@@ -3,44 +3,45 @@ require_once __DIR__ . '/../includes/functions.php';
 header('Content-Type: application/json');
 $action=$_GET['action']??'';$method=$_SERVER['REQUEST_METHOD'];
 
-if($action==='get_agents'&&$method==='GET'){
-  $user=verify_jwt();if(!$user)json_response(['error'=>'Unauthorized'],401);
-  if(!EL_API_KEY)json_response(['agents'=>[],'warning'=>'ElevenLabs API key is not configured']);
-  $ch=curl_init('https://api.elevenlabs.io/v1/convai/agents?page_size=50');
-  curl_setopt_array($ch,[CURLOPT_HTTPGET=>true,CURLOPT_HTTPHEADER=>['xi-api-key: '.EL_API_KEY],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>15,CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2]);
-  $resp=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
-  if($code!==200)json_response(['error'=>'EL error: '.$resp],500);
-  $data=json_decode($resp,true);$agents=[];
-  foreach(($data['agents']??[])as $a)$agents[]=['agent_id'=>$a['agent_id'],'name'=>$a['name']??'Unnamed'];
-  json_response(['agents'=>$agents]);
-}
+// ElevenLabs disabled — using Avya Dialer instead
+// if($action==='get_agents'&&$method==='GET'){
+//   $user=verify_jwt();if(!$user)json_response(['error'=>'Unauthorized'],401);
+//   if(!EL_API_KEY)json_response(['agents'=>[],'warning'=>'ElevenLabs API key is not configured']);
+//   $ch=curl_init('https://api.elevenlabs.io/v1/convai/agents?page_size=50');
+//   curl_setopt_array($ch,[CURLOPT_HTTPGET=>true,CURLOPT_HTTPHEADER=>['xi-api-key: '.EL_API_KEY],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>15,CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2]);
+//   $resp=curl_exec($ch);$code=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
+//   if($code!==200)json_response(['error'=>'EL error: '.$resp],500);
+//   $data=json_decode($resp,true);$agents=[];
+//   foreach(($data['agents']??[])as $a)$agents[]=['agent_id'=>$a['agent_id'],'name'=>$a['name']??'Unnamed'];
+//   json_response(['agents'=>$agents]);
+// }
 
-if($action==='start_call'&&$method==='GET'){
-  $user=verify_jwt();if(!$user)json_response(['error'=>'Unauthorized'],401);
-  $token=$_GET['token']??$_GET['t']??'';$candidate_id=(int)($_GET['candidate_id']??0);
-  if($token){
-    $c=db_fetch_one("SELECT c.*,camp.el_agent_id,camp.name as campaign_name,camp.job_role,camp.num_questions,camp.max_duration_minutes FROM candidates c JOIN campaigns camp ON c.campaign_id=camp.id WHERE c.unique_token=? AND c.org_id=?",[$token,$user['org_id']],'si');
-  }else{
-    $c=db_fetch_one("SELECT c.*,camp.el_agent_id,camp.name as campaign_name,camp.job_role,camp.num_questions,camp.max_duration_minutes FROM candidates c JOIN campaigns camp ON c.campaign_id=camp.id WHERE c.id=? AND c.org_id=?",[$candidate_id,$user['org_id']],'ii');
-  }
-  if(!$c)json_response(['error'=>'Candidate not found'],404);
-  $agent_id=$c['el_agent_id']?:EL_AGENT_ID;
-  if(!$agent_id||$agent_id==='PASTE_YOUR_EL_AGENT_ID')json_response(['error'=>'Agent not configured. Edit campaign and select an agent.'],400);
-  json_response(trigger_el_outbound_call($c,$agent_id));
-}
+// if($action==='start_call'&&$method==='GET'){
+//   $user=verify_jwt();if(!$user)json_response(['error'=>'Unauthorized'],401);
+//   $token=$_GET['token']??$_GET['t']??'';$candidate_id=(int)($_GET['candidate_id']??0);
+//   if($token){
+//     $c=db_fetch_one("SELECT c.*,camp.el_agent_id,camp.name as campaign_name,camp.job_role,camp.num_questions,camp.max_duration_minutes FROM candidates c JOIN campaigns camp ON c.campaign_id=camp.id WHERE c.unique_token=? AND c.org_id=?",[$token,$user['org_id']],'si');
+//   }else{
+//     $c=db_fetch_one("SELECT c.*,camp.el_agent_id,camp.name as campaign_name,camp.job_role,camp.num_questions,camp.max_duration_minutes FROM candidates c JOIN campaigns camp ON c.campaign_id=camp.id WHERE c.id=? AND c.org_id=?",[$candidate_id,$user['org_id']],'ii');
+//   }
+//   if(!$c)json_response(['error'=>'Candidate not found'],404);
+//   $agent_id=$c['el_agent_id']?:EL_AGENT_ID;
+//   if(!$agent_id||$agent_id==='PASTE_YOUR_EL_AGENT_ID')json_response(['error'=>'Agent not configured. Edit campaign and select an agent.'],400);
+//   json_response(trigger_el_outbound_call($c,$agent_id));
+// }
 
-if($action==='bulk_start'&&$method==='POST'){
-  $user=verify_jwt();if(!$user)json_response(['error'=>'Unauthorized'],401);
-  $input=json_decode(file_get_contents('php://input'),true);
-  $ids=array_map('intval',$input['candidate_ids']??[]);$done=$failed=0;
-  foreach($ids as $id){
-    $c=db_fetch_one("SELECT c.*,camp.el_agent_id,camp.name as campaign_name,camp.job_role,camp.num_questions,camp.max_duration_minutes FROM candidates c JOIN campaigns camp ON c.campaign_id=camp.id WHERE c.id=? AND c.org_id=?",[$id,$user['org_id']],'ii');
-    if(!$c)continue;
-    $r=trigger_el_outbound_call($c,$c['el_agent_id']?:EL_AGENT_ID);
-    $r['success']?$done++:$failed++;sleep(1);
-  }
-  json_response(['started'=>$done,'failed'=>$failed,'message'=>"Started $done calls"]);
-}
+// if($action==='bulk_start'&&$method==='POST'){
+//   $user=verify_jwt();if(!$user)json_response(['error'=>'Unauthorized'],401);
+//   $input=json_decode(file_get_contents('php://input'),true);
+//   $ids=array_map('intval',$input['candidate_ids']??[]);$done=$failed=0;
+//   foreach($ids as $id){
+//     $c=db_fetch_one("SELECT c.*,camp.el_agent_id,camp.name as campaign_name,camp.job_role,camp.num_questions,camp.max_duration_minutes FROM candidates c JOIN campaigns camp ON c.campaign_id=camp.id WHERE c.id=? AND c.org_id=?",[$id,$user['org_id']],'ii');
+//     if(!$c)continue;
+//     $r=trigger_el_outbound_call($c,$c['el_agent_id']?:EL_AGENT_ID);
+//     $r['success']?$done++:$failed++;sleep(1);
+//   }
+//   json_response(['started'=>$done,'failed'=>$failed,'message'=>"Started $done calls"]);
+// }
 
 if($action==='create_session'&&$method==='GET'){
   $token=$_GET['t']??'';if(!$token)json_response(['error'=>'Token required'],400);
@@ -140,48 +141,48 @@ if($method==='POST'&&($action==='webhook'||$action==='')){
   json_response(['status'=>'ok']);
 }
 
-// ─── FIXED: was $$c['phone'] (double-dollar bug) ───────────────────────────
-function trigger_el_outbound_call($c, $agent_id) {
-  $phone = preg_replace('/[^0-9]/', '', $c['phone'] ?? ''); // FIXED: was $$c
-  if (strlen($phone) == 10) $phone = '+91' . $phone;
-  elseif (!str_starts_with($phone, '+')) $phone = '+' . $phone;
-  $name = $c['name'] ?: 'Candidate';
-  $payload = [
-    'agent_id'              => $agent_id,
-    'agent_phone_number_id' => EL_PHONE_NUMBER_ID,
-    'to_number'             => $phone,
-    'conversation_config_override' => [
-      'agent' => [
-        'prompt'        => ['prompt' => "AI interviewer for {$c['job_role']} at {$c['campaign_name']}. Candidate: $name. Ask {$c['num_questions']} questions."],
-        'first_message' => "Hello $name! I am your AI interviewer for {$c['job_role']}. Ready to begin?",
-      ],
-    ],
-    'dynamic_variables' => [
-      'candidate_name' => $name,
-      'job_role'       => $c['job_role'],
-      'num_questions'  => (string)($c['num_questions'] ?? 6),
-    ],
-  ];
-  $ch = curl_init('https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call');
-  curl_setopt_array($ch, [
-    CURLOPT_POST          => true,
-    CURLOPT_POSTFIELDS    => json_encode($payload),
-    CURLOPT_HTTPHEADER    => ['Content-Type: application/json', 'xi-api-key: ' . EL_API_KEY],
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_TIMEOUT       => 30,
-    CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2,
-  ]);
-  $resp = curl_exec($ch);
-  $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-  curl_close($ch);
-  $data     = json_decode($resp, true);
-  $call_id  = $data['conversation_id'] ?? $data['call_id'] ?? '';
-  if ($code >= 200 && $code < 300 && ($data['success'] ?? false)) {
-    if ($call_id) {
-      db_insert("INSERT INTO interview_sessions (candidate_id,campaign_id,el_conversation_id,status,started_at) VALUES (?,?,?,'initiated',NOW())", [$c['id'], $c['campaign_id'], $call_id], 'iis');
-      db_execute("UPDATE candidates SET status='interview_started',call_id=? WHERE id=?", [$call_id, $c['id']], 'si');
-    }
-    return ['success' => true, 'call_id' => $call_id, 'message' => "Call started to $phone"];
-  }
-  return ['success' => false, 'error' => "EL error ($code): $resp"];
-}
+// ElevenLabs outbound call function disabled — using Avya Dialer instead
+// function trigger_el_outbound_call($c, $agent_id) {
+//   $phone = preg_replace('/[^0-9]/', '', $c['phone'] ?? '');
+//   if (strlen($phone) == 10) $phone = '+91' . $phone;
+//   elseif (!str_starts_with($phone, '+')) $phone = '+' . $phone;
+//   $name = $c['name'] ?: 'Candidate';
+//   $payload = [
+//     'agent_id'              => $agent_id,
+//     'agent_phone_number_id' => EL_PHONE_NUMBER_ID,
+//     'to_number'             => $phone,
+//     'conversation_config_override' => [
+//       'agent' => [
+//         'prompt'        => ['prompt' => "AI interviewer for {$c['job_role']} at {$c['campaign_name']}. Candidate: $name. Ask {$c['num_questions']} questions."],
+//         'first_message' => "Hello $name! I am your AI interviewer for {$c['job_role']}. Ready to begin?",
+//       ],
+//     ],
+//     'dynamic_variables' => [
+//       'candidate_name' => $name,
+//       'job_role'       => $c['job_role'],
+//       'num_questions'  => (string)($c['num_questions'] ?? 6),
+//     ],
+//   ];
+//   $ch = curl_init('https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call');
+//   curl_setopt_array($ch, [
+//     CURLOPT_POST          => true,
+//     CURLOPT_POSTFIELDS    => json_encode($payload),
+//     CURLOPT_HTTPHEADER    => ['Content-Type: application/json', 'xi-api-key: ' . EL_API_KEY],
+//     CURLOPT_RETURNTRANSFER => true,
+//     CURLOPT_TIMEOUT       => 30,
+//     CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2,
+//   ]);
+//   $resp = curl_exec($ch);
+//   $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+//   curl_close($ch);
+//   $data     = json_decode($resp, true);
+//   $call_id  = $data['conversation_id'] ?? $data['call_id'] ?? '';
+//   if ($code >= 200 && $code < 300 && ($data['success'] ?? false)) {
+//     if ($call_id) {
+//       db_insert("INSERT INTO interview_sessions (candidate_id,campaign_id,el_conversation_id,status,started_at) VALUES (?,?,?,'initiated',NOW())", [$c['id'], $c['campaign_id'], $call_id], 'iis');
+//       db_execute("UPDATE candidates SET status='interview_started',call_id=? WHERE id=?", [$call_id, $c['id']], 'si');
+//     }
+//     return ['success' => true, 'call_id' => $call_id, 'message' => "Call started to $phone"];
+//   }
+//   return ['success' => false, 'error' => "EL error ($code): $resp"];
+// }

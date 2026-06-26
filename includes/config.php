@@ -29,9 +29,10 @@ define('VERTEX_AI_PROJECT', envv('VERTEX_AI_PROJECT', ''));
 define('VERTEX_AI_LOCATION', envv('VERTEX_AI_LOCATION', 'us-central1'));
 define('VERTEX_AI_MODEL', envv('VERTEX_AI_MODEL', ''));
 define('GROQ_API_KEY', envv('GROQ_API_KEY', ''));
-define('EL_API_KEY', envv('ELEVENLABS_API_KEY', envv('EL_API_KEY', '')));
-define('EL_AGENT_ID', envv('EL_AGENT_ID', ''));
-define('EL_PHONE_NUMBER_ID', envv('EL_PHONE_NUMBER_ID', ''));
+// ElevenLabs disabled — using Avya Dialer instead
+define('EL_API_KEY', '');
+define('EL_AGENT_ID', '');
+define('EL_PHONE_NUMBER_ID', '');
 define('WA_API_URL', envv('WA_API_URL', ''));
 define('WA_INSTANCE_ID', envv('WA_INSTANCE_ID', ''));
 define('WA_TOKEN', envv('WA_TOKEN', ''));

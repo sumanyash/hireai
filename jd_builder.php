@@ -239,7 +239,7 @@ function renderPreview(d) {
   const langOptions = ['english','hinglish','hindi'].map(l =>
     `<option value="${l}" ${d.language===l?'selected':''}>${l.charAt(0).toUpperCase()+l.slice(1)}</option>`
   ).join('');
-  const agentField = `<div class="pf-group"><div class="pf-label">ElevenLabs Agent ID (optional)</div><input class="pf-input" name="el_agent_id" type="text" value="" placeholder="agent_xxx..."></div>`;
+  const agentField = ''; // ElevenLabs disabled — using Avya Dialer instead
 
   let questionsHtml = d.questions.map((q, i) => renderQuestionCard(q, i)).join('');
 
@@ -293,10 +293,7 @@ function renderPreview(d) {
           <div class="pf-label">Passing Score (/100)</div>
           <input class="pf-input" name="passing_score" type="number" min="50" max="95" value="${d.passing_score}">
         </div>
-        <div class="pf-group">
-          <div class="pf-label">ElevenLabs Agent ID (optional)</div>
-          <input class="pf-input" name="el_agent_id" type="text" value="" placeholder="agent_xxx…">
-        </div>
+        <!-- ElevenLabs Agent ID field disabled — using Avya Dialer instead -->
       </div>
       <div class="pf-group">
         <div class="pf-label">Description (shown to candidates)</div>
@@ -488,7 +485,7 @@ function collectData() {
   const description    = pv.querySelector('[name="description"]')?.value?.trim() || '';
   const passing_score  = parseInt(pv.querySelector('[name="passing_score"]')?.value || '70');
   const language       = pv.querySelector('[name="language"]')?.value || 'english';
-  const el_agent_id    = pv.querySelector('[name="el_agent_id"]')?.value?.trim() || '';
+  const el_agent_id    = ''; // ElevenLabs disabled
 
   // Questions
   const typeMap = {mcq:'dropdown', short_answer:'textarea', voice_note:'audio'};

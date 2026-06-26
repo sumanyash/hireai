@@ -40,6 +40,7 @@ $route_map = [
     'logout' => 'logout.php',
     'video_view' => 'video_view.php',
     'jd_builder' => 'jd_builder.php',
+    'training'   => 'training.php',
     'forgot_password' => 'forgot_password.php',
     'reset_password'  => 'reset_password.php',
 ];

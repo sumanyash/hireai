@@ -97,7 +97,7 @@ function transcribe_voice_gemini(string $audio_url, string $credential_path, str
   $url = 'https://'.$location.'-aiplatform.googleapis.com/v1/projects/'.rawurlencode($project).'/locations/'.rawurlencode($location).'/publishers/google/models/'.rawurlencode($vmodel).':generateContent';
   $payload = ['contents' => [['role' => 'user', 'parts' => [
     ['inline_data' => ['mime_type' => 'audio/webm', 'data' => base64_encode($raw)]],
-    ['text' => 'Transcribe this audio interview answer exactly as spoken. Return only the transcript text with no labels or extra commentary.']
+    ['text' => 'Transcribe this audio interview answer exactly as spoken. Output in the same script as the spoken language — English speech must be in English (Latin script), Hindi speech in Devanagari script. Do NOT transliterate between scripts. Return only the transcript text with no labels or extra commentary.']
   ]]]];
   $ch = curl_init($url);
   curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($payload), CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer '.$token], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60, CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2]);
@@ -125,7 +125,7 @@ function transcribe_voice_groq(string $audio_url, string $groq_key): ?string {
   $ch = curl_init('https://api.groq.com/openai/v1/audio/transcriptions');
   curl_setopt_array($ch, [
     CURLOPT_POST => true,
-    CURLOPT_POSTFIELDS => ['file' => new CURLFile($local, 'audio/webm', basename($local)), 'model' => 'whisper-large-v3-turbo', 'response_format' => 'text'],
+    CURLOPT_POSTFIELDS => ['file' => new CURLFile($local, 'audio/webm', basename($local)), 'model' => 'whisper-large-v3-turbo', 'response_format' => 'text', 'prompt' => 'Interview answer. Transcribe in the original spoken language and script — English in Latin script, Hindi in Devanagari.'],
     CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $groq_key],
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_TIMEOUT => 45,
@@ -384,20 +384,21 @@ if($pf==='pending'){
   if(php_sapi_name()!=='cli')echo json_encode(['status'=>'pending','score'=>$total_score,'max'=>$max_total,'pass_fail'=>$pf]);
   exit;
 }
-if($pct_score>=80){
-  log_s("Score>=80 — triggering EL call");
-  $agent_id=$candidate['el_agent_id']?:EL_AGENT_ID;
-  if($agent_id&&$agent_id!=='PASTE_YOUR_EL_AGENT_ID'){
-    $phone=preg_replace('/[^0-9]/','',$candidate['phone']??'');
-    if(strlen($phone)==10)$phone='+91'.$phone;elseif(!str_starts_with($phone,'+'))$phone='+'.$phone;
-    $payload=['agent_id'=>$agent_id,'agent_phone_number_id'=>EL_PHONE_NUMBER_ID,'to_number'=>$phone,
-      'conversation_config_override'=>['agent'=>['first_message'=>"Hello $name! Congratulations on completing your interview for $role. You scored {$pct_score}% and have been shortlisted! Our recruiter will contact you soon."]]];
-    $ch=curl_init('https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call');
-    curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode($payload),CURLOPT_HTTPHEADER=>['Content-Type: application/json','xi-api-key: '.EL_API_KEY],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>30,CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2]);
-    $r=curl_exec($ch);$rc=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
-    log_s("EL call: $rc — $r");
-  }
-}
+// ElevenLabs auto-call on score>=80 disabled — using Avya Dialer instead
+// if($pct_score>=80){
+//   log_s("Score>=80 — triggering EL call");
+//   $agent_id=$candidate['el_agent_id']?:EL_AGENT_ID;
+//   if($agent_id&&$agent_id!=='PASTE_YOUR_EL_AGENT_ID'){
+//     $phone=preg_replace('/[^0-9]/','',$candidate['phone']??'');
+//     if(strlen($phone)==10)$phone='+91'.$phone;elseif(!str_starts_with($phone,'+'))$phone='+'.$phone;
+//     $payload=['agent_id'=>$agent_id,'agent_phone_number_id'=>EL_PHONE_NUMBER_ID,'to_number'=>$phone,
+//       'conversation_config_override'=>['agent'=>['first_message'=>"Hello $name! Congratulations on completing your interview for $role. You scored {$pct_score}% and have been shortlisted! Our recruiter will contact you soon."]]];
+//     $ch=curl_init('https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call');
+//     curl_setopt_array($ch,[CURLOPT_POST=>true,CURLOPT_POSTFIELDS=>json_encode($payload),CURLOPT_HTTPHEADER=>['Content-Type: application/json','xi-api-key: '.EL_API_KEY],CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>30,CURLOPT_SSL_VERIFYPEER => true, CURLOPT_SSL_VERIFYHOST => 2]);
+//     $r=curl_exec($ch);$rc=curl_getinfo($ch,CURLINFO_HTTP_CODE);curl_close($ch);
+//     log_s("EL call: $rc — $r");
+//   }
+// }
 if($pf==='pass'){
   $wa="🎉 *Congratulations $name!*\n\nYour interview for *$role* at *$camp* has been reviewed.\n\n✅ *Result: Shortlisted* | Score: {$pct_score}%\n\nOur recruiter will contact you with next steps.\n\n*HireAI — Avyukta Intellicall*";
 }else{
